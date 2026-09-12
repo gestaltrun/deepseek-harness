@@ -985,7 +985,7 @@ describe('Issue lifecycle workflow', () => {
       with: {
         'client-id': '${{ vars.DSH_ISSUE_APP_CLIENT_ID }}',
         'private-key': '${{ secrets.DSH_ISSUE_APP_PRIVATE_KEY }}',
-        owner: 'gestaltrun',
+        owner: 'deepseek-harness',
         repositories: 'deepseek-harness',
         'permission-issues': 'read',
         'permission-organization-projects': 'read',
