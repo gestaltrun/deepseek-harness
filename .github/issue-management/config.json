@@ -1,9 +1,9 @@
 {
-  "organization": "deepseek-harness",
+  "organization": "gestaltrun",
   "repository": "deepseek-harness",
   "projectNumber": 1,
   "projectTitle": "DSH Issue Management",
-  "lifecycleActor": "dsh-issue-management",
+  "lifecycleActor": "gestaltrun-harness-issues",
   "priorityField": "Priority",
   "startDateField": "Start Date",
   "projectTimeZone": "Asia/Shanghai",
