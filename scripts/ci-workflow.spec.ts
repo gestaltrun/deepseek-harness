@@ -249,8 +249,8 @@ describe('CI workflow', () => {
 
     // serial-windows: master-only standby, self-hosted, non-blocking, lives in ci-master.
     expect(serialWindows.if).toBe("github.event_name == 'push' && github.ref == 'refs/heads/master'")
-    expect(serialWindows['runs-on']).toEqual(['self-hosted', 'dsh-win-ci', 'windows'])
-    expect(serialWindows.name).toBe('serial / windows (self-hosted standby)')
+    expect(runInNewContext((serialWindows['runs-on'] as string).trim().slice(3, -2), { vars: {}, fromJSON: JSON.parse }, { timeout: 1000 })).toEqual(['self-hosted', 'dsh-win-ci', 'windows'])
+    expect(serialWindows.name).toContain("'self-hosted standby'")
     // Its store must share the ReFS workspace volume for clone; the install
     // must carry the same filesystem branch as the PR jobs.
     const serialSteps = serialWindows.steps as unknown[]
@@ -348,6 +348,25 @@ describe('CI workflow', () => {
       for (const mode of ['', 'hosted', 'unexpected']) {
         expect(evaluate(selector, { [variable]: mode }), `${name} default on ${mode}`).toBe(hosted)
       }
+    }
+
+    for (const [selector, variable, platform, hosted] of [
+      [selectors.linux, 'DSH_CI_FAILOVER_LINUX', 'LINUX', 'ubuntu-24.04'],
+      [selectors.windows, 'DSH_CI_FAILOVER_WINDOWS', 'WINDOWS', 'windows-2025'],
+    ] as const) {
+      const configured = { [`DSH_CI_${platform}_RUNNER`]: hosted }
+      expect(evaluate(selector, configured)).toBe(hosted)
+      expect(evaluate(selector, { ...configured, [variable]: 'selfhosted' }, 'dependabot[bot]')).toBe(hosted)
+      expect(evaluate(selector, { ...configured, [variable]: 'selfhosted' })).toEqual(expect.arrayContaining(['self-hosted']))
+      expect(evaluate(selector, { ...configured, [variable]: 'blacksmith' })).toMatch(/^blacksmith-/)
+    }
+    for (const [name, variable, hosted] of [
+      ['serial-linux-selfhosted', 'DSH_CI_LINUX_SERIAL_RUNNER', 'ubuntu-24.04'],
+      ['serial-windows', 'DSH_CI_WINDOWS_SERIAL_RUNNER', 'windows-2025'],
+    ] as const) {
+      const serial = workflowJob(masterWorkflow, name)
+      expect(evaluate(serial['runs-on'] as string, { [variable]: hosted })).toBe(hosted)
+      expect(evaluate(serial['runs-on'] as string, {})).toEqual(expect.arrayContaining(['self-hosted']))
     }
 
     // The run-gates aggregate lanes stop at the first blocking gate failure so

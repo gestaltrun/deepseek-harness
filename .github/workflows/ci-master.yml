@@ -132,8 +132,8 @@ jobs:
   # would poison the hosted cache namespace with self-hosted paths).
   serial-linux-selfhosted:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    name: serial / linux (self-hosted standby)
-    runs-on: [self-hosted, linux, x64, vm-backup]
+    name: ${{ format('serial / linux ({0})', vars.DSH_CI_LINUX_SERIAL_RUNNER || 'self-hosted standby') }}
+    runs-on: ${{ vars.DSH_CI_LINUX_SERIAL_RUNNER || fromJSON('["self-hosted", "linux", "x64", "vm-backup"]') }}
     steps:
       # DSH_ARCHIVE_BASE_REF below compares the frozen-archive gate against
       # github.event.before, so full history is required: depth 2 would miss it
@@ -166,7 +166,7 @@ jobs:
       # The persistent VM image owns Playwright's Linux system packages; this
       # step also proves that browser provisioning remains usable for failover.
       - name: Install Playwright Chromium
-        run: pnpm --filter @deepseek-ai/dsh-web-frontend exec playwright install chromium
+        run: pnpm --filter @deepseek-ai/dsh-web-frontend exec playwright install ${{ runner.environment == 'github-hosted' && '--with-deps' || '' }} chromium
 
       - name: Prepare bubblewrap (unrestrict userns)
         run: bash scripts/prepare-ci-bubblewrap.sh
@@ -226,8 +226,8 @@ jobs:
   # paths).
   serial-windows:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    name: serial / windows (self-hosted standby)
-    runs-on: [self-hosted, dsh-win-ci, windows]
+    name: ${{ format('serial / windows ({0})', vars.DSH_CI_WINDOWS_SERIAL_RUNNER || 'self-hosted standby') }}
+    runs-on: ${{ vars.DSH_CI_WINDOWS_SERIAL_RUNNER || fromJSON('["self-hosted", "dsh-win-ci", "windows"]') }}
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v6
@@ -252,7 +252,7 @@ jobs:
         # import method below; LOCALAPPDATA (C:) would cross volumes and
         # break block clone. See 2026-08-30-windows-refs-store-block-clone-install.
         run: |
-          $storeRoot = "F:\.pnpm-store"
+          $storeRoot = if ("${{ runner.environment }}" -eq "github-hosted") { Join-Path $env:RUNNER_TEMP "pnpm-store" } else { "F:\.pnpm-store" }
           echo "PNPM_CONFIG_STORE_DIR=$storeRoot" >> $env:GITHUB_ENV
 
       - name: Install (immutable)
