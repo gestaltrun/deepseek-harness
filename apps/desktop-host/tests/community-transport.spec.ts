@@ -72,6 +72,31 @@ afterEach(async () => {
 })
 
 describe('Desktop community transport', () => {
+  it('identifies app-only pipe peers as loopback without admitting foreign requests', async () => {
+    const value = transport()
+    const handler = vi.fn<WebRoute['handler']>((request, response) => {
+      response.setHeader('content-type', 'application/json')
+      response.end(JSON.stringify({
+        address: request.socket.remoteAddress,
+        family: request.socket.remoteFamily,
+        host: request.headers.host,
+        origin: request.headers.origin,
+      }))
+    })
+    value.register({ kind: 'exact', path: '/api/dsh-usage/overview', handler })
+    const url = 'dsh-app://app/api/dsh-usage/overview'
+    const response = await value.fetch(new Request(url, { headers: { origin: 'dsh-app://app' } }))
+    expect(await response.json()).toEqual({
+      address: '127.0.0.1', family: 'IPv4', host: '127.0.0.1', origin: 'http://127.0.0.1',
+    })
+    for (const request of [
+      new Request('http://127.0.0.1/api/dsh-usage/overview'),
+      new Request(url, { headers: { origin: 'https://example.com', 'x-forwarded-for': '127.0.0.1' } }),
+      new Request(url, { headers: { 'sec-fetch-site': 'cross-site', host: '127.0.0.1' } }),
+    ]) expect((await value.fetch(request)).status).toBe(403)
+    expect(handler).toHaveBeenCalledTimes(1)
+  })
+
   it('provides the real Cordis services before dependent plugins activate and disposes their routes', async () => {
     const ctx = new Context()
     contexts.push(ctx)

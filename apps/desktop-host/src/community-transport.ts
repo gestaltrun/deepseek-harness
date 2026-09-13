@@ -243,6 +243,11 @@ export class DesktopCommunityTransport {
   private createConnection = (): Socket => {
     this.assertActive()
     const [client, peer] = duplexPair()
+    // Only validated app-origin requests reach this private peer; HTTP route fences inspect its address.
+    Object.defineProperties(peer, {
+      remoteAddress: { value: this.host },
+      remoteFamily: { value: 'IPv4' },
+    })
     for (const side of [client, peer]) {
       this.pairs.add(side)
       side.on('error', () => { /* The owning HTTP request or WebSocket reports transport errors. */ })
