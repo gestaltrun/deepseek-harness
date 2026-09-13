@@ -27,6 +27,7 @@ import type {} from '@deepseek-ai/dsh-client-modules'
 import { renderIndexInjections, type IndexInjection } from '@deepseek-ai/dsh-host-webserver'
 import { installDesktopCommunityTransport, type DesktopCommunityTransport } from './community-transport.ts'
 import { DESKTOP_COMMUNITY_WEBSOCKET_SCRIPT } from './community-websocket-client.ts'
+import { DESKTOP_STREAM_PATH, dispatchDesktopFetch } from './fetch-dispatcher.ts'
 import {
   DESKTOP_HOST_PROTOCOL_VERSION,
   DESKTOP_PIPE_CHUNK_BYTES,
@@ -96,7 +97,6 @@ interface PackageManifest {
 const DESKTOP_PATCH = fileURLToPath(new URL('../config/desktop.cordis.patch.yml', import.meta.url))
 const ROOT_CONFIG = '# Electron desktop composition root; package transactions own this file.\n[]\n'
 const ROOT_CONFIG_FILENAME = 'desktop.cordis.yml'
-const DESKTOP_STREAM_PATH = '/.dsh/remote-stream'
 
 const DESKTOP_TRANSPORT_SCRIPT = `globalThis.__DSH_TRANSPORT__={
   ownsHost:true,
@@ -348,13 +348,7 @@ export async function runDesktopHost(
           signal: controller.signal,
         }
         const request = new Request(url, init)
-        const response = url.pathname === DESKTOP_STREAM_PATH
-          ? await streams.fetch(request)
-          : url.pathname === '/api' || url.pathname.startsWith('/api/')
-            ? await api.fetch(request)
-            : pluginTransport.owns(url.pathname)
-              ? await pluginTransport.fetch(request)
-              : await assets.fetch(request)
+        const response = await dispatchDesktopFetch(request, { api, streams, community: pluginTransport, assets })
         await writeResponse(encodeDesktopResponseStart(command.streamId, {
           status: response.status,
           headers: [...response.headers.entries()],

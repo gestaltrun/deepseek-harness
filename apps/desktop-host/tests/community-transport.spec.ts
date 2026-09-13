@@ -4,6 +4,7 @@ import { Server } from 'node:net'
 import { runInNewContext } from 'node:vm'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import { WebSocket as NodeWebSocket, WebSocketServer, type WebSocket as ServerWebSocket } from 'ws'
 import { COMMUNITY_WEBSOCKET_PATH, DesktopCommunityTransport, installDesktopCommunityTransport } from '../src/community-transport.ts'
 import { DESKTOP_COMMUNITY_WEBSOCKET_SCRIPT } from '../src/community-websocket-client.ts'
@@ -125,6 +126,32 @@ describe('Desktop community transport', () => {
     value.register(route)
     oldDispose()
     expect(await (await value.fetch(new Request('dsh-app://app/sidebar/reused'))).text()).toBe('replacement')
+  })
+
+  it('serves explicitly registered API subroutes without claiming the shared API root', async () => {
+    const value = transport()
+    const rootHandler = vi.fn<WebRoute['handler']>((_request, response) => { response.end('wrong API owner') })
+    value.register({ kind: 'prefix', path: '/api', handler: rootHandler })
+    value.registerFallback((_request, response) => { response.end('wrong fallback') })
+    const remove = value.register({ kind: 'exact', path: '/api/dsh-web-all/rows', handler: (_request, response) => {
+      response.setHeader('content-type', 'application/json')
+      response.end(JSON.stringify({ ok: true, children: ['@gestaltrun/dsh-session-archive'] }))
+    } })
+    value.register({ kind: 'prefix', path: '/api/dsh-settings', handler: (_request, response) => { response.end('settings') } })
+    expect(value.owns('/api/dsh-web-all/rows')).toBe(true)
+    expect(await (await value.fetch(new Request('dsh-app://app/api/dsh-web-all/rows'))).json()).toEqual({ ok: true, children: ['@gestaltrun/dsh-session-archive'] })
+    for (const headers of [{ origin: 'https://example.com' }, { 'sec-fetch-site': 'cross-site' }]) {
+      expect((await value.fetch(new Request('dsh-app://app/api/dsh-web-all/rows', { headers }))).status).toBe(403)
+    }
+    expect(await (await value.fetch(new Request('dsh-app://app/api/dsh-settings/get'))).text()).toBe('settings')
+    for (const path of ['/api', '/api/directoryPicker/pick', '/api/dsh-settings-extra/get']) {
+      expect(value.owns(path)).toBe(false)
+      expect((await value.fetch(new Request(`dsh-app://app${path}`))).status).toBe(403)
+    }
+    remove()
+    expect(value.owns('/api/dsh-web-all/rows')).toBe(false)
+    expect((await value.fetch(new Request('dsh-app://app/api/dsh-web-all/rows'))).status).toBe(403)
+    expect(rootHandler).not.toHaveBeenCalled()
   })
 
   it('streams HTTP upload and response bytes without waiting for the response to finish', async () => {
@@ -256,6 +283,8 @@ describe('Desktop community transport', () => {
     expect(value.owns('/api/rpc')).toBe(false)
     expect(value.owns('/plugins/example.js')).toBe(false)
     expect((await value.fetch(new Request('dsh-app://app/api/rpc'))).status).toBe(403)
+    value.registerUpgrade({ path: '/api/community/socket', handler: (_request, socket) => { socket.destroy() } })
+    expect((await value.fetch(command('open', { url: 'ws://app/api/community/socket', protocols: [] }))).status).toBe(403)
     expect((await value.fetch(new Request('https://example.com/sidebar'))).status).toBe(403)
     expect((await value.fetch(new Request('dsh-app://app/sidebar', { headers: { origin: 'null' } }))).status).toBe(403)
     for (const url of ['ws://example.com/ssh/terminal', 'ws://127.0.0.1/ssh/terminal', 'ws://app:9000/ssh/terminal', 'ws://user@app/ssh/terminal', 'ws://app/ssh/terminal#fragment']) {

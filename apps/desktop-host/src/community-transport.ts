@@ -59,6 +59,10 @@ function corePath(path: string): boolean {
   return path === '/' || path === '/index.html' || ['/api', '/plugins', '/assets', '/.dsh'].some(prefix => path === prefix || path.startsWith(`${prefix}/`))
 }
 
+function apiChild(path: string): boolean {
+  return path.startsWith('/api/')
+}
+
 function rawBytes(data: RawData): Buffer {
   return Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data instanceof ArrayBuffer ? new Uint8Array(data) : data)
 }
@@ -209,10 +213,12 @@ export class DesktopCommunityTransport {
   }
 
   private match(pathname: string): WebRoute | undefined {
+    if (corePath(pathname) && !apiChild(pathname)) return undefined
     const exact = this.exact.get(pathname)
     if (exact !== undefined) return exact
     let result: WebRoute | undefined
     for (const route of this.prefixes.values()) {
+      if (route.path === '/api') continue
       if ((pathname === route.path || pathname.startsWith(`${route.path}/`)) && (result === undefined || result.path.length < route.path.length)) result = route
     }
     return result
@@ -224,11 +230,12 @@ export class DesktopCommunityTransport {
    * @returns whether Desktop should dispatch this path through the adapter.
    */
   owns(pathname: string): boolean {
-    return pathname === COMMUNITY_WEBSOCKET_PATH || pathname.startsWith(`${COMMUNITY_WEBSOCKET_PATH}/`) || (!corePath(pathname) && this.match(pathname) !== undefined)
+    return pathname === COMMUNITY_WEBSOCKET_PATH || pathname.startsWith(`${COMMUNITY_WEBSOCKET_PATH}/`) || this.match(pathname) !== undefined
   }
 
   private async dispatch(request: IncomingMessage, response: ServerResponse): Promise<void> {
-    const handler = this.match(new URL(request.url ?? '/', LOCAL_ORIGIN).pathname)?.handler ?? this.fallback
+    const pathname = new URL(request.url ?? '/', LOCAL_ORIGIN).pathname
+    const handler = this.match(pathname)?.handler ?? (corePath(pathname) ? undefined : this.fallback)
     if (handler === undefined) { response.writeHead(404); response.end(); return }
     await handler(request, response)
   }
@@ -268,7 +275,7 @@ export class DesktopCommunityTransport {
       }
       return new Response(null, { status: 404 })
     }
-    if (corePath(url.pathname)) return new Response('Route belongs to the Desktop host', { status: 403 })
+    if (corePath(url.pathname) && this.match(url.pathname) === undefined) return new Response('Route belongs to the Desktop host', { status: 403 })
     return this.fetchHttp(request)
   }
 
