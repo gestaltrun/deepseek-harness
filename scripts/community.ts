@@ -81,7 +81,8 @@ export function verifyCommunityPackage(value: Readonly<Record<string, unknown>>)
     if (entries === undefined) continue
     if (!record(entries)) throw new Error(`community: invalid ${section}`)
     for (const [name, version] of Object.entries(entries)) {
-      if (name.startsWith('@linxin666/') || name === 'dsh-better-sidebar' || name.startsWith('@gestalt/')) {
+      if (name.startsWith('@linxin666/') || name.startsWith('dsh-') || name === 'ego-browser'
+        || name === 'cordis' || name.startsWith('@gestalt/')) {
         throw new Error(`community: ${value.name} still resolves upstream community package ${name}`)
       }
       if (typeof version !== 'string' || /^(?:workspace|link|file):/u.test(version)) {
@@ -133,7 +134,7 @@ function runPluginPnpm(plugin: CommunityPlugin, args: string[]): void {
 }
 
 /**
- * Build both forks and inventory the exact npm archives used by Desktop and composition tests.
+ * Build independent fork packages in dependency order and inventory the archives consumed by this product.
  * @param output - Destination containing one package tarball per name.
  * @returns Verified artifacts, including source commit and content integrity.
  */
@@ -143,11 +144,13 @@ export function packCommunity(output = COMMUNITY_OUTPUT): readonly CommunityArti
   const artifacts: CommunityArtifact[] = []
   let sidebar: string | undefined
   for (const plugin of readCommunityPlugins()) {
-    if (sidebar === undefined) runPluginPnpm(plugin, ['install', '--frozen-lockfile', '--ignore-scripts'])
+    const isSidebar = plugin.package === '@gestaltrun/dsh-better-sidebar'
+    if (!isSidebar && sidebar === undefined) throw new Error('community: build Better Sidebar before its plugin consumers')
+    runPluginPnpm(plugin, ['install', '--frozen-lockfile', '--ignore-scripts'])
     const staging = mkdtempSync(join(output, '.pack-'))
     try {
       const args = ['run', 'release:pack', '--', '--out', staging]
-      if (sidebar !== undefined) args.push('--sidebar-tarball', sidebar)
+      if (!isSidebar && sidebar !== undefined) args.push('--sidebar-tarball', sidebar)
       runPluginPnpm(plugin, args)
       const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: join(ROOT, plugin.path), encoding: 'utf8' }).trim()
       for (const filename of readdirSync(staging).filter(file => file.endsWith('.tgz')).sort()) {

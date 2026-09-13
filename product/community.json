@@ -14,6 +14,20 @@
       "package": "@gestaltrun/dsh-web-all",
       "version": "0.3.21-gestaltrun.0",
       "defaultBundle": true
+    },
+    {
+      "path": "community/github-workbench",
+      "repository": "gestaltrun/dsh-github-workbench",
+      "package": "@gestaltrun/dsh-github-workbench",
+      "version": "0.3.0-gestaltrun.0",
+      "defaultBundle": true
+    },
+    {
+      "path": "community/git-remotes",
+      "repository": "gestaltrun/dsh-git-remotes",
+      "package": "@gestaltrun/dsh-git-remotes",
+      "version": "0.1.0-gestaltrun.0",
+      "defaultBundle": true
     }
   ]
 }

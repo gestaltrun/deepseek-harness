@@ -142,9 +142,13 @@ export function verifyCommunityInstallation(
     }
   }
   visit(join(runtime, 'node_modules'))
-  if (installed.some(entry => entry.name.startsWith('@linxin666/') || entry.name === 'dsh-better-sidebar' || entry.name.startsWith('@gestalt/'))) {
+  if (installed.some(entry => entry.name.startsWith('@linxin666/') || entry.name.startsWith('dsh-')
+    || entry.name === 'ego-browser' || entry.name === 'cordis' || entry.name.startsWith('@gestalt/'))) {
     throw new Error('community smoke: upstream community package remains installed')
   }
+  const retiredWorkshop = new Set(['@gestaltrun/dsh-client-ui-market',
+    '@gestaltrun/dsh-client-ui-preset-center', '@gestaltrun/dsh-client-ui-community-plugins'])
+  if (installed.some(entry => retiredWorkshop.has(entry.name))) throw new Error('community smoke: Workshop package remains installed')
   const cordis = installed.filter(entry => entry.name === '@deepseek-ai/cordis')
   if (cordis.length !== 1) throw new Error(`community smoke: expected one Cordis package, found ${String(cordis.length)}`)
   const resolved: unknown = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '--eval', `
@@ -323,7 +327,7 @@ async function main(): Promise<void> {
       hostProtocolVersion: DESKTOP_HOST_PROTOCOL_VERSION, nodeVersion: process.versions.node,
       pnpmVersion: String(rootManifest.packageManager).replace(/^pnpm@/u, '') })
     createRuntimeProjectMetadata(installation, release, bundles)
-    const installFlags = ['--config.enable-global-virtual-store=false', '--fetch-retries=2', '--fetch-timeout=60000',
+    const installFlags = ['--config.enable-global-virtual-store=false', '--fetch-retries=2', '--fetch-timeout=600000',
       `--config.userconfig=${join(scratch, 'npmrc')}`]
     if (retained === undefined || existsSync(join(scratch, 'store'))) installFlags.push(`--config.store-dir=${join(scratch, 'store')}`)
     console.log('community smoke: installing isolated production tarballs')

@@ -92,6 +92,14 @@ describe('materialized runtime verification', () => {
     expect(verifyCommunityInstallation(root, [artifact])).toEqual({ packages: 2, cordis: 'node_modules/@deepseek-ai/cordis/index.js' })
   })
 
+  it.each(['@gestaltrun/dsh-client-ui-market', '@gestaltrun/dsh-client-ui-preset-center', '@gestaltrun/dsh-client-ui-community-plugins'])(
+    'rejects the retired Workshop package %s in the installed product', (name) => {
+      const { root, artifact } = installation()
+      writeManifest(join(root, 'node_modules', name), { name, version: '0.3.21-gestaltrun.1' })
+      expect(() => verifyCommunityInstallation(root, [artifact])).toThrow('Workshop package remains installed')
+    },
+  )
+
   it('rejects source links instead of using the checkout as installation evidence', () => {
     const { root, artifact } = installation()
     symlinkSync(join(root, 'package'), join(root, 'node_modules/source-link'), process.platform === 'win32' ? 'junction' : 'dir')
@@ -112,24 +120,40 @@ describe('materialized runtime verification', () => {
 })
 
 describe('mounted community route verification', () => {
-  const entries = ['@gestaltrun/dsh-better-sidebar', '@gestaltrun/dsh-web-all']
+  const entries = ['@gestaltrun/dsh-better-sidebar', '@gestaltrun/dsh-web-all',
+    '@gestaltrun/dsh-ego-browser', '@gestaltrun/dsh-github-workbench', '@gestaltrun/dsh-git-remotes',
+    '@gestaltrun/dsh-sidebar-office', '@gestaltrun/dsh-video-preview']
   function request(path: string): Promise<Response> {
     if (path === '/') return Promise.resolve(new Response(`<html><script>globalThis["__DSH_BOOT__"] = ${JSON.stringify({
       entries: entries.map(id => ({ id, url: `/plugins/${id}/client.js` })),
     })}</script></html>`))
+    if (path === '/api/dsh-web-all/rows') return Promise.resolve(Response.json({ ok: true, children: ['@gestaltrun/dsh-client-ui-plugin-manager'] }))
     if (path.endsWith('/client.js')) return Promise.resolve(new Response('globalThis.loaded = true', { headers: { 'content-type': 'text/javascript' } }))
     if (path.endsWith('/locale.js')) return Promise.resolve(new Response('globalThis.__dshChunks__["locale"] = () => {}', { headers: { 'content-type': 'text/javascript' } }))
     return Promise.resolve(Response.json({ ok: true, value: { ok: true } }))
   }
 
-  it('checks both browser modules and both actual route envelopes', async () => {
+  it('checks all product browser modules and actual route envelopes', async () => {
     const calls: string[] = []
     expect(await smokeCommunityPluginRoutes((path, init) => {
       calls.push(path)
       if (path.startsWith('/sidebar/api/')) expect(init).toMatchObject({ method: 'POST', body: '{}' })
       return request(path)
-    })).toEqual({ clientEntries: entries, assets: ['/sidebar/bundle/locale.js'], routes: ['settings.get', 'terminal.deps'] })
-    expect(calls).toHaveLength(6)
+    })).toEqual({ clientEntries: entries, assets: ['/sidebar/bundle/locale.js'], routes: ['settings.get', 'terminal.deps', 'dsh-web-all/rows'] })
+    expect(calls).toHaveLength(12)
+  })
+
+  it('rejects a Workshop child left active inside the aggregate', async () => {
+    await expect(smokeCommunityPluginRoutes(path => path === '/api/dsh-web-all/rows'
+      ? Promise.resolve(Response.json({ ok: true, children: ['@gestaltrun/dsh-client-ui-market'] })) : request(path)))
+      .rejects.toThrow('active Workshop child')
+  })
+
+  it('rejects a missing new plugin client entry', async () => {
+    await expect(smokeCommunityPluginRoutes(path => path === '/'
+      ? Promise.resolve(new Response(`<html><script>globalThis["__DSH_BOOT__"] = ${JSON.stringify({
+        entries: entries.filter(id => id !== '@gestaltrun/dsh-ego-browser').map(id => ({ id, url: `/plugins/${id}/client.js` })),
+      })}</script></html>`)) : request(path))).rejects.toThrow('@gestaltrun/dsh-ego-browser is absent')
   })
 
   it('rejects an omitted packaged locale module', async () => {

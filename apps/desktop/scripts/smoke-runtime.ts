@@ -30,7 +30,12 @@ export async function smokeCommunityPluginRoutes(
   if (match?.[1] === undefined) throw new Error('community smoke: no client boot manifest')
   const boot = JSON.parse(match[1]) as { entries?: Array<{ id: string; url: string }> }
   if (!Array.isArray(boot.entries)) throw new Error('community smoke: invalid client boot entries')
-  const expected = ['@gestaltrun/dsh-better-sidebar', '@gestaltrun/dsh-web-all']
+  const expected = ['@gestaltrun/dsh-better-sidebar', '@gestaltrun/dsh-web-all',
+    '@gestaltrun/dsh-ego-browser', '@gestaltrun/dsh-github-workbench', '@gestaltrun/dsh-git-remotes',
+    '@gestaltrun/dsh-sidebar-office', '@gestaltrun/dsh-video-preview']
+  const retired = new Set(['@gestaltrun/dsh-client-ui-market',
+    '@gestaltrun/dsh-client-ui-preset-center', '@gestaltrun/dsh-client-ui-community-plugins'])
+  if (boot.entries.some(entry => retired.has(entry.id))) throw new Error('community smoke: Workshop client remains in the boot graph')
   for (const name of expected) {
     const entry = boot.entries.find(entry => entry.id === name)
     if (entry === undefined) throw new Error(`community smoke: ${name} is absent from the client boot graph`)
@@ -62,6 +67,14 @@ export async function smokeCommunityPluginRoutes(
       throw new Error('community smoke: terminal.deps reported an unavailable node-pty binding')
     }
   }
+  const childResponse = await fetchResource('/api/dsh-web-all/rows')
+  const children: unknown = await childResponse.json()
+  if (childResponse.status !== 200 || typeof children !== 'object' || children === null
+    || !('ok' in children) || children.ok !== true || !('children' in children) || !Array.isArray(children.children)
+    || children.children.some(name => typeof name !== 'string' || retired.has(name))) {
+    throw new Error('community smoke: invalid aggregate rows or active Workshop child')
+  }
+  routes.push('dsh-web-all/rows')
   return { clientEntries: expected, assets, routes }
 }
 

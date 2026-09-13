@@ -4,3 +4,9 @@
 [submodule "community/dsh-web"]
 	path = community/dsh-web
 	url = https://github.com/gestaltrun/dsh-web.git
+[submodule "community/github-workbench"]
+	path = community/github-workbench
+	url = https://github.com/gestaltrun/dsh-github-workbench.git
+[submodule "community/git-remotes"]
+	path = community/git-remotes
+	url = https://github.com/gestaltrun/dsh-git-remotes.git
