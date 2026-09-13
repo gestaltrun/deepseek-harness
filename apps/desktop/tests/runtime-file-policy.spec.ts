@@ -1,8 +1,8 @@
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { expect, it } from 'vitest'
-import { desktopRuntimeFileExclusion } from '../scripts/runtime-file-policy.ts'
+import { desktopRuntimeFileExclusion, prepareDesktopNativeHelpers } from '../scripts/runtime-file-policy.ts'
 import { verifyDesktopRuntime, writeDesktopRuntime } from '../src/runtime-tree.ts'
 import { runtimeFixture } from './runtime-fixture.ts'
 
@@ -78,4 +78,46 @@ it('retains native prebuilds for the selected macOS architecture', () => {
   expect(desktopRuntimeFileExclusion('node-pty/prebuilds/darwin-arm64/pty.node', mac)).toBeUndefined()
   expect(desktopRuntimeFileExclusion('node-pty/prebuilds/darwin-x64/pty.node', mac)).toBeDefined()
   expect(desktopRuntimeFileExclusion('node-pty/prebuilds/win32-x64/conpty.node', mac)).toBeDefined()
+})
+
+it.skipIf(process.platform === 'win32')('prepares root and nested node-pty helpers before sealing, without changing unrelated files', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'desktop-native-helpers-'))
+  const helpers = [
+    'node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper',
+    'node_modules/@gestaltrun/dsh-better-sidebar/node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper',
+    'node_modules/other/node_modules/node-pty/build/Release/spawn-helper',
+  ]
+  const untouched = [
+    'node_modules/node-pty/prebuilds/darwin-x64/spawn-helper',
+    'node_modules/node-pty/prebuilds/darwin-arm64/pty.node',
+    'node_modules/other/prebuilds/darwin-arm64/spawn-helper',
+    'node_modules/other/node-pty/build/Release/spawn-helper',
+  ]
+  try {
+    const runtime = runtimeFixture(root)
+    for (const path of [...helpers, ...untouched]) {
+      mkdirSync(join(root, path, '..'), { recursive: true })
+      writeFileSync(join(root, path), `payload:${path}`, { mode: 0o644 })
+    }
+    prepareDesktopNativeHelpers(root, { platform: 'darwin', arch: 'arm64' })
+    for (const path of helpers) expect(statSync(join(root, path)).mode & 0o777).toBe(0o755)
+    for (const path of untouched) expect(statSync(join(root, path)).mode & 0o777).toBe(0o644)
+    for (const path of [...helpers, ...untouched]) expect(readFileSync(join(root, path), 'utf8')).toBe(`payload:${path}`)
+    const sealed = writeDesktopRuntime(root, runtime.release, runtime.sharedPackages.map(entry => entry.name))
+    for (const path of helpers) chmodSync(join(root, path), 0o755)
+    prepareDesktopNativeHelpers(root, { platform: 'darwin', arch: 'arm64' })
+    expect(await verifyDesktopRuntime(root, runtime.release.version)).toEqual(sealed)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+it('leaves Windows runtimes unchanged without POSIX helper preparation', () => {
+  const root = mkdtempSync(join(tmpdir(), 'desktop-windows-helpers-'))
+  try {
+    prepareDesktopNativeHelpers(root, windows)
+    expect(existsSync(join(root, 'node_modules'))).toBe(false)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })

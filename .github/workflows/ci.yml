@@ -1,7 +1,12 @@
-name: CI
+name: Upstream CI diagnostics
 
 on:
-  pull_request:
+  workflow_dispatch:
+    inputs:
+      base:
+        description: Optional pre-change commit for archive immutability checks
+        type: string
+
 permissions:
   contents: read
 
@@ -40,7 +45,7 @@ jobs:
   # switch is the separate DSH_CI_FAILOVER_WINDOWS variable on the windows-native
   # job below.
   node-24:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: >-
       ${{ vars.DSH_CI_FAILOVER_LINUX == 'blacksmith' && 'blacksmith-16vcpu-ubuntu-2404'
           || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted'
@@ -103,11 +108,11 @@ jobs:
 
       - name: Run static gates
         env:
-          DSH_ARCHIVE_BASE_REF: ${{ github.event.pull_request.base.sha }}
+          DSH_ARCHIVE_BASE_REF: ${{ inputs.base || github.sha }}
         run: pnpm run check:ci:static
 
   node-24-coverage:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: >-
       ${{ vars.DSH_CI_FAILOVER_LINUX == 'blacksmith' && 'blacksmith-16vcpu-ubuntu-2404'
           || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted'
@@ -191,7 +196,7 @@ jobs:
         run: pnpm run check:ci:coverage
 
   node-24-bench:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     name: node 24 / benchmarks
     # Wall-clock budgets need an otherwise idle runner, so this job runs the
@@ -237,7 +242,7 @@ jobs:
         run: pnpm run check:ci:bench
 
   node-24-consumers:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: >-
       ${{ vars.DSH_CI_FAILOVER_LINUX == 'blacksmith' && 'blacksmith-16vcpu-ubuntu-2404'
           || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted'
@@ -340,7 +345,7 @@ jobs:
 
 
   node-compat:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'workflow_dispatch'
     # Under the selfhosted leg this job admits only repository-owned PR code
     # to the persistent shared VM; the blacksmith branch targets ephemeral
     # runners and carries none of those predicates.
@@ -429,7 +434,7 @@ jobs:
         run: pnpm exec vitest run packages/boot/app-boot/tests/loader-shape.compat.spec.ts
 
   python-sdk:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     name: python 3.10 / keyless SDK
     steps:
@@ -450,7 +455,7 @@ jobs:
   # keyless black-box, and trusted real-API path. Linux/Windows x64 block PRs;
   # Linux ARM64 and both macOS architectures run in ci-master.yml.
   python-runtime:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'workflow_dispatch'
     name: python runtime / release-shaped matrix
     uses: ./.github/workflows/build-exe-for-python-sdk.yml
     with:
@@ -466,7 +471,7 @@ jobs:
   # Dependabot PRs are excluded from the self-hosted pool and stay queued for
   # the hosted runner.
   windows-build:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: >-
       ${{ vars.DSH_CI_FAILOVER_WINDOWS == 'blacksmith' && 'blacksmith-16vcpu-windows-2025'
           || vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted'
@@ -511,7 +516,7 @@ jobs:
         run: pnpm run check:ci:windows-blocking
 
   windows-coverage:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: >-
       ${{ vars.DSH_CI_FAILOVER_WINDOWS == 'blacksmith' && 'blacksmith-16vcpu-windows-2025'
           || vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted'
@@ -588,7 +593,7 @@ jobs:
           key: coverage-times-${{ github.run_id }}
 
   windows-native-tests:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: >-
       ${{ vars.DSH_CI_FAILOVER_WINDOWS == 'blacksmith' && 'blacksmith-16vcpu-windows-2025'
           || vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted'
@@ -637,7 +642,7 @@ jobs:
           packages/subprocess/subprocess-local/tests/process-exit.spec.ts
 
   windows-observational:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'workflow_dispatch'
     continue-on-error: true
     runs-on: >-
       ${{ vars.DSH_CI_FAILOVER_WINDOWS == 'blacksmith' && 'blacksmith-16vcpu-windows-2025'
@@ -690,7 +695,7 @@ jobs:
   # An explicit status function runs the verdict after failed/skipped needs
   # without keeping a cancelled workflow alive for an obsolete verdict.
   all-checks-passed:
-    name: all checks passed
+    name: upstream diagnostics passed
     # This bookkeeping-only verdict must not depend on custom-pool
     # provisioning — and under Linux failover it follows the same selector as
     # the worker jobs it aggregates, so a standard-hosted outage cannot strand
@@ -707,7 +712,7 @@ jobs:
           && fromJSON('["self-hosted", "linux", "x64", "vm-backup"]')
           || 'ubuntu-latest' }}
     needs: [node-24, node-24-coverage, node-24-bench, node-24-consumers, node-compat, python-sdk, python-runtime, windows-build, windows-native-tests]
-    if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+    if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' }}
     steps:
       - name: Fail if any needed job did not succeed
         if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')

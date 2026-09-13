@@ -11,13 +11,14 @@
  */
 
 import { existsSync, globSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { basename, join, resolve, sep } from 'node:path'
+import { basename, join, matchesGlob, resolve, sep } from 'node:path'
 import {
   gitBlobHash,
   gitIndexPaths,
   readGitIndexBlob,
   storeGitBlob,
 } from './translation-pairing-git.ts'
+import { gitSubmoduleRoots } from './git-submodules.ts'
 import {
   parseTranslationPairingRecord,
   renderTranslationPairingRecord,
@@ -55,11 +56,18 @@ const listMode = request.mode === 'list'
 const writeMode = request.mode === 'write'
 const indexMode = request.input === 'index'
 const indexFiles = indexMode ? gitIndexPaths(root) : undefined
+const submoduleRoots = gitSubmoduleRoots(root)
+
+/** A gitlink owns only its exact directory and descendants, including literal glob characters. */
+function isSubmodulePath(file: string): boolean {
+  return submoduleRoots.some(path => file === path || file.startsWith(`${path}/`))
+}
 
 const contentCache = new Map<string, Buffer | undefined>()
 
 /** Read one repository path from the selected worktree or index plane. */
 function readRepositoryFile(file: string): Buffer | undefined {
+  if (isSubmodulePath(file)) return undefined
   if (contentCache.has(file)) return contentCache.get(file)
   const content = indexMode
     ? indexFiles?.has(file) ? readGitIndexBlob(root, file)?.content : undefined
@@ -88,7 +96,8 @@ if (manifestContent === undefined) {
   throw new Error('scripts/translation-pairing.manifest.json is missing from the selected content plane')
 }
 const manifest = parseTranslationPairingManifest(manifestContent.toString('utf8'))
-const isTranslationPairSource = translationPairSourcePredicate(manifest)
+const isManifestPairSource = translationPairSourcePredicate(manifest)
+const isTranslationPairSource = (file: string): boolean => !isSubmodulePath(file) && isManifestPairSource(file)
 
 /**
  * An excluded entry ending in `/` excludes the whole directory. The trailing
@@ -117,7 +126,14 @@ if (request.scope === 'pairs') {
   }
 } else {
   for (const pattern of SCOPE_PATTERNS) {
-    for (const match of globSync(pattern, { cwd: root, exclude: TRANSLATION_SCOPE_GLOB_EXCLUDES })) {
+    for (const match of globSync(pattern, {
+      cwd: root,
+      exclude: (file) => {
+        const normalized = file.split(sep).join('/')
+        return isSubmodulePath(normalized)
+          || TRANSLATION_SCOPE_GLOB_EXCLUDES.some(excluded => matchesGlob(normalized, excluded))
+      },
+    })) {
       const normalized = match.split(sep).join('/')
       if (isTranslationScopeFile(normalized)) files.add(normalized)
     }
@@ -128,7 +144,7 @@ const metas = [...files].filter(f => f.endsWith('.i18n.yaml')).sort()
 const sources = [...files].filter(f => f.endsWith('.md') && !f.endsWith('.zh.md')).sort()
 
 if (request.scope === 'pairs') {
-  const rejected = request.anchors.filter(anchor => !isTranslationScopeFile(anchor) || isExcluded(anchor))
+  const rejected = request.anchors.filter(anchor => !isTranslationScopeFile(anchor) || isExcluded(anchor) || isSubmodulePath(anchor))
   const absent = request.anchors.filter((anchor) => {
     const { source, zh, meta } = translationPairPaths(anchor)
     return ![source, zh, meta].some(repositoryFileExists)

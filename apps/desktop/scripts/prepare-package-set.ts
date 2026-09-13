@@ -24,6 +24,7 @@ import {
 import { capture } from '../../../scripts/release/process.ts'
 import { tarballFiles } from '../../../scripts/release/tarball.ts'
 import { resolveDesktopTargetBuildPaths } from './desktop-build-paths.mjs'
+import { COMMUNITY_OUTPUT, readCommunityPlugins } from '../../../scripts/community.ts'
 
 const DSH_PACKAGE = '@deepseek-ai/dsh'
 const ROOT_PACKAGES = [DSH_PACKAGE, DESKTOP_HOST_PACKAGE] as const
@@ -51,10 +52,12 @@ function dependencyNames(manifest: Readonly<Record<string, unknown>>, section: s
 /**
  * Select the complete available first-party dependency closures rooted at dsh and its private Host.
  * @param available - Packed packages indexed by package name.
+ * @param additionalRoots - Product bundles whose complete local dependency closure must ship.
  * @returns Selected packages sorted by name.
  */
 export function selectDesktopPackageClosure(
   available: ReadonlyMap<string, PackedDesktopPackage>,
+  additionalRoots: readonly string[] = [],
 ): PackedDesktopPackage[] {
   const selected = new Map<string, PackedDesktopPackage>()
   const visit = (name: string): void => {
@@ -65,7 +68,7 @@ export function selectDesktopPackageClosure(
     for (const section of REQUIRED_DEPENDENCY_SECTIONS) {
       for (const dependency of dependencyNames(packed.manifest, section)) {
         if (available.has(dependency)) visit(dependency)
-        else if (dependency.startsWith('@deepseek-ai/')) {
+        else if (dependency.startsWith('@deepseek-ai/') || dependency.startsWith('@gestaltrun/')) {
           throw new Error(`desktop package set: ${name} requires unpacked internal package ${dependency}`)
         }
       }
@@ -74,7 +77,7 @@ export function selectDesktopPackageClosure(
       if (available.has(dependency)) visit(dependency)
     }
   }
-  for (const name of ROOT_PACKAGES) {
+  for (const name of [...ROOT_PACKAGES, ...additionalRoots]) {
     if (!available.has(name)) throw new Error(`desktop package set: packed inputs omit ${name}`)
     visit(name)
   }
@@ -122,8 +125,8 @@ export function assertDesktopHostPackageFiles(files: readonly string[]): void {
 }
 
 /** Prepare a package set from release tarball directories. */
-export function prepareDesktopPackageSet(inputs: readonly string[], output: string): void {
-  const selected = selectDesktopPackageClosure(packedPackages(inputs))
+export function prepareDesktopPackageSet(inputs: readonly string[], output: string, additionalRoots: readonly string[] = []): void {
+  const selected = selectDesktopPackageClosure(packedPackages(inputs), additionalRoots)
   const host = selected.find(packed => packed.manifest.name === DESKTOP_HOST_PACKAGE)
   if (host === undefined) throw new Error(`desktop package set: selected closure omits ${DESKTOP_HOST_PACKAGE}`)
   assertDesktopHostPackageFiles(tarballFiles(host.tarball))
@@ -158,6 +161,7 @@ function main(): void {
     buildPaths.packedDsh,
     buildPaths.packedVendor,
     buildPaths.packedLandlock,
+    COMMUNITY_OUTPUT,
   ]
   const { values } = parseArgs({
     options: { from: { type: 'string', multiple: true }, out: { type: 'string' } },
@@ -165,7 +169,7 @@ function main(): void {
   })
   const inputs = (values.from ?? defaultInputs).map(path => resolve(REPOSITORY_ROOT, path))
   const output = values.out === undefined ? buildPaths.packageSet : resolve(REPOSITORY_ROOT, values.out)
-  prepareDesktopPackageSet(inputs, output)
+  prepareDesktopPackageSet(inputs, output, readCommunityPlugins().filter(plugin => plugin.defaultBundle).map(plugin => plugin.package))
   console.log(`desktop package set: prepared ${output}`)
 }
 

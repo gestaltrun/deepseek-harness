@@ -37,6 +37,8 @@ export interface DesktopPluginRecord {
   readonly name: string
   readonly version: string
   readonly enabled: boolean
+  /** Supplied by the Desktop release; activation is editable, package files are immutable. */
+  readonly bundled?: true
 }
 
 /** Installed desktop project manifest slice. */
@@ -48,6 +50,7 @@ interface DesktopProjectManifest {
   readonly dsh: {
     readonly profile: {
       readonly bundles: string[]
+      readonly builtinBundles?: string[]
     }
   }
 }
@@ -106,7 +109,7 @@ function workspaceFile(overrides: Readonly<Record<string, string>> = {}): string
   const coreBuildKey = coreBuildSpec === undefined
     ? CORE_BUILD_PACKAGE
     : `${CORE_BUILD_PACKAGE}@${coreBuildSpec.replace('file:./', 'file:')}`
-  return `packages:\n  - .\n\n${overrideSection}${WORKSPACE_SETTINGS}allowBuilds:\n  node-pty: true\n  koffi: true\n  fs-ext: true\n  ${JSON.stringify(coreBuildKey)}: true\n  '@google/genai': false\n  protobufjs: false\n  node-addon-require-builtin: false\n`
+  return `packages:\n  - .\n\n${overrideSection}${WORKSPACE_SETTINGS}allowBuilds:\n  node-pty: true\n  koffi: true\n  fs-ext: true\n  ${JSON.stringify(coreBuildKey)}: true\n  '@google/genai': false\n  protobufjs: false\n  node-addon-require-builtin: false\n  cloudflared: false\n  cpu-features: false\n  ssh2: false\n`
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -157,6 +160,13 @@ function projectManifest(projectDir: string): DesktopProjectManifest {
     throw new Error(`desktop project: invalid desktop profile manifest ${path}`)
   }
   const manifest = { ...value, dependencies: value.dependencies ?? {} } as unknown as DesktopProjectManifest
+  const builtins = manifest.dsh.profile.builtinBundles
+  if (builtins !== undefined && (!Array.isArray(builtins)
+    || !builtins.every(name => typeof name === 'string' && PACKAGE_NAME_PATTERN.test(name))
+    || new Set(builtins).size !== builtins.length
+    || !DESKTOP_PROFILE_BUNDLES.every((name, index) => builtins[index] === name))) {
+    throw new Error('desktop project: invalid bundled plugin inventory')
+  }
   if (Object.entries(manifest.dependencies).some(([name, version]) => !PACKAGE_NAME_PATTERN.test(name)
     || typeof version !== 'string' || valid(version) !== version)) {
     throw new Error('desktop project: plugin dependencies must use exact registry versions')
@@ -178,7 +188,12 @@ function profilePluginNames(projectDir: string): readonly string[] {
 }
 
 function pluginRecords(projectDir: string): readonly DesktopPluginRecord[] {
-  return Object.keys(projectManifest(projectDir).dependencies).sort().map(name => inspectPlugin(projectDir, name))
+  const manifest = projectManifest(projectDir)
+  const bundled = new Set((manifest.dsh.profile.builtinBundles ?? []).slice(DESKTOP_PROFILE_BUNDLES.length))
+  return [...new Set([...Object.keys(manifest.dependencies), ...bundled])].sort().map(name => ({
+    ...inspectPlugin(projectDir, name),
+    ...(bundled.has(name) ? { bundled: true as const } : {}),
+  }))
 }
 
 function writeProfilePlugins(projectDir: string, plugins: readonly DesktopPluginRecord[]): void {
@@ -189,7 +204,9 @@ function writeProfilePlugins(projectDir: string, plugins: readonly DesktopPlugin
       ...manifest.dsh,
       profile: {
         ...manifest.dsh.profile,
-        bundles: [...DESKTOP_PROFILE_BUNDLES, ...plugins.filter(plugin => plugin.enabled).map(plugin => plugin.name)],
+        bundles: [...DESKTOP_PROFILE_BUNDLES,
+          ...plugins.filter(plugin => plugin.bundled && plugin.enabled).map(plugin => plugin.name),
+          ...plugins.filter(plugin => !plugin.bundled && plugin.enabled).map(plugin => plugin.name)],
       },
     },
   } satisfies DesktopProjectManifest)
@@ -253,7 +270,7 @@ export class DesktopProjectManager {
         if (entry.isDirectory()) removeOwnedDirectory(path)
         else unlinkSync(path)
       }
-      createPluginProfile(this.paths.profile)
+      createPluginProfile(this.paths.profile, desktopRuntimeBundles(this.currentRuntime()))
       this.prepareProfile(this.paths.profile)
       await hooks.afterChange()
     })
@@ -299,7 +316,12 @@ export class DesktopProjectManager {
   private prepareProfile(projectDir: string): void {
     const runtime = this.currentRuntime()
     linkDesktopHostPackages(projectDir, this.runtime.dsh, runtime)
-    validateDesktopPluginGraph(projectDir, this.runtime.dsh, runtime, profilePluginNames(projectDir))
+    const shared = new Set(runtime.sharedPackages.map(entry => entry.name))
+    for (const name of projectManifest(projectDir).dsh.profile.builtinBundles ?? []) {
+      if (!shared.has(name)) throw new Error(`desktop project: runtime omits bundled plugin ${name}`)
+    }
+    validateDesktopPluginGraph(projectDir, this.runtime.dsh, runtime,
+      profilePluginNames(projectDir).filter(name => !shared.has(name)))
   }
 
   /** Read release metadata and reconcile its external profile without installing core packages. */
@@ -316,7 +338,8 @@ export class DesktopProjectManager {
           && realpathSync.native(link.target) === realpathSync.native(join(this.runtime.dsh, 'node_modules', link.name)))) {
         return false
       }
-      if (previous === undefined) createPluginProfile(this.paths.profile)
+      if (previous === undefined) createPluginProfile(this.paths.profile, desktopRuntimeBundles(this.currentRuntime()))
+      reconcileDesktopBundles(this.paths.profile, desktopRuntimeBundles(this.currentRuntime()))
       await this.reconcileProfile(this.paths.profile, previous)
       return true
     })
@@ -354,7 +377,7 @@ export class DesktopProjectManager {
   private async reconcileProfile(projectDir: string, previous: DesktopProfileState | undefined, packagesChanged = false): Promise<void> {
     const target = this.currentRuntime()
     const rebuild = (!packagesChanged && existsSync(this.pendingPackages))
-      || (previous !== undefined && pluginRecords(projectDir).length > 0
+      || (previous !== undefined && Object.keys(projectManifest(projectDir).dependencies).length > 0
       && (previous.nodeVersion !== target.release.nodeVersion || previous.platform !== target.platform || previous.arch !== target.arch))
     if (rebuild) {
       writeFileSync(this.pendingPackages, '')
@@ -561,7 +584,9 @@ export class DesktopProjectManager {
 }
 
 /** Create build-only project metadata for materializing the signed runtime. */
-export function createRuntimeProjectMetadata(projectDir: string, release: DesktopRelease): void {
+export function createRuntimeProjectMetadata(
+  projectDir: string, release: DesktopRelease, bundles: readonly string[] = DESKTOP_PROFILE_BUNDLES,
+): void {
   mkdirSync(projectDir, { recursive: true, mode: 0o700 })
   const packageSet = verifyDesktopCorePackageSet(projectDir, release.version)
   const manifest: DesktopProjectManifest = {
@@ -569,7 +594,7 @@ export function createRuntimeProjectMetadata(projectDir: string, release: Deskto
     private: true,
     version: '0.0.0',
     dependencies: desktopCorePackageOverrides(packageSet),
-    dsh: { profile: { bundles: [...DESKTOP_PROFILE_BUNDLES] } },
+    dsh: { profile: { bundles: [...bundles] } },
   }
   writeJson(join(projectDir, 'package.json'), manifest)
   writeFileSync(
@@ -601,11 +626,40 @@ export function createDevelopmentProjectMetadata(projectDir: string, release: De
 }
 
 /** Create the first external plugin profile without running a package manager. */
-export function createPluginProfile(projectDir: string): void {
+export function createPluginProfile(projectDir: string, bundles: readonly string[] = DESKTOP_PROFILE_BUNDLES): void {
   mkdirSync(projectDir, { recursive: true, mode: 0o700 })
   writeJson(join(projectDir, 'package.json'), {
     name: PROJECT_NAME, private: true, version: '0.0.0', dependencies: {},
-    dsh: { profile: { bundles: [...DESKTOP_PROFILE_BUNDLES] } },
+    dsh: { profile: { bundles: [...bundles],
+      ...(bundles.length > DESKTOP_PROFILE_BUNDLES.length ? { builtinBundles: [...bundles] } : {}) } },
   } satisfies DesktopProjectManifest)
   writeFileSync(join(projectDir, 'pnpm-workspace.yaml'), workspaceFile(), { mode: 0o600 })
+}
+
+/**
+ * Read the bundle roots supplied by an immutable Desktop release.
+ * @param runtime - Validated packaged runtime metadata.
+ * @returns Ordered built-in bundle roots; older releases use the official pair.
+ */
+export function desktopRuntimeBundles(runtime: DesktopRuntimeDescriptor): readonly string[] {
+  return runtime.bundles ?? DESKTOP_PROFILE_BUNDLES
+}
+
+/**
+ * Enable newly shipped plugins once while preserving prior activation choices and user configuration.
+ * @param projectDir - Locked Desktop profile.
+ * @param bundles - Bundle roots from the current immutable runtime.
+ */
+export function reconcileDesktopBundles(projectDir: string, bundles: readonly string[]): void {
+  const manifest = projectManifest(projectDir)
+  const previous: readonly string[] = manifest.dsh.profile.builtinBundles ?? DESKTOP_PROFILE_BUNDLES
+  if (JSON.stringify(previous) === JSON.stringify(bundles)) return
+  const active = new Set(manifest.dsh.profile.bundles)
+  const builtins = bundles.filter(name => active.has(name) || !previous.includes(name))
+  const external = manifest.dsh.profile.bundles.filter(name => !previous.includes(name) && !bundles.includes(name))
+  writeJson(join(projectDir, 'package.json'), {
+    ...manifest,
+    dsh: { ...manifest.dsh, profile: { ...manifest.dsh.profile,
+      builtinBundles: [...bundles], bundles: [...builtins, ...external] } },
+  } satisfies DesktopProjectManifest)
 }

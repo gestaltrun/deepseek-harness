@@ -25,6 +25,8 @@ import type {} from '@deepseek-ai/dsh-api-gateway'
 import type { ConnectionFetchHandler } from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-client-modules'
 import { renderIndexInjections, type IndexInjection } from '@deepseek-ai/dsh-host-webserver'
+import { installDesktopCommunityTransport, type DesktopCommunityTransport } from './community-transport.ts'
+import { DESKTOP_COMMUNITY_WEBSOCKET_SCRIPT } from './community-websocket-client.ts'
 import {
   DESKTOP_HOST_PROTOCOL_VERSION,
   DESKTOP_PIPE_CHUNK_BYTES,
@@ -163,6 +165,7 @@ function desktopPatches(runtimeDir: string, projectDir: string, allowLinkedPacka
     loadOverlayPatches('dsh desktop', DESKTOP_PATCH),
   ]
   const rows = new Map(composeEntries(layers).flatMap(row => typeof row.id === 'string' ? [[row.id, row] as const] : []))
+  if (rows.has('web-ui-remote-web-ui')) layers.push([{ id: 'web-ui-remote-web-ui', disabled: true }])
   const agentPresets = rows.get('agent-presets')
   if (agentPresets !== undefined) {
     layers.push([{
@@ -182,14 +185,13 @@ function dshVersion(runtimeDir: string): string {
   return manifest.version
 }
 
-function assetHandler(ctx: Context, runtimeDir: string): ConnectionFetchHandler {
+function assetHandler(ctx: Context, runtimeDir: string, community: DesktopCommunityTransport): ConnectionFetchHandler {
   const require = createRequire(join(runtimeDir, 'package.json'))
   const distIndex = require.resolve('@deepseek-ai/dsh-web-frontend/dist/index.html')
   const distRoot = realpathSync(dirname(distIndex))
   const renderIndex = async (): Promise<Response> => {
-    const rows: IndexInjection[] = [{ kind: 'script', placement: 'head', text: DESKTOP_TRANSPORT_SCRIPT }]
-    ctx.emit('webserver/index-inject', rows)
-    const body = renderIndexInjections(await readFile(distIndex, 'utf8'), rows)
+    const rows: IndexInjection[] = [{ kind: 'script', placement: 'head', text: `${DESKTOP_TRANSPORT_SCRIPT};${DESKTOP_COMMUNITY_WEBSOCKET_SCRIPT}` }, ...community.collectIndexInjections()]
+    const body = community.applyIndexTaps(renderIndexInjections(await readFile(distIndex, 'utf8'), rows))
     return new Response(body, { headers: { 'content-type': MIME['.html'] ?? 'text/html; charset=utf-8' } })
   }
   return {
@@ -197,7 +199,7 @@ function assetHandler(ctx: Context, runtimeDir: string): ConnectionFetchHandler 
     async fetch(request): Promise<Response> {
       if (request.method !== 'GET' && request.method !== 'HEAD') return new Response(null, { status: 405 })
       const url = new URL(request.url)
-      if (url.pathname.startsWith('/plugins/')) return ctx.clientModules.fetchBundle(request)
+      if (url.pathname === '/plugins' || url.pathname.startsWith('/plugins/')) return ctx.clientModules.fetchBundle(request)
       let pathname: string
       try {
         pathname = decodeURIComponent(url.pathname)
@@ -288,12 +290,14 @@ export async function runDesktopHost(
   writeFileSync(rootConfig, ROOT_CONFIG)
   const environment = loadLayeredEnv('dsh desktop')
   let current: Context | undefined
+  let community: DesktopCommunityTransport | undefined
   const ctx = await boot('dsh desktop', rootConfig, structuredClone(desktopPatches(
     resolve(runtimeDir),
     absoluteProject,
     options.allowLinkedPackages === true,
   )), (hostCtx) => {
     current = hostCtx
+    community = installDesktopCommunityTransport(hostCtx)
     hostCtx.provide(DSH_LAUNCH_ENVIRONMENT_KEY, environment)
     provideCmdline(hostCtx, { args: [], exit: () => {} })
   })
@@ -306,7 +310,12 @@ export async function runDesktopHost(
     throw new Error('dsh desktop: composition did not provide connection, typertGateway, and clientModules')
   }
   const api = connection.createSharedFetchHandler('/api')
-  const assets = assetHandler(ctx, resolve(runtimeDir))
+  if (community === undefined) {
+    await ctx.fiber.dispose()
+    throw new Error('dsh desktop: community transport was not initialized')
+  }
+  const pluginTransport = community
+  const assets = assetHandler(ctx, resolve(runtimeDir), pluginTransport)
   const streams = remoteStreamHandler(ctx)
   const requests = new Map<number, AbortController>()
   let disposing: Promise<void> | undefined
@@ -341,9 +350,11 @@ export async function runDesktopHost(
         const request = new Request(url, init)
         const response = url.pathname === DESKTOP_STREAM_PATH
           ? await streams.fetch(request)
-          : url.pathname.startsWith('/api/')
+          : url.pathname === '/api' || url.pathname.startsWith('/api/')
             ? await api.fetch(request)
-            : await assets.fetch(request)
+            : pluginTransport.owns(url.pathname)
+              ? await pluginTransport.fetch(request)
+              : await assets.fetch(request)
         await writeResponse(encodeDesktopResponseStart(command.streamId, {
           status: response.status,
           headers: [...response.headers.entries()],

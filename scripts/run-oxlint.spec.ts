@@ -9,6 +9,11 @@ describe('Oxlint invocation', () => {
     })
   })
 
+  it('preserves explicit first-party paths while adding literal gitlink exclusions', () => {
+    expect(resolveOxlintInvocation(['scripts/owner.ts', '--fix'], {}, ['community/plugin[1]']).args)
+      .toEqual(['--ignore-pattern=/community/plugin\\[1\\]/**', 'scripts/owner.ts', '--fix'])
+  })
+
   it('bounds both worker pools from one setting', () => {
     expect(resolveOxlintInvocation(['.', '--fix'], { DSH_OXLINT_THREADS: '4', GOMAXPROCS: '12' })).toEqual({
       args: ['.', '--fix', '--threads=4'],

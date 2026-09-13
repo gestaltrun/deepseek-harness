@@ -1,0 +1,6 @@
+[submodule "community/better-sidebar"]
+	path = community/better-sidebar
+	url = https://github.com/gestaltrun/better-sidebar.git
+[submodule "community/dsh-web"]
+	path = community/dsh-web
+	url = https://github.com/gestaltrun/dsh-web.git

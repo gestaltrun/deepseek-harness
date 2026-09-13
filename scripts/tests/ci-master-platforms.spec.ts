@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 import { gatesForMode } from '../run-gates.ts'
 
 const root = resolve(import.meta.dirname, '../..')
-const masterPush = "github.event_name == 'push' && github.ref == 'refs/heads/master'"
+const masterPush = "github.event_name == 'workflow_dispatch' && inputs.suite == 'platform-diagnostics'"
 const runtimeBuilder = './.github/workflows/build-exe-for-python-sdk.yml'
 
 interface Job {
@@ -37,7 +37,7 @@ function commands(job: Job): string[] {
 
 // These boolean/string cases share Actions and JavaScript semantics. GitHub
 // supplies status functions; this probe is not a general Actions interpreter.
-function evaluateCondition(expression: string, cancelled: boolean, results: string[], event = 'pull_request'): boolean {
+function evaluateCondition(expression: string, cancelled: boolean, results: string[], event = 'workflow_dispatch'): boolean {
   const source = expression.trim().replace(/^[$][{][{]|[}][}]$/g, '')
     .replaceAll('needs.*.result', 'results')
   return runInNewContext(source, {
@@ -68,15 +68,15 @@ describe('master-only platform scheduling', () => {
   )
 
   it('distinguishes the obsolete always verdict from the cancellable status guard', () => {
-    expect(evaluateCondition("always() && github.event_name == 'pull_request'", true, ['success'])).toBe(true)
+    expect(evaluateCondition("always() && github.event_name == 'workflow_dispatch'", true, ['success'])).toBe(true)
     expect(evaluateCondition(workflow('ci.yml').jobs['all-checks-passed']!.if as string, true, ['success'])).toBe(false)
   })
 
   it('keeps only Linux and Windows x64 runtimes in required PR CI', () => {
     const pr = workflow('ci.yml')
-    expect(Object.keys(pr.on)).toEqual(['pull_request'])
+    expect(Object.keys(pr.on)).toEqual(['workflow_dispatch'])
     expect(pr.jobs['python-runtime']).toMatchObject({
-      if: "github.event_name == 'pull_request'",
+      if: "github.event_name == 'workflow_dispatch'",
       uses: runtimeBuilder,
       with: { ci: true, targets: 'node24-linux-x64,node24-win-x64' },
     })
@@ -86,7 +86,7 @@ describe('master-only platform scheduling', () => {
     expect(aggregate.needs).toContain('python-runtime')
     expect(aggregate.needs).not.toContain('windows')
     expect(aggregate.needs!.every(id => id in pr.jobs)).toBe(true)
-    expect(aggregate.if).toBe("${{ !cancelled() && github.event_name == 'pull_request' }}")
+    expect(aggregate.if).toBe("${{ !cancelled() && github.event_name == 'workflow_dispatch' }}")
     expect(aggregate.steps).toContainEqual(expect.objectContaining({
       if: "contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')",
     }))
@@ -94,8 +94,8 @@ describe('master-only platform scheduling', () => {
 
   it('runs all three deferred carriers on master pushes with fail-loud API credentials', () => {
     const master = workflow('ci-master.yml')
-    expect(master.on.push).toEqual({ branches: ['master'] })
-    expect(Object.keys(master.on).sort()).toEqual(['push', 'workflow_dispatch'])
+    expect(master.on.push).toBeUndefined()
+    expect(Object.keys(master.on).sort()).toEqual(['workflow_dispatch'])
     const runtime = master.jobs['python-runtime']!
     expect(runtime).toMatchObject({
       if: masterPush,

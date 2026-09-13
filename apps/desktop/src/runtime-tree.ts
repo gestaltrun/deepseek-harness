@@ -34,6 +34,8 @@ export interface DesktopRuntimeDescriptor {
   readonly arch: string
   readonly sharedPackages: readonly DesktopSharedPackage[]
   readonly files: readonly DesktopRuntimeFile[]
+  /** Ordered product bundle roots; absent in releases with only the official default pair. */
+  readonly bundles?: readonly string[]
 }
 
 const PACKAGE_NAME = /^(?:@[a-z0-9][a-z0-9._~-]*\/[a-z0-9][a-z0-9._~-]*|[a-z0-9][a-z0-9._~-]*)$/u
@@ -119,11 +121,13 @@ async function inventoryRuntimeForVerification(root: string): Promise<DesktopRun
  * @param release - Matching shell, dsh, Host, and executable versions.
  * @param sharedNames - Release-owned packages supplied to plugins.
  * @param target - Platform and architecture selected by runtime preparation.
+ * @param bundles - Optional built-in product bundle roots from the release composition.
  * @returns Descriptor written beside the production packages.
  */
 export function writeDesktopRuntime(
   root: string, release: DesktopRelease, sharedNames: readonly string[],
   target: { platform: NodeJS.Platform; arch: string } = process,
+  bundles?: readonly string[],
 ): DesktopRuntimeDescriptor {
   const sharedPackages = [...new Set(sharedNames)].sort().map((name) => {
     if (!PACKAGE_NAME.test(name)) throw new Error(`desktop runtime: invalid shared package ${name}`)
@@ -137,6 +141,7 @@ export function writeDesktopRuntime(
   const descriptor: DesktopRuntimeDescriptor = {
     schemaVersion: 1, release, platform: target.platform, arch: target.arch,
     sharedPackages, files: inventoryDesktopRuntime(root),
+    ...(bundles === undefined ? {} : { bundles: [...bundles] }),
   }
   writeFileSync(join(root, DESKTOP_RUNTIME_FILE), `${JSON.stringify(descriptor, undefined, 2)}\n`)
   return descriptor
@@ -169,13 +174,20 @@ export function readDesktopRuntime(root: string): DesktopRuntimeDescriptor {
     throw new Error('desktop runtime: duplicate shared package')
   }
   const files = value.files as DesktopRuntimeFile[]
+  const bundles = value.bundles
+  if (bundles !== undefined && (!Array.isArray(bundles)
+    || !bundles.every(name => typeof name === 'string' && sharedPackages.some(entry => entry.name === name))
+    || new Set(bundles).size !== bundles.length
+    || bundles[0] !== '@deepseek-ai/dsh-base' || bundles[1] !== '@deepseek-ai/dsh-web-app')) {
+    throw new Error('desktop runtime: invalid product bundle roots')
+  }
   for (const name of ['@deepseek-ai/dsh', DESKTOP_HOST_PACKAGE]) {
     if (sharedPackages.find(entry => entry.name === name)?.version !== release.version) {
       throw new Error(`desktop runtime: missing or mismatched ${name}`)
     }
   }
   return { schemaVersion: value.schemaVersion as 1, release, platform: value.platform as NodeJS.Platform,
-    arch: value.arch, sharedPackages, files }
+    arch: value.arch, sharedPackages, files, ...(bundles === undefined ? {} : { bundles: bundles as string[] }) }
 }
 
 /**

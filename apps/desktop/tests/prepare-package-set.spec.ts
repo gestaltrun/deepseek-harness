@@ -76,4 +76,22 @@ describe('desktop package-set selection', () => {
       assertDesktopHostPackageFiles(files.slice(1))
     }).toThrow(/lib\/index\.js/u)
   })
+
+  it('includes the community aggregate and refuses registry fallback for a missing fork archive', () => {
+    const aggregate = '@gestaltrun/dsh-web-all'
+    const sidebar = '@gestaltrun/dsh-better-sidebar'
+    const available = new Map<string, PackedDesktopPackage>([
+      ['@deepseek-ai/dsh', packed('@deepseek-ai/dsh')],
+      ['@deepseek-ai/dsh-desktop-host', packed('@deepseek-ai/dsh-desktop-host')],
+      [aggregate, packed(aggregate, { dependencies: { [sidebar]: '0.19.1-gestaltrun.0' } })],
+      [sidebar, packed(sidebar)],
+    ])
+    expect(selectDesktopPackageClosure(available, [aggregate]).map(entry => entry.manifest.name)).toEqual([
+      '@deepseek-ai/dsh', '@deepseek-ai/dsh-desktop-host', sidebar, aggregate,
+    ])
+    available.delete(sidebar)
+    expect(() => selectDesktopPackageClosure(available, [aggregate])).toThrow(`unpacked internal package ${sidebar}`)
+    available.delete(aggregate)
+    expect(() => selectDesktopPackageClosure(available, [aggregate])).toThrow(`omit ${aggregate}`)
+  })
 })

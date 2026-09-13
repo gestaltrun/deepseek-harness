@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { gitSubmoduleRoots } from './git-submodules.ts'
 
 const oxlintCli = fileURLToPath(new URL('../node_modules/oxlint/bin/oxlint', import.meta.url))
 const MAX_CAPTURED_OUTPUT_BYTES = 64 * 1024 * 1024
@@ -28,10 +29,18 @@ export interface OxlintInvocation {
  * Apply the repository worker bound to both Oxlint backends.
  * @param args - Oxlint CLI arguments requested by the caller.
  * @param env - Environment inherited by the Oxlint process.
+ * @param submoduleRoots - Gitlink paths owned by separate repositories.
  * @returns the complete CLI arguments and child environment.
  */
-export function resolveOxlintInvocation(args: readonly string[], env: NodeJS.ProcessEnv): OxlintInvocation {
-  const resolvedArgs = [...args]
+export function resolveOxlintInvocation(
+  args: readonly string[],
+  env: NodeJS.ProcessEnv,
+  submoduleRoots: readonly string[] = [],
+): OxlintInvocation {
+  const resolvedArgs = [
+    ...submoduleRoots.map(path => `--ignore-pattern=/${path.replace(/[\\*?[\]{}]/g, '\\$&')}/**`),
+    ...args,
+  ]
   if (env.CI === 'true' && !hasOutputFormat(args)) resolvedArgs.push('--format=default')
   const raw = env.DSH_OXLINT_THREADS
   if (raw === undefined || raw === '') return { args: resolvedArgs, env: { ...env } }
@@ -57,7 +66,7 @@ function completeFrom(result: { readonly signal: NodeJS.Signals | null; readonly
 }
 
 function main(): void {
-  const invocation = resolveOxlintInvocation(process.argv.slice(2), process.env)
+  const invocation = resolveOxlintInvocation(process.argv.slice(2), process.env, gitSubmoduleRoots(process.cwd()))
   if (!isFixInvocation(invocation.args)) {
     const result = spawnSync(process.execPath, [oxlintCli, ...invocation.args], {
       env: invocation.env,

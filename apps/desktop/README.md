@@ -21,6 +21,8 @@ The [Electron packaging and update Agent Note](../../.agents/notes/implemented/a
 
 ## Installation ownership
 
+The Gestaltrun build includes the pinned community packages selected by [the product composition](../../product/community.json). The aggregate enables Better Sidebar once. Bundled plugins appear in plugin management with activation controls; their files and versions change with the Desktop release. A newly shipped bundle is enabled once when an existing profile upgrades; subsequent activation choices and user overlays are retained.
+
 Electron owns `$DSH_HOME/profiles/desktop`. Its `dependencies` contains only installed external plugins at exact versions; `dsh.profile.bundles` contains the built-in bundles followed by enabled plugins. The signed application supplies dsh, the private Desktop Host, and their production packages from `resources/dsh`. Shared package links resolve to those actual directories. Both host and plugins execute in the same bundled upstream Node process, with normal realpath resolution; Desktop does not enable `--preserve-symlinks`. The CLI cannot boot or mutate this profile.
 
 The local startup page exposes startup status and available recovery actions; the loaded dsh renderer receives only the desktop protocol marker. The separate plugin window receives structured list, install, remove, update, and update-check operations; neither renderer receives filesystem access, raw Electron IPC, a shell, or arbitrary pnpm arguments.

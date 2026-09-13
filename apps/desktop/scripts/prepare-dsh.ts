@@ -25,7 +25,8 @@ import {
   signMacOSRuntime,
 } from './macos-runtime.ts'
 import { resolveDesktopBuildTarget, resolveDesktopTargetBuildPaths } from './desktop-build-paths.mjs'
-import { desktopRuntimeFileExclusion } from './runtime-file-policy.ts'
+import { desktopRuntimeFileExclusion, prepareDesktopNativeHelpers } from './runtime-file-policy.ts'
+import { readCommunityPlugins } from '../../../scripts/community.ts'
 
 const APP_ROOT = resolve(import.meta.dirname, '..')
 const BUILD_PATHS = resolveDesktopTargetBuildPaths()
@@ -108,7 +109,9 @@ async function main(): Promise<void> {
     const release = desktopRelease()
     copyFileSync(join(PACKAGE_SET_ROOT, DESKTOP_PACKAGE_SET_FILE), join(BUILD_ROOT, DESKTOP_PACKAGE_SET_FILE))
     cpSync(join(PACKAGE_SET_ROOT, DESKTOP_PACKAGES_DIR), join(BUILD_ROOT, DESKTOP_PACKAGES_DIR), { recursive: true })
-    createRuntimeProjectMetadata(BUILD_ROOT, release)
+    const bundles = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app',
+      ...readCommunityPlugins().filter(plugin => plugin.defaultBundle).map(plugin => plugin.package)]
+    createRuntimeProjectMetadata(BUILD_ROOT, release, bundles)
     await runPnpm(['install', '--lockfile-only'])
     verifyDesktopCoreLockfile(
       readFileSync(join(BUILD_ROOT, 'pnpm-lock.yaml'), 'utf8'),
@@ -127,16 +130,18 @@ async function main(): Promise<void> {
     writeFileSync(join(DSH_OUTPUT_ROOT, 'package.json'), `${JSON.stringify({
       name: '@deepseek-ai/dsh-desktop-runtime', private: true, version: release.version, type: 'module',
       dependencies: Object.fromEntries(packageSet.packages.map(entry => [entry.name, entry.version])),
+      dsh: { profile: { bundles } },
     }, undefined, 2)}\n`)
     for (const file of DESKTOP_HOST_RUNTIME_FILES) {
       if (!existsSync(join(DSH_OUTPUT_ROOT, 'node_modules', DESKTOP_HOST_PACKAGE, file))) {
         throw new Error(`desktop runtime: missing private Host file ${file}`)
       }
     }
+    prepareDesktopNativeHelpers(DSH_OUTPUT_ROOT, target)
     if (process.platform === 'darwin') {
       await signMacOSRuntime(DSH_OUTPUT_ROOT, resolveDesktopAppId(process.env), resolveMacOSSigningEnvironment(process.env))
     }
-    writeDesktopRuntime(DSH_OUTPUT_ROOT, release, packageSet.packages.map(entry => entry.name), target)
+    writeDesktopRuntime(DSH_OUTPUT_ROOT, release, packageSet.packages.map(entry => entry.name), target, bundles)
     const descriptor = await verifyDesktopRuntime(DSH_OUTPUT_ROOT, release.version, target)
     await new Promise<void>((accept, reject) => {
       execFile(NODE, [join(APP_ROOT, 'tests/fixtures/runtime-payload-smoke.mjs'), DSH_OUTPUT_ROOT],

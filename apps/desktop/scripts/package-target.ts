@@ -288,6 +288,7 @@ async function main(): Promise<void> {
     if (!invocation.unsigned && process.env[name] !== undefined) electronBuilderEnv[name] = process.env[name]
   }
   await runPnpm(['run', 'build:official'], buildEnv, REPOSITORY_ROOT)
+  await runPnpm(['run', 'community:pack'], buildEnv, REPOSITORY_ROOT)
   await runPnpm(['run', 'release:pack', '--family', 'dsh', '--out', buildPaths.packedDsh], buildEnv, REPOSITORY_ROOT)
   await runPnpm([
     '--dir',
