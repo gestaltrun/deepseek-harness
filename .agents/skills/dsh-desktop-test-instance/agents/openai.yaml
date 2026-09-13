@@ -1,0 +1,4 @@
+interface:
+  display_name: "DSH Desktop Test Instance"
+  short_description: "Operate isolated Electron acceptance or an A/B comparison"
+  default_prompt: "Use $dsh-desktop-test-instance to prepare, compare, replace, or clean isolated Electron acceptance instances with verified native control and retained user data."
