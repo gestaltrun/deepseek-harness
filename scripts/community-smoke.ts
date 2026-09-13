@@ -16,6 +16,7 @@ import {
 import { pnpmInvocation } from './pnpm-invocation.ts'
 import { prepareDesktopPackageSet } from '../apps/desktop/scripts/prepare-package-set.ts'
 import { smokeCommunityPluginRoutes, smokeDesktopRuntime, type CommunityRouteSmoke } from '../apps/desktop/scripts/smoke-runtime.ts'
+import { buildCommunityClientSeed, smokeCommunityClientModules } from '../apps/desktop/scripts/community-client-modules.ts'
 import { desktopRuntimeFileExclusion, prepareDesktopNativeHelpers } from '../apps/desktop/scripts/runtime-file-policy.ts'
 import { createPluginProfile, createRuntimeProjectMetadata } from '../apps/desktop/src/project-manager.ts'
 import { DESKTOP_HOST_PROTOCOL_VERSION } from '../apps/desktop/src/host-protocol.ts'
@@ -250,14 +251,16 @@ export async function smokeCommunityWeb(runtime: string, scratch: string, bundle
     const cookies = authentication.headers.getSetCookie().map(cookie => cookie.split(';')[0]).join('; ')
     await authentication.arrayBuffer()
     if (authentication.status !== 303 || cookies === '') throw new Error('community smoke: Web did not exchange the launch token for a browser cookie')
-    const result = await smokeCommunityPluginRoutes((path, init) => {
+    const fetchResource = (path: string, init?: RequestInit): Promise<Response> => {
       const target = new URL(path, url.origin)
       if (target.origin !== url.origin) throw new Error('community smoke: client artifact leaves the authenticated Host')
       const headers = new Headers(init?.headers)
       headers.set('cookie', cookies)
       headers.set('origin', url.origin)
       return fetch(target, { ...init, headers, signal: AbortSignal.timeout(30_000), redirect: 'error' })
-    })
+    }
+    const result = await smokeCommunityPluginRoutes(fetchResource)
+    await smokeCommunityClientModules(fetchResource, await buildCommunityClientSeed(join(home, 'client-seed')))
     return result
   } finally {
     if (timer !== undefined) clearTimeout(timer)
@@ -358,9 +361,9 @@ async function main(): Promise<void> {
     report.native = { passed: true }
     console.log('community smoke: booting packaged DesktopHost and community routes')
     await smokeDesktopRuntime(runtime, process.execPath, descriptor)
-    report.desktop = { passed: true, routes: ['settings.get', 'terminal.deps'] }
+    report.desktop = { passed: true, clientModuleImports: true, routes: ['settings.get', 'terminal.deps'] }
     console.log('community smoke: booting the same artifacts through the Web profile')
-    report.web = { passed: true, ...await smokeCommunityWeb(runtime, scratch, bundles) }
+    report.web = { passed: true, clientModuleImports: true, ...await smokeCommunityWeb(runtime, scratch, bundles) }
     await verifyDesktopRuntime(runtime, release.version, process)
     report.status = 'passed'
     report.release = release

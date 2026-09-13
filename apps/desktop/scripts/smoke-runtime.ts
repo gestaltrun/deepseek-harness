@@ -8,6 +8,7 @@ import { DesktopHostProcess } from '../src/host-process.ts'
 import { createPluginProfile, desktopRuntimeBundles } from '../src/project-manager.ts'
 import { linkDesktopHostPackages, validateDesktopPluginGraph } from '../src/profile-packages.ts'
 import type { DesktopRuntimeDescriptor } from '../src/runtime-tree.ts'
+import { buildCommunityClientSeed, smokeCommunityClientModules } from './community-client-modules.ts'
 
 /** Community artifacts exposed by one real Host composition. */
 export interface CommunityRouteSmoke {
@@ -214,6 +215,9 @@ export function apply(ctx) {
         signal: AbortSignal.timeout(30_000),
       })))
       await smokeCommunityWorkspace(host, workspace, sessionId)
+      await smokeCommunityClientModules(path => host.fetch(new Request(new URL(path, 'dsh-app://app/'), {
+        signal: AbortSignal.timeout(30_000),
+      })), await buildCommunityClientSeed(join(home, 'client-seed')))
     }
   } finally {
     if (readyTimer !== undefined) clearTimeout(readyTimer)
