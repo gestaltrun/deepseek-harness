@@ -1,0 +1,544 @@
+{
+  "formatVersion": 1,
+  "upstreamVersion": "1.2.3",
+  "skills": [
+    {
+      "name": "ask-matt",
+      "path": ".agents/skills/ask-matt",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/engineering/ask-matt",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": [
+        {
+          "files": [
+            "SKILL.md"
+          ],
+          "reason": "Route DSH work through ODD, existing document owners, scoped tests, and accepted owner/acceptance order."
+        }
+      ]
+    },
+    {
+      "name": "claude-handoff",
+      "path": ".agents/skills/claude-handoff",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/in-progress/claude-handoff",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": [
+        {
+          "files": [
+            "SKILL.md"
+          ],
+          "reason": "Verify actual harness capabilities and preserve explicit user-owned task creation boundaries."
+        }
+      ]
+    },
+    {
+      "name": "code-review",
+      "path": ".agents/skills/code-review",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/engineering/code-review",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": [
+        {
+          "files": [
+            "SKILL.md"
+          ],
+          "reason": "Preserve dirty-scope review, current accepted demand, DSH authority, stable independent ownership, and separate Standards/Spec reports."
+        }
+      ]
+    },
+    {
+      "name": "codebase-design",
+      "path": ".agents/skills/codebase-design",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/engineering/codebase-design",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": [
+        {
+          "files": [
+            "SCHEME.md",
+            "SKILL.md"
+          ],
+          "reason": "Preserve DSH capability terminology and route schemes and independent simplification through existing Agent Notes and ODD owners."
+        }
+      ]
+    },
+    {
+      "name": "diagnosing-bugs",
+      "path": ".agents/skills/diagnosing-bugs",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/engineering/diagnosing-bugs",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": [
+        {
+          "files": [
+            "SKILL.md"
+          ],
+          "reason": "Preserve accepted DSH workflow, invocation, or repository tooling rules."
+        }
+      ]
+    },
+    {
+      "name": "domain-modeling",
+      "path": ".agents/skills/domain-modeling",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/engineering/domain-modeling",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": [
+        {
+          "files": [
+            "SKILL.md"
+          ],
+          "reason": "Use the current DSH glossary, subsystem docs, and Agent Note lifecycle instead of a parallel glossary or ADR tree."
+        }
+      ]
+    },
+    {
+      "name": "git-guardrails-claude-code",
+      "path": ".agents/skills/git-guardrails-claude-code",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/misc/git-guardrails-claude-code",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": []
+    },
+    {
+      "name": "grill-me",
+      "path": ".agents/skills/grill-me",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/productivity/grill-me",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": [
+        {
+          "files": [
+            "SKILL.md"
+          ],
+          "reason": "Reference the locally installed grilling skill without assuming a harness-specific Skill tool."
+        }
+      ]
+    },
+    {
+      "name": "grill-with-docs",
+      "path": ".agents/skills/grill-with-docs",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/engineering/grill-with-docs",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": [
+        {
+          "files": [
+            "SKILL.md"
+          ],
+          "reason": "Use local primitives and preserve the repository document owners."
+        }
+      ]
+    },
+    {
+      "name": "grilling",
+      "path": ".agents/skills/grilling",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/productivity/grilling",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": []
+    },
+    {
+      "name": "handoff",
+      "path": ".agents/skills/handoff",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/productivity/handoff",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": [
+        {
+          "files": [
+            "SKILL.md"
+          ],
+          "reason": "Reference locally available skills without assuming a harness-specific Skill tool."
+        }
+      ]
+    },
+    {
+      "name": "implement",
+      "path": ".agents/skills/implement",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/engineering/implement",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": [
+        {
+          "files": [
+            "SKILL.md",
+            "agents/openai.yaml"
+          ],
+          "reason": "Reuse ODD owners and accepted scope; select relevant checks, initial acceptance, and subsequent independent review."
+        }
+      ]
+    },
+    {
+      "name": "implement-spec",
+      "path": ".agents/skills/implement-spec",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/in-progress/implement-spec",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": [
+        {
+          "files": [
+            "SKILL.md"
+          ],
+          "reason": "Delegate dependency-frontier execution to the existing ODD coordinator instead of starting a competing delivery."
+        }
+      ]
+    },
+    {
+      "name": "improve-codebase-architecture",
+      "path": ".agents/skills/improve-codebase-architecture",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/engineering/improve-codebase-architecture",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": [
+        {
+          "files": [
+            "SKILL.md"
+          ],
+          "reason": "Route periodic findings to accepted delivery, preserve DSH capability obligations, and reuse existing glossary and Agent Notes."
+        }
+      ]
+    },
+    {
+      "name": "loop-me",
+      "path": ".agents/skills/loop-me",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/in-progress/loop-me",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": []
+    },
+    {
+      "name": "migrate-to-shoehorn",
+      "path": ".agents/skills/migrate-to-shoehorn",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/misc/migrate-to-shoehorn",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": [
+        {
+          "files": [
+            "SKILL.md"
+          ],
+          "reason": "Preserve accepted DSH workflow, invocation, or repository tooling rules."
+        }
+      ]
+    },
+    {
+      "name": "prototype",
+      "path": ".agents/skills/prototype",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/engineering/prototype",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": [
+        {
+          "files": [
+            "SKILL.md",
+            "UI.md"
+          ],
+          "reason": "Use supported product routes, agent self-walk, frozen UI draft, and authorized stable owners or explicit A/B instances."
+        }
+      ]
+    },
+    {
+      "name": "research",
+      "path": ".agents/skills/research",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/engineering/research",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": []
+    },
+    {
+      "name": "resolving-merge-conflicts",
+      "path": ".agents/skills/resolving-merge-conflicts",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/engineering/resolving-merge-conflicts",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": [
+        {
+          "files": [
+            "SKILL.md"
+          ],
+          "reason": "Preserve accepted DSH workflow, invocation, or repository tooling rules."
+        }
+      ]
+    },
+    {
+      "name": "retro",
+      "path": ".agents/skills/retro",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/in-progress/retro",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": [
+        {
+          "files": [
+            "SKILL.md",
+            "agents/openai.yaml"
+          ],
+          "reason": "Review each owner's own session and return one consolidated keep/drop set through ODD; do not read foreign logs or modify global memories."
+        }
+      ]
+    },
+    {
+      "name": "scaffold-exercises",
+      "path": ".agents/skills/scaffold-exercises",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/misc/scaffold-exercises",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": [
+        {
+          "files": [
+            "SKILL.md"
+          ],
+          "reason": "Preserve accepted DSH workflow, invocation, or repository tooling rules."
+        }
+      ]
+    },
+    {
+      "name": "setup-matt-pocock-skills",
+      "path": ".agents/skills/setup-matt-pocock-skills",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/engineering/setup-matt-pocock-skills",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": [
+        {
+          "files": [
+            "SKILL.md",
+            "domain.md"
+          ],
+          "reason": "Inspect and reuse existing tracker, glossary, Agent Note, and instruction owners; adapt templates only for genuinely missing configuration."
+        }
+      ]
+    },
+    {
+      "name": "setup-pre-commit",
+      "path": ".agents/skills/setup-pre-commit",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/misc/setup-pre-commit",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": [
+        {
+          "files": [
+            "SKILL.md"
+          ],
+          "reason": "Preserve accepted DSH workflow, invocation, or repository tooling rules."
+        }
+      ]
+    },
+    {
+      "name": "setup-ts-deep-modules",
+      "path": ".agents/skills/setup-ts-deep-modules",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/in-progress/setup-ts-deep-modules",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": [
+        {
+          "files": [
+            "SKILL.md"
+          ],
+          "reason": "Keep DSH package, export, test, and documentation conventions and use local design instructions."
+        }
+      ]
+    },
+    {
+      "name": "tdd",
+      "path": ".agents/skills/tdd",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/engineering/tdd",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": [
+        {
+          "files": [
+            "SKILL.md",
+            "mocking.md",
+            "tests.md"
+          ],
+          "reason": "Reuse accepted observations and DSH coverage/resource-isolation policy without repeated confirmation or widening production exports solely for tests."
+        }
+      ]
+    },
+    {
+      "name": "teach",
+      "path": ".agents/skills/teach",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/productivity/teach",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": []
+    },
+    {
+      "name": "to-questionnaire",
+      "path": ".agents/skills/to-questionnaire",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/productivity/to-questionnaire",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": []
+    },
+    {
+      "name": "to-spec",
+      "path": ".agents/skills/to-spec",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/engineering/to-spec",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": [
+        {
+          "files": [
+            "SKILL.md",
+            "agents/openai.yaml"
+          ],
+          "reason": "Use verified tracker and document owners, accepted UI/scheme/upstream decisions, and ODD model invocation."
+        }
+      ]
+    },
+    {
+      "name": "to-tickets",
+      "path": ".agents/skills/to-tickets",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/engineering/to-tickets",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": [
+        {
+          "files": [
+            "SKILL.md",
+            "agents/openai.yaml"
+          ],
+          "reason": "Reuse accepted decomposition, verified tracker, stable owners, and released-data rules with ODD model invocation."
+        }
+      ]
+    },
+    {
+      "name": "triage",
+      "path": ".agents/skills/triage",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/engineering/triage",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": [
+        {
+          "files": [
+            "OUT-OF-SCOPE.md",
+            "SKILL.md"
+          ],
+          "reason": "Use existing tracker roles and Agent Note rejection lifecycle, reuse accepted decisions, and preserve external action authorization."
+        }
+      ]
+    },
+    {
+      "name": "wait-what",
+      "path": ".agents/skills/wait-what",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/productivity/wait-what",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": []
+    },
+    {
+      "name": "wayfinder",
+      "path": ".agents/skills/wayfinder",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/engineering/wayfinder",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": [
+        {
+          "files": [
+            "SKILL.md"
+          ],
+          "reason": "Use current DSH context, actual executor capability and local skill references within ODD ownership."
+        }
+      ]
+    },
+    {
+      "name": "wizard",
+      "path": ".agents/skills/wizard",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/engineering/wizard",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": []
+    },
+    {
+      "name": "writing-beats",
+      "path": ".agents/skills/writing-beats",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/in-progress/writing-beats",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": []
+    },
+    {
+      "name": "writing-for-agents",
+      "path": ".agents/skills/writing-for-agents",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/productivity/writing-for-agents",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": []
+    },
+    {
+      "name": "writing-fragments",
+      "path": ".agents/skills/writing-fragments",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/in-progress/writing-fragments",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": []
+    },
+    {
+      "name": "writing-shape",
+      "path": ".agents/skills/writing-shape",
+      "source": "https://github.com/mattpocock/skills",
+      "sourcePath": "skills/in-progress/writing-shape",
+      "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "license": "MIT",
+      "localChanges": []
+    },
+    {
+      "name": "show-me",
+      "path": ".agents/skills/show-me",
+      "source": "https://github.com/humanlayer/skills",
+      "sourcePath": "plugins/show-me/skills/show-me",
+      "revision": "3c2629142c5d437428269b1b722b08c0b87f574d",
+      "license": "MIT",
+      "localChanges": []
+    },
+    {
+      "name": "unslop",
+      "path": ".agents/skills/unslop",
+      "source": "https://github.com/cursor/plugins",
+      "sourcePath": "pstack/skills/unslop",
+      "revision": "bdf7aa355337897f167153e05069aca505dae17c",
+      "license": "MIT",
+      "localChanges": [
+        "scope voice changes to user-facing prose and defer repository contracts to dsh-prose-standard"
+      ]
+    }
+  ]
+}
