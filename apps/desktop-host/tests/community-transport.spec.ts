@@ -1,6 +1,7 @@
 /** Real Node HTTP and ws handlers over Desktop's port-free Fetch carrier. */
 import { once } from 'node:events'
-import { Server } from 'node:net'
+import { Server, Socket } from 'node:net'
+import { IncomingMessage } from 'node:http'
 import { runInNewContext } from 'node:vm'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
@@ -72,6 +73,29 @@ afterEach(async () => {
 })
 
 describe('Desktop community transport', () => {
+  it('authenticates only its own live private request objects', async () => {
+    const ctx = new Context()
+    contexts.push(ctx)
+    const value = installDesktopCommunityTransport(ctx)
+    const trust = ctx.get('desktopPrivateHttp') as { isTrusted(request: IncomingMessage): boolean }
+    let captured: IncomingMessage | undefined
+    value.register({ kind: 'exact', path: '/api/private-probe', handler(request, response) {
+      captured = request
+      response.end(JSON.stringify({ trusted: trust.isTrusted(request) }))
+    } })
+    const network = new IncomingMessage(new Socket())
+    Object.defineProperty(network.socket, 'remoteAddress', { value: '127.0.0.1' })
+    network.headers = { host: '127.0.0.1', origin: 'http://127.0.0.1', cookie: 'dsh-auth-forged=anything', 'sec-fetch-site': 'same-origin' }
+    expect(trust.isTrusted(network)).toBe(false)
+    const response = await value.fetch(new Request('dsh-app://app/api/private-probe'))
+    expect(await response.json()).toEqual({ trusted: true })
+    expect(captured).toBeDefined()
+    await value.dispose()
+    expect(trust.isTrusted(captured!)).toBe(false)
+    expect(trust.isTrusted(network)).toBe(false)
+    network.socket.destroy()
+  })
+
   it('identifies app-only pipe peers as loopback without admitting foreign requests', async () => {
     const value = transport()
     const handler = vi.fn<WebRoute['handler']>((request, response) => {

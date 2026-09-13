@@ -233,6 +233,15 @@ export class DesktopCommunityTransport {
     return pathname === COMMUNITY_WEBSOCKET_PATH || pathname.startsWith(`${COMMUNITY_WEBSOCKET_PATH}/`) || this.match(pathname) !== undefined
   }
 
+  /**
+   * Identify a live request produced by this Host's authenticated private carrier.
+   * @param request - Node request presented by a community route.
+   * @returns True only for an owned private duplex while the carrier is active.
+   */
+  isTrusted(request: IncomingMessage): boolean {
+    return this.disposing === undefined && this.pairs.has(request.socket)
+  }
+
   private async dispatch(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const pathname = new URL(request.url ?? '/', LOCAL_ORIGIN).pathname
     const handler = this.match(pathname)?.handler ?? (corePath(pathname) ? undefined : this.fallback)
@@ -459,6 +468,7 @@ export function installDesktopCommunityTransport(
   })
   ctx.effect(() => () => transport.dispose(), 'Desktop community transport')
   ctx.effect(() => ctx.reflect.provide('webServer', adaptWebServer?.(transport) ?? transport), 'Desktop community webServer')
+  ctx.effect(() => ctx.reflect.provide('desktopPrivateHttp', { isTrusted: transport.isTrusted.bind(transport) }), 'Desktop private HTTP trust')
   ctx.effect(() => ctx.reflect.provide('webRuntime', { lanAddresses: [], trustedHosts: [] }), 'Desktop community webRuntime')
   return transport
 }
