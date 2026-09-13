@@ -6,7 +6,12 @@
       "repository": "gestaltrun/better-sidebar",
       "package": "@gestaltrun/dsh-better-sidebar",
       "version": "0.19.1-gestaltrun.0",
-      "defaultBundle": false
+      "defaultBundle": false,
+      "publishedArtifact": {
+        "commit": "e656717672d83f9c21879d4ba8439799d9acf9ba",
+        "tarball": "https://registry.npmjs.org/@gestaltrun/dsh-better-sidebar/-/dsh-better-sidebar-0.19.1-gestaltrun.0.tgz",
+        "integrity": "sha512-asZIt+2XZqq9dKqhSjIMPoAuPyT7Hg13EHoQBV9ICRI9X4tut3tQQBfv/gcuRBSDUFAgXCDSstEgHbvBn18zHg=="
+      }
     },
     {
       "path": "community/dsh-web",

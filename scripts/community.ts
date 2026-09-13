@@ -14,6 +14,14 @@ export interface CommunityPlugin {
   readonly package: string
   readonly version: string
   readonly defaultBundle: boolean
+  readonly publishedArtifact?: PublishedCommunityArtifact
+}
+
+/** An immutable registry archive tied to the source revision already released. */
+export interface PublishedCommunityArtifact {
+  readonly commit: string
+  readonly tarball: string
+  readonly integrity: string
 }
 
 /** Immutable npm artifact with the source commit that produced it. */
@@ -53,8 +61,20 @@ export function readCommunityPlugins(root = ROOT): readonly CommunityPlugin[] {
       || typeof entry.defaultBundle !== 'boolean') {
       throw new Error('community: invalid plugin record')
     }
+    const published = entry.publishedArtifact
+    let publishedArtifact: PublishedCommunityArtifact | undefined
+    if (published !== undefined) {
+      if (!record(published) || typeof published.commit !== 'string'
+        || !/^[0-9a-f]{40}$/u.test(published.commit) || typeof published.integrity !== 'string'
+        || !/^sha512-[A-Za-z0-9+/]{86}==$/u.test(published.integrity) || typeof published.tarball !== 'string'
+        || published.tarball !== `https://registry.npmjs.org/${entry.package}/-/${entry.package.split('/')[1]}-${entry.version}.tgz`) {
+        throw new Error('community: invalid published artifact pin')
+      }
+      publishedArtifact = { commit: published.commit, tarball: published.tarball, integrity: published.integrity }
+    }
     return { path: entry.path, repository: entry.repository, package: entry.package,
-      version: entry.version, defaultBundle: entry.defaultBundle }
+      version: entry.version, defaultBundle: entry.defaultBundle,
+      ...(publishedArtifact === undefined ? {} : { publishedArtifact }) }
   })
   if (new Set(plugins.map(entry => entry.path)).size !== plugins.length
     || new Set(plugins.map(entry => entry.package)).size !== plugins.length
@@ -106,6 +126,9 @@ export function checkCommunitySources(root = ROOT): void {
       { cwd: root, encoding: 'utf8' }).trim()
     if (configured !== `https://github.com/${plugin.repository}.git`) throw new Error(`community: wrong origin for ${plugin.path}`)
     const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: directory, encoding: 'utf8' }).trim()
+    if (plugin.publishedArtifact !== undefined && plugin.publishedArtifact.commit !== head) {
+      throw new Error(`community: ${plugin.package} differs from its published source revision`)
+    }
     const dirty = execFileSync('git', ['status', '--porcelain', '--untracked-files=normal'], { cwd: directory, encoding: 'utf8' }).trim()
     if (dirty !== '') throw new Error(`community: ${plugin.path} contains uncommitted source changes`)
     const index = execFileSync('git', ['ls-files', '--stage', '--', plugin.path], { cwd: root, encoding: 'utf8' }).trim()
@@ -116,6 +139,23 @@ export function checkCommunitySources(root = ROOT): void {
     const found = files.map(path => manifest(path)).find(value => value.name === plugin.package)
     if (found?.version !== plugin.version) throw new Error(`community: ${plugin.package} does not match ${plugin.version}`)
   }
+}
+
+/**
+ * Download a pinned registry archive without replacing its original gzip bytes.
+ * @param artifact - Validated registry URL, released source commit, and exact integrity.
+ * @param request - HTTP transport used to fetch the public registry archive.
+ * @returns Verified original archive bytes.
+ */
+export async function readPublishedCommunityArchive(
+  artifact: PublishedCommunityArtifact, request: typeof fetch = fetch,
+): Promise<Buffer> {
+  const response = await request(artifact.tarball, { redirect: 'error', signal: AbortSignal.timeout(60_000) })
+  if (!response.ok) throw new Error(`community: published archive returned HTTP ${String(response.status)}`)
+  const bytes = Buffer.from(await response.arrayBuffer())
+  const integrity = `sha512-${createHash('sha512').update(bytes).digest('base64')}`
+  if (integrity !== artifact.integrity) throw new Error('community: published archive integrity mismatch')
+  return bytes
 }
 
 function runPnpm(args: string[], cwd = ROOT): void {
@@ -138,10 +178,11 @@ function runPluginPnpm(plugin: CommunityPlugin, args: string[]): void {
  * @param output - Destination containing one package tarball per name.
  * @returns Verified artifacts, including source commit and content integrity.
  */
-export function packCommunity(output = COMMUNITY_OUTPUT): readonly CommunityArtifact[] {
+export async function packCommunity(output = COMMUNITY_OUTPUT): Promise<readonly CommunityArtifact[]> {
   checkCommunitySources()
   mkdirSync(output, { recursive: true })
   const artifacts: CommunityArtifact[] = []
+  const sourceBuilds: CommunityArtifact[] = []
   let sidebar: string | undefined
   for (const plugin of readCommunityPlugins()) {
     const isSidebar = plugin.package === '@gestaltrun/dsh-better-sidebar'
@@ -154,15 +195,26 @@ export function packCommunity(output = COMMUNITY_OUTPUT): readonly CommunityArti
       runPluginPnpm(plugin, args)
       const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: join(ROOT, plugin.path), encoding: 'utf8' }).trim()
       for (const filename of readdirSync(staging).filter(file => file.endsWith('.tgz')).sort()) {
-        const path = join(staging, filename)
+        let path = join(staging, filename)
         const value: unknown = JSON.parse(execFileSync('tar', ['-xOzf', path, 'package/package.json'], { encoding: 'utf8' }))
         if (!record(value)) throw new Error(`community: invalid tarball ${filename}`)
         verifyCommunityPackage(value)
         const name = String(value.name)
         const version = String(value.version)
         if (version !== plugin.version) throw new Error(`community: ${filename} has unexpected version ${version}`)
-        artifacts.push({ name, version, filename, repository: plugin.repository, commit,
-          integrity: `sha512-${createHash('sha512').update(readFileSync(path)).digest('base64')}` })
+        const built = { name, version, filename, repository: plugin.repository, commit,
+          integrity: `sha512-${createHash('sha512').update(readFileSync(path)).digest('base64')}` }
+        sourceBuilds.push(built)
+        if (name === plugin.package && plugin.publishedArtifact !== undefined) {
+          path = join(staging, `published-${filename}`)
+          writeFileSync(path, await readPublishedCommunityArchive(plugin.publishedArtifact))
+          const published: unknown = JSON.parse(execFileSync('tar', ['-xOzf', path, 'package/package.json'], { encoding: 'utf8' }))
+          if (!record(published) || published.name !== name || published.version !== version) {
+            throw new Error(`community: published archive identity differs for ${name}`)
+          }
+          verifyCommunityPackage(published)
+        }
+        artifacts.push({ ...built, integrity: `sha512-${createHash('sha512').update(readFileSync(path)).digest('base64')}` })
         copyFileSync(path, join(output, filename))
         if (name === '@gestaltrun/dsh-better-sidebar') sidebar = join(output, filename)
       }
@@ -174,7 +226,7 @@ export function packCommunity(output = COMMUNITY_OUTPUT): readonly CommunityArti
     }
   }
   if (new Set(artifacts.map(entry => entry.name)).size !== artifacts.length) throw new Error('community: duplicate packed name')
-  writeFileSync(join(output, 'product-community.json'), `${JSON.stringify({ schemaVersion: 1, packages: artifacts }, null, 2)}\n`)
+  writeFileSync(join(output, 'product-community.json'), `${JSON.stringify({ schemaVersion: 1, packages: artifacts, sourceBuilds }, null, 2)}\n`)
   return artifacts
 }
 
@@ -185,7 +237,7 @@ if (import.meta.main) {
     checkCommunitySources()
     console.log('community: pinned fork package identities verified')
   } else if (positionals[0] === 'pack') {
-    const artifacts = packCommunity(values.out === undefined ? COMMUNITY_OUTPUT : resolve(values.out))
+    const artifacts = await packCommunity(values.out === undefined ? COMMUNITY_OUTPUT : resolve(values.out))
     console.log(`community: packed ${String(artifacts.length)} isolated npm packages`)
   } else throw new Error(`community: unknown command ${positionals[0]}`)
 }
