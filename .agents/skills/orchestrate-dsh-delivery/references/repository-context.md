@@ -26,4 +26,4 @@ Verify actual provider/tool availability before applying the selected model poli
 
 ## Retrospectives
 
-An owner reviews only its own session and reports candidate environment improvements. The user decides which to keep; implementation follows the normal ownership and verification flow. Record accepted durable lessons in the repository's existing owner or a gitignored local lesson record when appropriate. Do not read other sessions' logs or change global memories under a generic retrospective request.
+An owner reviews only its own session and reports candidate environment improvements. The user decides which to keep; implementation follows the normal ownership and verification flow. Retain each kept item in [retro's local lesson archive](../../retro/references/lessons.md), using its stable id and repeat count. Do not read other sessions' logs or change global memories under a generic retrospective request.

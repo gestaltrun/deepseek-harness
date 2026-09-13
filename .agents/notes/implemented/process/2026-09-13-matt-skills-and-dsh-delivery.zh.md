@@ -16,6 +16,10 @@ Status: implemented
 
 [迁移审计](../../../skills/MIGRATION.md) 逐项覆盖所选 41 个源技能目录中的全部 114 个文件。ODD 保留[会话角色](../../../skills/orchestrate-dsh-delivery/references/session-roles.md)、[供应商无关的委派规则](../../../skills/orchestrate-dsh-delivery/references/delegation-routing.md)，以及原有 [CLIProxyAPI 模型优先级](../../../skills/orchestrate-dsh-delivery/references/model-routing-cliproxyapi.md)。该优先级表仅在该供应商已获允许且实时能力核对后生效；Root 不为自己选择新模型。Desktop 保留 [CUA 证据等级](../../../skills/dsh-desktop-test-instance/CUA-AVAILABILITY.md)，两项工作流的元数据文件均纳入 Git。来源哈希区分原样保留的策略和针对当前宿主的适配。
 
+普通交付请求授权在证据通过后完成仓库交付及合入，同时遵守用户明确限制以及单独的消息和发布授权。即使交付很小，Root 仍委派实现与测试。[交付台账](../../../skills/orchestrate-dsh-delivery/references/delivery-ledger.md) 在派发前和集成后绑定已接受范围、负责人、准确的远端输入和结果、Draft PR、证据、状态、阻塞项与下一检查。明确要求仅本地工作的任务保留本地记录。
+
+监督流程在昂贵运行前检查已知前置条件，并在相同失败重复出现后暂停无变化重试，由原负责人执行能区分原因的实验。被采纳的回顾事项保留仓库本地经验 ID、首次记录与重复次数；该本地归档不授权写入全局记忆。
+
 交付依次经过已接受的需求和方案、按需原型、必要的规格与任务，以及稳定且隔离的实现负责人。组合验证阶段通过 [ticket GIF 证据](../../../skills/orchestrate-dsh-delivery/references/ticket-evidence.md)，由主 session 逐项审核功能完整性、原 UI 设计 session 审核还原度，两者通过后才进行首次人工验收。随后开展独立简化检查和 Standards/Spec 审查；相关修复补录并重做受影响的审核后再验收。回顾决策、对应准确提交的最终 GUI 证据，以及获授权的合入或发布终点完成交付。写作与新增记录规则在全过程生效；收尾时对受影响的文档、决策和冗余实现进行限定范围审计。
 
 技术方案设计使用 `research`，依据一手来源、集成成本和分发义务，对比可参考的开源实现与维护中的依赖。已确认的 PR/master 冲突，以及用户要求合并 master 时出现的冲突，使用 `resolving-merge-conflicts`，复用集成和模块负责人，并向 ODD 回传准确提交及受影响的验证结果。

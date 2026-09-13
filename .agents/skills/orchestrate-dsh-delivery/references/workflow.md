@@ -33,6 +33,7 @@ Use `dsh-translate-docs` only for explicitly requested extended translation. Use
 | `setup-pre-commit`, `git-guardrails-claude-code`, `setup-ts-deep-modules`, `migrate-to-shoehorn`, `scaffold-exercises` | Explicit setup or migration in a matching repository; importing a skill does not install its tools, hooks, dependencies, or sample packages |
 | `wizard` | Prepare a verified manual setup, credential, or cutover procedure only for actions the human must perform; ODD retains accepted scope and release authorization |
 | `resolving-merge-conflicts` | At PR preparation/live PR conflicts with verified master, or conflicts during a user-requested master merge; reuse integration/module owners, return the resolved commit and affected evidence to ODD |
+| `diagnosing-bugs` | The [supervision rules](delegation-routing.md#supervise-and-accept) stop blind reruns at a repeated failure and keep falsifiable diagnosis with the current owner; return the established cause and next verification to delivery |
 
 ## Product-provided skills and fixtures
 

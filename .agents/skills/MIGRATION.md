@@ -15,9 +15,18 @@ The selected source contains 41 skill directories and 114 files: 37 Matt skills,
 | ODD `agents/openai.yaml` | Retained; presentation text matches current delivery behavior |
 | Desktop `CUA-AVAILABILITY.md` | Retained with configured/connected/registered/native-callable/background-accepted levels; current service metadata and permission semantics govern execution |
 | Desktop `agents/openai.yaml` | Retained; presentation text covers ordinary acceptance and explicit A/B comparison |
+| `docs/agents/session-retro.md` | Consolidated into [repository retrospective rules](orchestrate-dsh-delivery/references/repository-context.md#retrospectives), [retro](retro/SKILL.md), and its [local lesson archive](retro/references/lessons.md); kept ids and repeat counts are retained |
 | `docs/agents/delegation-routing.md` | Relocated to [ODD delegation routing](orchestrate-dsh-delivery/references/delegation-routing.md); preserves explicit route selection, continuation, replacement criteria, and supervision without assuming all hosts share DSH queue semantics |
 
 [SOURCES.json](SOURCES.json) records source hashes and retained/adapted status for the local workflow files. The model priority table is unchanged from the supplied source. Restoring that table does not prove a provider is enabled or a listed model is available in the current runtime.
+
+## Referenced policies
+
+[ODD](orchestrate-dsh-delivery/SKILL.md) preserves the normal implementation/fix/continue/land delivery authority, subject to explicit user limits and the applicable message/release authorization. Root remains the coordinator for small and large work; unavailable writer isolation is a capability gap rather than permission for Root to implement. [The delivery ledger](orchestrate-dsh-delivery/references/delivery-ledger.md) preserves clean planning, remote-visible accepted inputs and exact-SHA handoff, one draft delivery PR, fixed owner/evidence/state rows, and centralized integration before the ready frontier advances. Explicit local-only requests keep an equivalent local record.
+
+The source ODD's targeted prerequisite check before expensive operations and its second-identical-failure diagnosis rule live in [delegation supervision](orchestrate-dsh-delivery/references/delegation-routing.md#supervise-and-accept). The latter reaches `diagnosing-bugs` when cause is unestablished. It does not restart owners or silently downgrade a model.
+
+Source `docs/agents/issue-tracker.md` and `docs/agents/domain.md` are represented by [repository context](orchestrate-dsh-delivery/references/repository-context.md): current tracker discovery, existing glossary/Agent Notes, accepted criteria, and dependency relationships. Old repository ids, Project configuration, and launcher/CI commands are not copied as current configuration. Source process Notes are historical rationale; the current [delivery decision](../notes/implemented/process/2026-09-13-matt-skills-and-dsh-delivery.md) owns the applicable migrated workflow. Source Desktop helper scripts and historical acceptance proofs do not establish this checkout's launch or product acceptance.
 
 ## Other source-only directories
 

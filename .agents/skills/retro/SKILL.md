@@ -23,7 +23,7 @@ The user has asked for a **retrospective**. You are suggesting improvements to t
 
 4. In coordinated delivery, return candidates and supporting evidence to ODD without prompting the user. The coordinator consolidates one keep-or-drop set in order of severity. A standalone user-invoked retrospective presents its own candidates directly.
 
-5. After the user keep-or-drop decision, the coordinator (or standalone owner) routes accepted edits to the owning writer and document them through the existing repository owner. Preserve a local lesson record only when that owner already exists; do not create an unrelated storage schema or write global memory.
+5. After the user keep-or-drop decision, the coordinator (or standalone owner) routes accepted edits to the owning writer and documents them through the existing repository owner. Record each kept lesson through [the local lesson archive](references/lessons.md), preserving its stable id and repeat count. This archive is gitignored repository-local state; it does not authorize global-memory changes or access to other sessions' logs.
 
 ## Reference
 

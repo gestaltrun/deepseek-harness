@@ -299,9 +299,10 @@
         {
           "files": [
             "SKILL.md",
-            "agents/openai.yaml"
+            "agents/openai.yaml",
+            "references/lessons.md"
           ],
-          "reason": "Review each owner's own session and return one consolidated keep/drop set through ODD; do not read foreign logs or modify global memories."
+          "reason": "Review each owner's own session, consolidate keep/drop choices through ODD, and preserve the source's local kept-lesson archive with stable ids and repeat counts."
         }
       ]
     },
@@ -614,6 +615,18 @@
       "path": ".agents/skills/orchestrate-dsh-delivery/references/delegation-routing.md",
       "sourceSha256": "d7c245eee3d8f063d983c6eab288e948279491cff29cf84061f3c91ab3c4619d",
       "disposition": "relocated-and-adapted"
+    },
+    {
+      "name": "session-retro",
+      "sourceRevision": "0f11d3e411de41b1eeff69dbb08f8c65d803b4be",
+      "sourcePath": "docs/agents/session-retro.md",
+      "paths": [
+        ".agents/skills/orchestrate-dsh-delivery/references/repository-context.md#retrospectives",
+        ".agents/skills/retro/SKILL.md",
+        ".agents/skills/retro/references/lessons.md"
+      ],
+      "sourceSha256": "19ad748b94d403606dadbe3951d9673fbb8daf5bbd39f548317ca9e44b64df97",
+      "disposition": "consolidated-and-adapted"
     }
   ]
 }
