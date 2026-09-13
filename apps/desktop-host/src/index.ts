@@ -30,6 +30,7 @@ import { installDesktopCommunityTransport, type DesktopCommunityTransport } from
 import { DESKTOP_COMMUNITY_WEBSOCKET_SCRIPT } from './community-websocket-client.ts'
 import { DESKTOP_STREAM_PATH, dispatchDesktopFetch } from './fetch-dispatcher.ts'
 import { DesktopRemoteAccess } from './remote-access.ts'
+import { desktopCommunityDefaults } from './community-defaults.ts'
 import {
   DESKTOP_HOST_PROTOCOL_VERSION,
   DESKTOP_PIPE_CHUNK_BYTES,
@@ -167,6 +168,7 @@ function desktopPatches(runtimeDir: string, projectDir: string, allowLinkedPacka
     loadOverlayPatches('dsh desktop', DESKTOP_PATCH),
   ]
   const rows = new Map(composeEntries(layers).flatMap(row => typeof row.id === 'string' ? [[row.id, row] as const] : []))
+  layers.push(desktopCommunityDefaults([...rows.values()]))
   const agentPresets = rows.get('agent-presets')
   if (agentPresets !== undefined) {
     layers.push([{

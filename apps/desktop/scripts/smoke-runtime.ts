@@ -19,6 +19,22 @@ export interface CommunityRouteSmoke {
 }
 
 /**
+ * Verify the installed Ego settings resolve the expected carrier launch default.
+ * @param fetchResource - Authenticated resource requests for this Host.
+ * @param expected - Launch arguments configured by this fresh profile.
+ */
+export async function smokeEgoLaunchConfiguration(
+  fetchResource: (path: string, init?: RequestInit) => Promise<Response>, expected: string,
+): Promise<void> {
+  const response = await fetchResource('/ego/api/get', { method: 'POST',
+    headers: { 'content-type': 'application/json' }, body: '{}' })
+  const body = await response.json() as { ok?: boolean; value?: { config?: { egoCliArgs?: unknown } } }
+  if (!response.ok || body.ok !== true || body.value?.config?.egoCliArgs !== expected) {
+    throw new Error('desktop runtime: installed Ego launch configuration differs from the profile default')
+  }
+}
+
+/**
  * Verify mounted community routes and fetch their actual browser modules.
  * @param fetchResource - Authenticated resource requests for the current Desktop or Web Host.
  * @param additionalClientEntries - Product clients required by the selected profile.
@@ -214,6 +230,9 @@ export function apply(ctx) {
       await smokeCommunityPluginRoutes((path, init) => host.fetch(new Request(new URL(path, 'dsh-app://app/'), {
         ...init, signal: AbortSignal.timeout(30_000),
       })), DESKTOP_PRODUCT_BUNDLES.filter(name => desktopRuntimeBundles(runtime).includes(name)))
+      await smokeEgoLaunchConfiguration((path, init) => host.fetch(new Request(new URL(path, 'dsh-app://app/'), {
+        ...init, signal: AbortSignal.timeout(30_000),
+      })), '--headless')
       await smokeDesktopCommunityAccess(path => host.fetch(new Request(new URL(path, 'dsh-app://app/'), {
         signal: AbortSignal.timeout(30_000),
       })))

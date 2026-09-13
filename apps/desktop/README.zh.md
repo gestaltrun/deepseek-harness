@@ -27,6 +27,8 @@ Desktop 同时内置[模型中心产品 bundle](../../product/model-center/READM
 
 Gestaltrun 构建包含[产品组合](../../product/community.json)选定的固定版本社区包，由聚合包启用一份 Better Sidebar。内置插件在插件管理中提供启停操作，其文件和版本随 Desktop 发行更新。已有 profile 升级时会首次启用新增的内置 bundle；之后保留用户的启停选择和自定义覆盖层。
 
+Desktop 默认以无头模式启动 Ego 的独立浏览器（`egoCliArgs: '--headless'`）。如需在下一次冷启动时显示浏览器窗口，在插件设置中将 Ego 的 `egoCliArgs` 显式设为空字符串。已有启动参数与配置表达式会保留；共享 Web profile 使用自身默认值。
+
 Electron 拥有 `$DSH_HOME/profiles/desktop`。其 `dependencies` 只包含已安装外部插件的精确版本；`dsh.profile.bundles` 包含内置 bundle，后接已启用插件。签名应用从 `resources/dsh` 提供 dsh、私有 Desktop Host 及其生产依赖。共享包链接解析到这些实际目录。宿主与插件在同一个内置上游 Node 进程中执行，使用正常的 realpath 解析；Desktop 不启用 `--preserve-symlinks`。CLI 不能启动或修改此 profile。
 
 本地启动页提供启动状态和可用恢复操作；加载后的 dsh 渲染进程仅接收桌面协议标记。独立插件窗口接收结构化的列表、安装、删除、更新和更新检查操作；两个渲染进程都无法访问文件系统、原始 Electron IPC、shell 或任意 pnpm 参数。

@@ -1,4 +1,5 @@
 /** Artifact and real-route smoke guards reject stale identities and degraded product assemblies. */
+import { smokeEgoLaunchConfiguration } from '../apps/desktop/scripts/smoke-runtime.ts'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
@@ -244,5 +245,17 @@ describe('retained candidate ownership', () => {
     writeFileSync(file, 'user content')
     expect(() => readRetainedCandidate(root, root)).toThrow('own temporary candidates')
     expect(readFileSync(file, 'utf8')).toBe('user content')
+  })
+})
+
+describe('installed Ego launch configuration', () => {
+  it('reads the installed settings and rejects the wrong carrier default', async () => {
+    const request = async () => new Response(JSON.stringify({ ok: true, value: { config: { egoCliArgs: '--headless' } } }))
+    await expect(smokeEgoLaunchConfiguration(request, '--headless')).resolves.toBeUndefined()
+    await expect(smokeEgoLaunchConfiguration(request, '')).rejects.toThrow('launch configuration differs')
+  })
+  it('rejects failed settings responses', async () => {
+    const request = async () => new Response(JSON.stringify({ ok: false }), { status: 403 })
+    await expect(smokeEgoLaunchConfiguration(request, '--headless')).rejects.toThrow('launch configuration differs')
   })
 })

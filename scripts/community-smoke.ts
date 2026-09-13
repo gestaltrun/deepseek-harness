@@ -17,7 +17,7 @@ import { pnpmInvocation } from './pnpm-invocation.ts'
 import { readProductArtifacts } from '../apps/desktop/scripts/product-artifacts.ts'
 import { DESKTOP_PRODUCT_BUNDLES } from '../apps/desktop/src/product-profile.ts'
 import { prepareDesktopPackageSet } from '../apps/desktop/scripts/prepare-package-set.ts'
-import { smokeCommunityPluginRoutes, smokeDesktopRuntime, type CommunityRouteSmoke } from '../apps/desktop/scripts/smoke-runtime.ts'
+import { smokeCommunityPluginRoutes, smokeDesktopRuntime, smokeEgoLaunchConfiguration, type CommunityRouteSmoke } from '../apps/desktop/scripts/smoke-runtime.ts'
 import { buildCommunityClientSeed, smokeCommunityClientModules } from '../apps/desktop/scripts/community-client-modules.ts'
 import { desktopRuntimeFileExclusion, prepareDesktopNativeHelpers } from '../apps/desktop/scripts/runtime-file-policy.ts'
 import { createPluginProfile, createRuntimeProjectMetadata } from '../apps/desktop/src/project-manager.ts'
@@ -270,6 +270,7 @@ export async function smokeCommunityWeb(runtime: string, scratch: string, bundle
       return fetch(target, { ...init, headers, signal: AbortSignal.timeout(30_000), redirect: 'error' })
     }
     const result = await smokeCommunityPluginRoutes(fetchResource, DESKTOP_PRODUCT_BUNDLES.filter(name => bundles.includes(name)))
+    await smokeEgoLaunchConfiguration(fetchResource, '')
     await smokeCommunityClientModules(fetchResource, await buildCommunityClientSeed(join(home, 'client-seed')))
     return result
   } finally {
