@@ -31,9 +31,11 @@ For multi-session work, call [to-spec](../to-spec/SKILL.md) and then [to-tickets
 
 ## Assign owners and implement
 
+Read [session roles](references/session-roles.md) and [delegation routing](references/delegation-routing.md) before dispatching or continuing a delivery owner. When the user permits CLIProxyAPI and its live catalog confirms the exact models and required tools, apply the existing [role-specific model priorities](references/model-routing-cliproxyapi.md), including exclusions and fallback conditions. Root model selection belongs to the user; ODD never routes or changes itself.
+
 The coordinator keeps the demand, dependency graph, evidence, and user decisions. Reuse stable module owners through implementation, CI, review, and acceptance fixes. Give concurrent writers disjoint worktrees and branches; spawning a subagent alone does not isolate files. Use collaboration/subagent tools for subtasks. Create a user-owned Codex task only when the user explicitly requests a new task.
 
-Choose only the roles the work needs: scheme, UI, module implementation, integration/environment, Quality, and independent review. The primary author is not the independent reviewer. Select tools and models from actual availability; never hardcode a provider route or assume a model name confers computer-use capability. When independent ownership cannot be provided, report that evidence gap rather than claiming independent review.
+Choose only the roles the work needs: scheme, UI, module implementation, integration/environment, Quality, and independent review. For coordinated delivery, Root delegates implementation and integration to those owners. The primary author is not the independent reviewer. Select from the applicable user-approved model priorities and actual tool availability; a model name alone does not establish computer-use capability. When a required independent owner or model cannot be provided, report that evidence gap rather than claiming the routing requirement is met.
 
 For a coordinated feature, one integration branch and PR may close the spec and its tickets. Keep independent changes separate. Use a PR stack only when actual PR dependencies require it, following [dsh-merging-stacked-prs](../dsh-merging-stacked-prs/SKILL.md). Across repositories, use exact source/package dependencies and the delivery graph instead of a same-repository stack.
 

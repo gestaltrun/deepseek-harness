@@ -18,9 +18,11 @@ Start from [architecture](../../../../docs/architecture.md), the [glossary](../.
 
 ## Delegation and context reuse
 
+Read [delegation routing](delegation-routing.md) for the provider-neutral dispatch and continuation rules and [session roles](session-roles.md) for accountable owners. [CLIProxyAPI priorities](model-routing-cliproxyapi.md) apply only with that provider's permission and a verified live catalog; other runtimes retain their actual route constraints.
+
 Use the available collaboration/subagent mechanism for bounded independent work. Parallel writers require explicit disjoint filesystem ownership; a new agent or forked conversation does not itself create a worktree. Reuse the module owner, reviewer, and environment owner through coherent fixes. Start a replacement only for unavailable capability, required independence, or an owner that cannot continue, and record the handoff.
 
-Use actual provider/tool availability rather than imported model-routing tables. A user-owned task is created only when the user explicitly requests it. Keep live executor identities in the current delivery state, wait for completion, and do not infer success from dispatch. The coordinator preserves completed evidence and all outstanding user requirements across context compaction or handoff.
+Verify actual provider/tool availability before applying the selected model policy. A user-owned task is created only when the user explicitly requests it. Keep live executor identities in the current delivery state, wait for completion, and do not infer success from dispatch. The coordinator preserves completed evidence and all outstanding user requirements across context compaction or handoff.
 
 ## Retrospectives
 

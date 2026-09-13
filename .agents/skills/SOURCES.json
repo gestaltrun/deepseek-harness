@@ -547,5 +547,73 @@
         "scope voice changes to user-facing prose and defer repository contracts to dsh-prose-standard"
       ]
     }
+  ],
+  "workflowMigrations": [
+    {
+      "name": "orchestrate-dsh-delivery",
+      "sourceRevision": "0f11d3e411de41b1eeff69dbb08f8c65d803b4be",
+      "sourcePath": ".agents/skills/orchestrate-dsh-delivery",
+      "path": ".agents/skills/orchestrate-dsh-delivery",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sourceSha256": "bdfbb051ac783c77d716657ad5ae44b02c380ee4eea4959dc945dc86d4aa758c",
+          "trackedAtSourceRevision": true,
+          "disposition": "adapted"
+        },
+        {
+          "path": "agents/openai.yaml",
+          "sourceSha256": "085453caa2121bb6616ff0db14a0ba336518f450ba29e2bba18787c4e4ddb6eb",
+          "trackedAtSourceRevision": true,
+          "disposition": "adapted"
+        },
+        {
+          "path": "references/model-routing-cliproxyapi.md",
+          "sourceSha256": "83229c81dcfc3386ebe97bc8d72bd9af5c86477480fd80b18c5dd1ea1ceec431",
+          "trackedAtSourceRevision": true,
+          "disposition": "unchanged"
+        },
+        {
+          "path": "references/session-roles.md",
+          "sourceSha256": "4cd81e5ac03429d51270a42d96b597a458c4a366e1c4b42d0521945d65392296",
+          "trackedAtSourceRevision": true,
+          "disposition": "adapted"
+        }
+      ]
+    },
+    {
+      "name": "dsh-desktop-test-instance",
+      "sourceRevision": "0f11d3e411de41b1eeff69dbb08f8c65d803b4be",
+      "sourcePath": ".agents/skills/dsh-desktop-test-instance",
+      "path": ".agents/skills/dsh-desktop-test-instance",
+      "files": [
+        {
+          "path": "CUA-AVAILABILITY.md",
+          "sourceSha256": "db4de719bd2f40636947e507f64ce00326359f16d4a3aa4329f168d44e908edf",
+          "trackedAtSourceRevision": true,
+          "disposition": "adapted"
+        },
+        {
+          "path": "SKILL.md",
+          "sourceSha256": "72db1c927582d252870db0571314a53d62f9cc515f8e06e2736fb11a422a065b",
+          "trackedAtSourceRevision": true,
+          "disposition": "adapted"
+        },
+        {
+          "path": "agents/openai.yaml",
+          "sourceSha256": "26e1152551ef5b4b965fa95e2b0833647f773bc4118339c2e8f9dbc5c84cc934",
+          "trackedAtSourceRevision": true,
+          "disposition": "adapted"
+        }
+      ]
+    },
+    {
+      "name": "delegation-routing",
+      "sourceRevision": "0f11d3e411de41b1eeff69dbb08f8c65d803b4be",
+      "sourcePath": "docs/agents/delegation-routing.md",
+      "path": ".agents/skills/orchestrate-dsh-delivery/references/delegation-routing.md",
+      "sourceSha256": "d7c245eee3d8f063d983c6eab288e948279491cff29cf84061f3c91ab3c4619d",
+      "disposition": "relocated-and-adapted"
+    }
   ]
 }

@@ -7,6 +7,8 @@ description: Prepare, operate, replace, or clean an isolated DSH Electron accept
 
 Use one instance for ordinary acceptance and two named instances (`baseline` and `candidate`) for an explicit comparison. Read the current [Desktop documentation](../../../apps/desktop/README.md), launcher, and available native computer-use instructions before launching. A source development run, packaged application, mock-provider run, and real-model run are different evidence lanes.
 
+When the route selects Codex computer use, establish its actual level through [CUA availability evidence](CUA-AVAILABILITY.md). Configuration and tool registration do not establish a native-callable turn or a completed background product route. Follow the current service's entry protocol and the accepted driver/runtime scope.
+
 ## Establish identity and isolation
 
 Inspect existing goal-owned instances before creating another. Maintain a gitignored runtime record under the task's artifact directory with the application/checkout path, commit and package identity, launch mode, Harness home, Electron user-data, writable profile/package tree, PIDs, ports, comparison side, input owner, evidence paths, and retained data. Keep ordinary and comparison records distinct.

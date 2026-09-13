@@ -2,6 +2,8 @@
 
 The map assigns jobs, not mandatory invocations. Preserve each skill's invocation metadata. Explicit-only skills are entered by the user; ODD uses available model-invocable primitives and the already accepted task instead of loading an explicit-only workflow indirectly. In particular, `grilling` plus `domain-modeling` supplies ordinary design clarification; the extended translation workflow always requires its explicit user invocation.
 
+[Session roles](session-roles.md) and [delegation routing](delegation-routing.md) govern owner selection and reuse at each stage. For permitted CLIProxyAPI installations, the [model priority table](model-routing-cliproxyapi.md) selects role-specific candidates after live capability checks. Desktop's [CUA availability reference](../../dsh-desktop-test-instance/CUA-AVAILABILITY.md) distinguishes configuration from actual native execution. These are workflow references, not additional skills or new sessions.
+
 ## Delivery stages
 
 | Stage | Matt workflow | DSH integration and result |

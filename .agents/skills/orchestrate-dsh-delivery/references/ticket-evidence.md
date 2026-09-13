@@ -4,7 +4,7 @@ Use this reference when ODD verifies a combined candidate with product-visible G
 
 ## Record and attach
 
-The existing Quality/environment owner walks the real supported product route and records its result. Keep one input driver per instance and one scenario run per storyboard. Native Desktop work uses [dsh-desktop-test-instance](../../dsh-desktop-test-instance/SKILL.md); Web footage cannot substitute for required Electron behavior. An upstream A/B comparison keeps separate baseline and candidate recordings with their respective identities.
+The existing Delivery/environment owner walks the real supported product route and records its result, using the acceptance criteria and runtime observations supplied by Quality. Keep one input driver per instance and one scenario run per storyboard. Native Desktop work uses [dsh-desktop-test-instance](../../dsh-desktop-test-instance/SKILL.md); Web footage cannot substitute for required Electron behavior. An upstream A/B comparison keeps separate baseline and candidate recordings with their respective identities.
 
 Associate every GUI ticket with evidence for its acceptance criteria. A shared end-to-end GIF may cover several tickets when each ticket identifies its demonstrated steps and expected results; a separate recording session per ticket is unnecessary. Record the exact source/artifact identity, environment and transport, initial state, scenario steps, expected and observed outcomes, GIF link, and limitations. Include the frozen UI draft and complementary checks for behavior the GIF cannot show.
 

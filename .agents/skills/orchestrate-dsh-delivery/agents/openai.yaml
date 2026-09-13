@@ -1,0 +1,4 @@
+interface:
+  display_name: "Orchestrate DSH Delivery"
+  short_description: "Coordinate owners, ticket evidence, review, and delivery"
+  default_prompt: "Use $orchestrate-dsh-delivery to coordinate this specification through isolated owners, ticket GIF reviews, user acceptance, and the authorized delivery endpoint."
