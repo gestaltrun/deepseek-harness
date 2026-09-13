@@ -14,6 +14,8 @@ import {
   type CommunityArtifact, type CommunityPlugin,
 } from './community.ts'
 import { pnpmInvocation } from './pnpm-invocation.ts'
+import { readProductArtifacts } from '../apps/desktop/scripts/product-artifacts.ts'
+import { DESKTOP_PRODUCT_BUNDLES } from '../apps/desktop/src/product-profile.ts'
 import { prepareDesktopPackageSet } from '../apps/desktop/scripts/prepare-package-set.ts'
 import { smokeCommunityPluginRoutes, smokeDesktopRuntime, type CommunityRouteSmoke } from '../apps/desktop/scripts/smoke-runtime.ts'
 import { buildCommunityClientSeed, smokeCommunityClientModules } from '../apps/desktop/scripts/community-client-modules.ts'
@@ -54,6 +56,14 @@ function candidateDigest(artifacts: unknown): string {
   return createHash('sha256').update(JSON.stringify(rows)).digest('hex')
 }
 
+function reportArtifacts(report: Readonly<Record<string, unknown>>): unknown[] {
+  if (!Array.isArray(report.artifacts)
+    || (report.productArtifacts !== undefined && !Array.isArray(report.productArtifacts))) {
+    throw new Error('community smoke: retained report has invalid artifact identities')
+  }
+  return [...report.artifacts as unknown[], ...((report.productArtifacts as unknown[] | undefined) ?? [])]
+}
+
 /**
  * Verify an owned retained candidate before changing any of its files.
  * @param directory - Previously retained smoke directory.
@@ -68,7 +78,7 @@ export function readRetainedCandidate(directory: string, root = ROOT): { scratch
   const owner = manifest(join(scratch, OWNER_FILE))
   const report = manifest(join(scratch, 'report.json'))
   if (owner.schemaVersion !== 1 || owner.root !== realpathSync(root) || owner.scratch !== scratch
-    || owner.artifacts !== candidateDigest(report.artifacts)) throw new Error('community smoke: retained candidate ownership mismatch')
+    || owner.artifacts !== candidateDigest(reportArtifacts(report))) throw new Error('community smoke: retained candidate ownership mismatch')
   return { scratch, report }
 }
 
@@ -259,7 +269,7 @@ export async function smokeCommunityWeb(runtime: string, scratch: string, bundle
       headers.set('origin', url.origin)
       return fetch(target, { ...init, headers, signal: AbortSignal.timeout(30_000), redirect: 'error' })
     }
-    const result = await smokeCommunityPluginRoutes(fetchResource)
+    const result = await smokeCommunityPluginRoutes(fetchResource, DESKTOP_PRODUCT_BUNDLES.filter(name => bundles.includes(name)))
     await smokeCommunityClientModules(fetchResource, await buildCommunityClientSeed(join(home, 'client-seed')))
     return result
   } finally {
@@ -307,6 +317,12 @@ async function main(): Promise<void> {
     }
     const artifacts = verifyCommunityArchives(communityOutput, plugins, commits)
     report.artifacts = artifacts
+    const productInput = retained === undefined ? join(ROOT, 'product/dist') : join(scratch, 'installation/desktop-packages')
+    const productArtifacts = readProductArtifacts(ROOT, productInput, String(report.commit))
+    if (retained !== undefined && candidateDigest(retained.report.productArtifacts) !== candidateDigest(productArtifacts)) {
+      throw new Error('community smoke: retained product artifacts differ from the candidate')
+    }
+    report.productArtifacts = productArtifacts
     console.log(retained === undefined ? 'community smoke: packing the current fork runtime'
       : `community smoke: resuming verified candidate ${candidateDigest(artifacts)}`)
     const dsh = join(scratch, 'dsh-tarballs')
@@ -322,9 +338,9 @@ async function main(): Promise<void> {
       await runPnpm(['--dir', 'native/system', 'run', 'build:ts'], ROOT, scratch)
       await runPnpm(['--dir', 'native/system/packages/entry', 'pack', '--pack-destination', native], ROOT, scratch)
     }
-    const roots = plugins.filter(plugin => plugin.defaultBundle).map(plugin => plugin.package)
+    const roots = [...plugins.filter(plugin => plugin.defaultBundle).map(plugin => plugin.package), ...DESKTOP_PRODUCT_BUNDLES]
     const bundles = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', ...roots]
-    if (retained === undefined) prepareDesktopPackageSet([dsh, vendor, native, communityOutput], installation, roots)
+    if (retained === undefined) prepareDesktopPackageSet([dsh, vendor, native, communityOutput, productInput], installation, roots)
     const rootManifest = manifest(join(ROOT, 'package.json'))
     const release = parseDesktopRelease({ schemaVersion: 1, version: rootManifest.version,
       hostProtocolVersion: DESKTOP_HOST_PROTOCOL_VERSION, nodeVersion: process.versions.node,
@@ -344,7 +360,8 @@ async function main(): Promise<void> {
     writeFileSync(join(runtime, 'package.json'), JSON.stringify({ name: '@gestaltrun/community-smoke-runtime', private: true,
       version: release.version, type: 'module', dependencies: Object.fromEntries(packageSet.packages.map(entry => [entry.name, entry.version])),
       dsh: { profile: { bundles } } }))
-    const installedArtifacts = artifacts.filter(artifact => packageSet.packages.some(record => record.name === artifact.name))
+    const installedArtifacts = [...artifacts, ...productArtifacts]
+      .filter(artifact => packageSet.packages.some(record => record.name === artifact.name))
     report.installation = {
       ...verifyCommunityInstallation(runtime, installedArtifacts),
       communityPackages: installedArtifacts.map(entry => entry.name),
@@ -379,7 +396,7 @@ async function main(): Promise<void> {
     const temporary = join(scratch, 'report.json')
     writeFileSync(temporary, JSON.stringify(report, null, 2) + '\n', { mode: 0o600 })
     if (report.artifacts !== undefined) writeFileSync(join(scratch, OWNER_FILE), JSON.stringify({ schemaVersion: 1,
-      root: realpathSync(ROOT), scratch, artifacts: candidateDigest(report.artifacts) }) + '\n', { mode: 0o600 })
+      root: realpathSync(ROOT), scratch, artifacts: candidateDigest(reportArtifacts(report)) }) + '\n', { mode: 0o600 })
     const staged = `${output}.${String(process.pid)}.tmp`
     cpSync(temporary, staged)
     renameSync(staged, output)

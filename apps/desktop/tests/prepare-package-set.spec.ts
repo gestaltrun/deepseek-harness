@@ -10,6 +10,19 @@ function packed(name: string, manifest: Record<string, unknown> = {}): PackedDes
 }
 
 describe('desktop package-set selection', () => {
+  it('includes a product bundle and its internal peers only when selected', () => {
+    const available = new Map<string, PackedDesktopPackage>([
+      ['@deepseek-ai/dsh', packed('@deepseek-ai/dsh')],
+      ['@deepseek-ai/dsh-desktop-host', packed('@deepseek-ai/dsh-desktop-host')],
+      ['@gestaltrun/dsh-model-center', packed('@gestaltrun/dsh-model-center', { peerDependencies: { '@deepseek-ai/dsh-llm': '1.0.0' } })],
+      ['@deepseek-ai/dsh-llm', packed('@deepseek-ai/dsh-llm')],
+    ])
+    expect(selectDesktopPackageClosure(available, ['@gestaltrun/dsh-model-center']).map(item => item.manifest.name))
+      .toEqual(['@deepseek-ai/dsh', '@deepseek-ai/dsh-desktop-host', '@deepseek-ai/dsh-llm', '@gestaltrun/dsh-model-center'])
+    available.delete('@deepseek-ai/dsh-llm')
+    expect(() => selectDesktopPackageClosure(available, ['@gestaltrun/dsh-model-center'])).toThrow('requires unpacked internal package')
+  })
+
   afterEach(() => {
     vi.unstubAllEnvs()
   })

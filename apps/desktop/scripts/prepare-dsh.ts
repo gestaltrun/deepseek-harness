@@ -27,6 +27,7 @@ import {
 import { resolveDesktopBuildTarget, resolveDesktopTargetBuildPaths } from './desktop-build-paths.mjs'
 import { desktopRuntimeFileExclusion, prepareDesktopNativeHelpers } from './runtime-file-policy.ts'
 import { readCommunityPlugins } from '../../../scripts/community.ts'
+import { DESKTOP_PRODUCT_BUNDLES } from '../src/product-profile.ts'
 
 const APP_ROOT = resolve(import.meta.dirname, '..')
 const BUILD_PATHS = resolveDesktopTargetBuildPaths()
@@ -110,7 +111,7 @@ async function main(): Promise<void> {
     copyFileSync(join(PACKAGE_SET_ROOT, DESKTOP_PACKAGE_SET_FILE), join(BUILD_ROOT, DESKTOP_PACKAGE_SET_FILE))
     cpSync(join(PACKAGE_SET_ROOT, DESKTOP_PACKAGES_DIR), join(BUILD_ROOT, DESKTOP_PACKAGES_DIR), { recursive: true })
     const bundles = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app',
-      ...readCommunityPlugins().filter(plugin => plugin.defaultBundle).map(plugin => plugin.package)]
+      ...readCommunityPlugins().filter(plugin => plugin.defaultBundle).map(plugin => plugin.package), ...DESKTOP_PRODUCT_BUNDLES]
     createRuntimeProjectMetadata(BUILD_ROOT, release, bundles)
     await runPnpm(['install', '--lockfile-only'])
     verifyDesktopCoreLockfile(

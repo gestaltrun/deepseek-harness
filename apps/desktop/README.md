@@ -21,6 +21,8 @@ The [Electron packaging and update Agent Note](../../.agents/notes/implemented/a
 
 ## Installation ownership
 
+Desktop also carries the [Model Center product bundle](../../product/model-center/README.md). It uses the same bundled-plugin activation and upgrade rules as the community packages, and replaces the legacy capability panel with inline model controls.
+
 The bundled remote-access plugin provides a separate loopback HTTP listener. Its settings can enable LAN binding; other devices must pair before accessing sessions. Stopping or revoking a device closes its active HTTP and WebSocket connections. Native Desktop requests keep their private carrier.
 
 The Gestaltrun build includes the pinned community packages selected by [the product composition](../../product/community.json). The aggregate enables Better Sidebar once. Bundled plugins appear in plugin management with activation controls; their files and versions change with the Desktop release. A newly shipped bundle is enabled once when an existing profile upgrades; subsequent activation choices and user overlays are retained.

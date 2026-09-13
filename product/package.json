@@ -1,0 +1,12 @@
+{
+  "name": "@gestaltrun/product",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.7.0",
+  "scripts": {
+    "build": "pnpm --filter @gestaltrun/dsh-model-center build",
+    "test": "pnpm --filter @gestaltrun/dsh-model-center test",
+    "typecheck": "pnpm --filter @gestaltrun/dsh-model-center typecheck",
+    "pack": "pnpm --filter @gestaltrun/dsh-model-center release:pack"
+  }
+}

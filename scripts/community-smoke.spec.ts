@@ -199,13 +199,18 @@ describe('Desktop community access verification', () => {
 })
 
 describe('retained candidate ownership', () => {
-  function candidate(): { scratch: string; project: string; artifact: CommunityArtifact } {
+  function candidate(includeProduct = false): { scratch: string; project: string; artifact: CommunityArtifact } {
     const { root: project, artifact } = archive()
     const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'gestaltrun-community-smoke-')))
     roots.push(scratch)
     const fields = ['name', 'version', 'filename', 'integrity', 'repository', 'commit'] as const
-    const artifacts = createHash('sha256').update(JSON.stringify([fields.map(field => artifact[field])])).digest('hex')
-    writeFileSync(join(scratch, 'report.json'), JSON.stringify({ artifacts: [artifact] }))
+    const productArtifacts = includeProduct ? [{ ...artifact, name: '@gestaltrun/dsh-model-center',
+      repository: 'gestaltrun/deepseek-harness', filename: 'model-center.tgz' }] : []
+    const rows = [artifact, ...productArtifacts].map(item => fields.map(field => item[field]))
+      .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)))
+    const artifacts = createHash('sha256').update(JSON.stringify(rows)).digest('hex')
+    writeFileSync(join(scratch, 'report.json'), JSON.stringify({ artifacts: [artifact],
+      ...(includeProduct ? { productArtifacts } : {}) }))
     writeFileSync(join(scratch, '.community-smoke-owner.json'), JSON.stringify({ schemaVersion: 1,
       root: realpathSync(project), scratch, artifacts }))
     return { scratch, project, artifact }
@@ -220,6 +225,16 @@ describe('retained candidate ownership', () => {
   it('rejects artifact changes in a retained report', () => {
     const { scratch, project, artifact } = candidate()
     writeFileSync(join(scratch, 'report.json'), JSON.stringify({ artifacts: [{ ...artifact, integrity: 'changed' }] }))
+    expect(() => readRetainedCandidate(scratch, project)).toThrow('ownership mismatch')
+  })
+
+  it('binds product artifacts into the retained candidate identity', () => {
+    const { scratch, project } = candidate(true)
+    expect(() => readRetainedCandidate(scratch, project)).not.toThrow()
+    const file = join(scratch, 'report.json')
+    const report = JSON.parse(readFileSync(file, 'utf8')) as { productArtifacts: CommunityArtifact[] }
+    report.productArtifacts[0] = { ...report.productArtifacts[0]!, integrity: 'tampered' }
+    writeFileSync(file, JSON.stringify(report))
     expect(() => readRetainedCandidate(scratch, project)).toThrow('ownership mismatch')
   })
 

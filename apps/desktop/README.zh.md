@@ -21,6 +21,8 @@
 
 ## 安装归属
 
+Desktop 同时内置[模型中心产品 bundle](../../product/model-center/README.zh.md)，沿用社区包的内置插件启停和升级规则，并使用模型行内控件替换旧模型能力面板。
+
 内置远程访问插件提供独立的回环 HTTP 监听器。可在设置中开启局域网绑定；其他设备必须配对才能访问会话。停止或撤销设备时，其活动 HTTP 与 WebSocket 连接会关闭。原生 Desktop 请求继续使用私有载体。
 
 Gestaltrun 构建包含[产品组合](../../product/community.json)选定的固定版本社区包，由聚合包启用一份 Better Sidebar。内置插件在插件管理中提供启停操作，其文件和版本随 Desktop 发行更新。已有 profile 升级时会首次启用新增的内置 bundle；之后保留用户的启停选择和自定义覆盖层。

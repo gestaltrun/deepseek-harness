@@ -25,6 +25,7 @@ import { capture } from '../../../scripts/release/process.ts'
 import { tarballFiles } from '../../../scripts/release/tarball.ts'
 import { resolveDesktopTargetBuildPaths } from './desktop-build-paths.mjs'
 import { COMMUNITY_OUTPUT, readCommunityPlugins } from '../../../scripts/community.ts'
+import { DESKTOP_PRODUCT_BUNDLES } from '../src/product-profile.ts'
 
 const DSH_PACKAGE = '@deepseek-ai/dsh'
 const ROOT_PACKAGES = [DSH_PACKAGE, DESKTOP_HOST_PACKAGE] as const
@@ -162,6 +163,7 @@ function main(): void {
     buildPaths.packedVendor,
     buildPaths.packedLandlock,
     COMMUNITY_OUTPUT,
+    resolve(REPOSITORY_ROOT, 'product/dist'),
   ]
   const { values } = parseArgs({
     options: { from: { type: 'string', multiple: true }, out: { type: 'string' } },
@@ -169,7 +171,9 @@ function main(): void {
   })
   const inputs = (values.from ?? defaultInputs).map(path => resolve(REPOSITORY_ROOT, path))
   const output = values.out === undefined ? buildPaths.packageSet : resolve(REPOSITORY_ROOT, values.out)
-  prepareDesktopPackageSet(inputs, output, readCommunityPlugins().filter(plugin => plugin.defaultBundle).map(plugin => plugin.package))
+  const bundles = [...readCommunityPlugins().filter(plugin => plugin.defaultBundle).map(plugin => plugin.package),
+    ...DESKTOP_PRODUCT_BUNDLES]
+  prepareDesktopPackageSet(inputs, output, bundles)
   console.log(`desktop package set: prepared ${output}`)
 }
 

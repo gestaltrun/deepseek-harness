@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DesktopHostProcess } from '../src/host-process.ts'
 import { createPluginProfile, desktopRuntimeBundles } from '../src/project-manager.ts'
+import { DESKTOP_PRODUCT_BUNDLES } from '../src/product-profile.ts'
 import { linkDesktopHostPackages, validateDesktopPluginGraph } from '../src/profile-packages.ts'
 import type { DesktopRuntimeDescriptor } from '../src/runtime-tree.ts'
 import { buildCommunityClientSeed, smokeCommunityClientModules } from './community-client-modules.ts'
@@ -20,10 +21,12 @@ export interface CommunityRouteSmoke {
 /**
  * Verify mounted community routes and fetch their actual browser modules.
  * @param fetchResource - Authenticated resource requests for the current Desktop or Web Host.
+ * @param additionalClientEntries - Product clients required by the selected profile.
  * @returns Community entry ids and route names that executed successfully.
  */
 export async function smokeCommunityPluginRoutes(
   fetchResource: (path: string, init?: RequestInit) => Promise<Response>,
+  additionalClientEntries: readonly string[] = [],
 ): Promise<CommunityRouteSmoke> {
   const index = await fetchResource('/')
   const html = await index.text()
@@ -34,7 +37,7 @@ export async function smokeCommunityPluginRoutes(
   if (!Array.isArray(boot.entries)) throw new Error('community smoke: invalid client boot entries')
   const expected = ['@gestaltrun/dsh-better-sidebar', '@gestaltrun/dsh-web-all',
     '@gestaltrun/dsh-ego-browser', '@gestaltrun/dsh-github-workbench', '@gestaltrun/dsh-git-remotes',
-    '@gestaltrun/dsh-sidebar-office', '@gestaltrun/dsh-video-preview']
+    '@gestaltrun/dsh-sidebar-office', '@gestaltrun/dsh-video-preview', ...additionalClientEntries]
   const retired = new Set(['@gestaltrun/dsh-client-ui-market',
     '@gestaltrun/dsh-client-ui-preset-center', '@gestaltrun/dsh-client-ui-community-plugins'])
   if (boot.entries.some(entry => retired.has(entry.id))) throw new Error('community smoke: Workshop client remains in the boot graph')
@@ -210,7 +213,7 @@ export function apply(ctx) {
     if (hasCommunity) {
       await smokeCommunityPluginRoutes((path, init) => host.fetch(new Request(new URL(path, 'dsh-app://app/'), {
         ...init, signal: AbortSignal.timeout(30_000),
-      })))
+      })), DESKTOP_PRODUCT_BUNDLES.filter(name => desktopRuntimeBundles(runtime).includes(name)))
       await smokeDesktopCommunityAccess(path => host.fetch(new Request(new URL(path, 'dsh-app://app/'), {
         signal: AbortSignal.timeout(30_000),
       })))

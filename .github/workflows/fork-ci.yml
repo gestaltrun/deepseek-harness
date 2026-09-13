@@ -260,6 +260,12 @@ jobs:
       - run: pnpm run community:check
       - run: pnpm run community:pack
       - run: pnpm run build:official
+      - name: Build and verify product-owned plugins
+        run: |
+          pnpm --dir product install --frozen-lockfile --ignore-scripts --config.enable-global-virtual-store=false
+          pnpm --dir product run typecheck
+          pnpm --dir product run test
+          pnpm --dir product run pack
       - run: pnpm run ci:run --plan "${{ runner.temp }}/fork-ci-plan/fork-ci-plan.json" --lane product
       - run: pnpm run community:smoke
 
