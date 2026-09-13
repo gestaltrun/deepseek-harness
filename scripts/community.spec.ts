@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { checkCommunitySources, readCommunityPlugins, readPublishedCommunityArchive, verifyCommunityPackage } from './community.ts'
+import { checkCommunitySources, readCommunityPlugins, verifyPublishedCommunityArchive, verifyCommunityPackage } from './community.ts'
 
 describe('community product package isolation', () => {
   it('mounts Better Sidebar once via the aggregate and enables independent product bundles', () => {
@@ -64,17 +64,9 @@ describe('published community archive pins', () => {
     integrity: `sha512-${createHash('sha512').update(bytes).digest('base64')}`,
   }
 
-  it('retains the registry bytes and rejects changed bytes or unsuccessful responses', async () => {
-    const result = await readPublishedCommunityArchive(published, (url, init) => {
-      expect(url).toBe(published.tarball)
-      expect(init?.redirect).toBe('error')
-      return Promise.resolve(new Response(bytes))
-    })
-    expect(result).toEqual(bytes)
-    await expect(readPublishedCommunityArchive(published, () => Promise.resolve(new Response('changed'))))
-      .rejects.toThrow('integrity mismatch')
-    await expect(readPublishedCommunityArchive(published, () => Promise.resolve(new Response(null, { status: 404 }))))
-      .rejects.toThrow('HTTP 404')
+  it('accepts the locked registry bytes and rejects modified contents', () => {
+    expect(() => { verifyPublishedCommunityArchive(published, bytes) }).not.toThrow()
+    expect(() => { verifyPublishedCommunityArchive(published, Buffer.from('changed')) }).toThrow('integrity mismatch')
   })
 
   it('binds a published artifact to an exact source revision, registry URL and integrity', () => {

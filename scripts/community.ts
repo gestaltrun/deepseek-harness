@@ -4,7 +4,9 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { copyFileSync, globSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { tmpdir } from 'node:os'
 import { parseArgs } from 'node:util'
+import { execa } from 'execa'
 import { pnpmInvocation } from './pnpm-invocation.ts'
 
 /** One independently versioned plugin source in the product composition. */
@@ -142,20 +144,36 @@ export function checkCommunitySources(root = ROOT): void {
 }
 
 /**
- * Download a pinned registry archive without replacing its original gzip bytes.
- * @param artifact - Validated registry URL, released source commit, and exact integrity.
- * @param request - HTTP transport used to fetch the public registry archive.
- * @returns Verified original archive bytes.
+ * Reject bytes that differ from the immutable published archive.
+ * @param artifact - Validated published archive pin.
+ * @param bytes - Original downloaded archive bytes.
  */
-export async function readPublishedCommunityArchive(
-  artifact: PublishedCommunityArtifact, request: typeof fetch = fetch,
-): Promise<Buffer> {
-  const response = await request(artifact.tarball, { redirect: 'error', signal: AbortSignal.timeout(60_000) })
-  if (!response.ok) throw new Error(`community: published archive returned HTTP ${String(response.status)}`)
-  const bytes = Buffer.from(await response.arrayBuffer())
+export function verifyPublishedCommunityArchive(artifact: PublishedCommunityArtifact, bytes: Buffer): void {
   const integrity = `sha512-${createHash('sha512').update(bytes).digest('base64')}`
   if (integrity !== artifact.integrity) throw new Error('community: published archive integrity mismatch')
-  return bytes
+}
+
+/**
+ * Fetch the exact registry tarball through npm's configured proxy and retry policy.
+ * @param artifact - Validated registry URL, released source commit, and exact integrity.
+ * @returns Verified original archive bytes, without repacking or recompression.
+ */
+export async function readPublishedCommunityArchive(artifact: PublishedCommunityArtifact): Promise<Buffer> {
+  const scratch = mkdtempSync(join(tmpdir(), 'gestaltrun-published-archive-'))
+  try {
+    await execa('npm', ['pack', artifact.tarball, '--ignore-scripts', '--json', '--pack-destination', scratch,
+      '--fetch-retries=2', '--fetch-retry-mintimeout=1000', '--fetch-retry-maxtimeout=10000', '--fetch-timeout=60000'], {
+      cwd: ROOT, timeout: 240_000, forceKillAfterDelay: 5000,
+    })
+    const archives = readdirSync(scratch).filter(name => name.endsWith('.tgz'))
+    const archive = archives[0]
+    if (archives.length !== 1 || archive === undefined) throw new Error('community: npm must return one published archive')
+    const bytes = readFileSync(join(scratch, archive))
+    verifyPublishedCommunityArchive(artifact, bytes)
+    return bytes
+  } finally {
+    rmSync(scratch, { recursive: true, force: true })
+  }
 }
 
 function runPnpm(args: string[], cwd = ROOT): void {
