@@ -1,6 +1,7 @@
 /** Boot the materialized target runtime without access to a user's Harness profile. */
 
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DesktopHostProcess } from '../src/host-process.ts'
@@ -99,6 +100,45 @@ export async function smokeDesktopCommunityAccess(
   await usage.arrayBuffer()
 }
 
+async function smokeCommunityWorkspace(host: DesktopHostProcess, workspace: string, sessionId: string): Promise<void> {
+  const fetchResource = (path: string, init?: RequestInit): Promise<Response> => host.fetch(new Request(
+    new URL(path, 'dsh-app://app/'), { ...init, signal: AbortSignal.timeout(30_000) },
+  ))
+  const queryFor = (name: string): string => new URLSearchParams({ sessionId, path: join(workspace, name), cwd: workspace }).toString()
+  for (const name of ['office-preview.docx', 'office-preview.xlsx', 'office-preview.pptx']) {
+    const response = await fetchResource(`/sidebar/file?${queryFor(name)}`)
+    if (response.status !== 200 || !Buffer.from(await response.arrayBuffer()).equals(readFileSync(join(workspace, name)))) {
+      throw new Error(`community smoke: Office file ${name} was not served intact`)
+    }
+  }
+  const video = readFileSync(join(workspace, 'video-preview.mp4'))
+  const videoPath = `/sidebar/video?${queryFor('video-preview.mp4')}`
+  const ranged = await fetchResource(videoPath, { headers: { range: 'bytes=0-63' } })
+  if (ranged.status !== 206 || ranged.headers.get('content-range') !== `bytes 0-63/${String(video.length)}`
+    || !Buffer.from(await ranged.arrayBuffer()).equals(video.subarray(0, 64))) throw new Error('community smoke: video Range bytes differ')
+  const head = await fetchResource(videoPath, { method: 'HEAD' })
+  if (head.status !== 200 || head.headers.get('content-length') !== String(video.length)
+    || (await head.arrayBuffer()).byteLength !== 0) throw new Error('community smoke: video HEAD failed')
+  const unknown = await fetchResource(`/sidebar/video?${new URLSearchParams({ sessionId: 'unknown-smoke-session', path: join(workspace, 'video-preview.mp4') }).toString()}`)
+  const unknownResult: unknown = await unknown.json()
+  if (unknown.status !== 404 || typeof unknownResult !== 'object' || unknownResult === null
+    || !('error' in unknownResult) || typeof unknownResult.error !== 'object' || unknownResult.error === null
+    || !('code' in unknownResult.error) || unknownResult.error.code !== 'unknown-session') throw new Error('community smoke: video accepted an unknown session')
+  const remotes = await fetchResource('/git-remotes/api/status', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ session: sessionId }),
+  })
+  const remoteState: unknown = await remotes.json()
+  if (remotes.status !== 200 || typeof remoteState !== 'object' || remoteState === null || !('value' in remoteState)
+    || typeof remoteState.value !== 'object' || remoteState.value === null || !('root' in remoteState.value)
+    || remoteState.value.root !== workspace || !('isRepo' in remoteState.value) || remoteState.value.isRepo !== true) {
+    throw new Error('community smoke: Git Remotes did not resolve the fixture session')
+  }
+  const ego = await fetchResource('/api/ego/spaces')
+  const spaces: unknown = await ego.json()
+  if (ego.status !== 200 || typeof spaces !== 'object' || spaces === null || !('spaces' in spaces)
+    || !Array.isArray(spaces.spaces)) throw new Error('community smoke: Ego browser state is unavailable')
+}
+
 /**
  * Prove the final resource tree boots and serves its matching Web frontend.
  * @param root - Materialized dsh resources.
@@ -108,6 +148,9 @@ export async function smokeDesktopCommunityAccess(
 export async function smokeDesktopRuntime(root: string, node: string, runtime: DesktopRuntimeDescriptor): Promise<void> {
   const home = mkdtempSync(join(tmpdir(), 'dsh-desktop-smoke-'))
   const profile = join(home, 'profiles', 'desktop')
+  const workspace = join(home, 'workspace')
+  const sessionId = 'desktop-community-smoke'
+  const hasCommunity = desktopRuntimeBundles(runtime).some(name => name.startsWith('@gestaltrun/'))
   const environment = Object.fromEntries(Object.entries(process.env).filter(([name]) => !/KEY|SECRET|TOKEN|PASSWORD/iu.test(name)))
   const host = new DesktopHostProcess(node, root, profile, undefined, {
     ...environment, DSH_HOME: home, DSH_AGENTS_HOME: join(home, 'agents'), DSH_TELEMETRY_DISABLED: '1',
@@ -116,6 +159,15 @@ export async function smokeDesktopRuntime(root: string, node: string, runtime: D
   let readyTimer: ReturnType<typeof setTimeout> | undefined
   try {
     createPluginProfile(profile, desktopRuntimeBundles(runtime))
+    if (hasCommunity) {
+      mkdirSync(workspace)
+      for (const name of ['office-preview.docx', 'office-preview.xlsx', 'office-preview.pptx', 'video-preview.mp4']) {
+        copyFileSync(join(import.meta.dirname, '../tests/fixtures/community-viewers', name), join(workspace, name))
+      }
+      execFileSync('git', ['init', '--initial-branch=main', workspace], { stdio: 'pipe', env: {
+        ...environment, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '', GIT_TERMINAL_PROMPT: '0',
+      } })
+    }
     const pluginName = 'desktop-runtime-smoke-plugin'
     const plugin = join(profile, 'node_modules', pluginName)
     mkdirSync(plugin, { recursive: true })
@@ -123,12 +175,15 @@ export async function smokeDesktopRuntime(root: string, node: string, runtime: D
     if (cordis === undefined) throw new Error('desktop runtime: missing shared Cordis package')
     writeFileSync(join(plugin, 'package.json'), JSON.stringify({
       name: pluginName, version: '1.0.0', type: 'module', exports: './index.js',
-      peerDependencies: { '@deepseek-ai/cordis': cordis.version }, dsh: { bundle: { patch: './bundle.yml' } },
+      peerDependencies: { '@deepseek-ai/cordis': cordis.version,
+        ...(hasCommunity ? { '@deepseek-ai/dsh-session': runtime.release.version } : {}) }, dsh: { bundle: { patch: './bundle.yml' } },
     }))
     writeFileSync(join(plugin, 'index.js'), `
 import { Context } from '@deepseek-ai/cordis'
+${hasCommunity ? "import { SessionId } from '@deepseek-ai/dsh-session'\nexport const inject = ['sessions']" : ''}
 export function apply(ctx) {
   if (!(ctx instanceof Context)) throw new Error('desktop runtime: external plugin loaded another Cordis instance')
+  ${hasCommunity ? `ctx.sessions.create(SessionId(${JSON.stringify(sessionId)}), { meta: { cwd: ${JSON.stringify(workspace)} } })` : ''}
 }
 `)
     writeFileSync(join(plugin, 'bundle.yml'), '- insert:\n    - id: desktop-runtime-smoke-plugin\n      name: desktop-runtime-smoke-plugin\n')
@@ -151,13 +206,14 @@ export function apply(ctx) {
     if (response.status !== 200 || !(await response.text()).includes('<html')) {
       throw new Error('desktop runtime: packaged frontend smoke failed')
     }
-    if (desktopRuntimeBundles(runtime).some(name => name.startsWith('@gestaltrun/'))) {
+    if (hasCommunity) {
       await smokeCommunityPluginRoutes((path, init) => host.fetch(new Request(new URL(path, 'dsh-app://app/'), {
         ...init, signal: AbortSignal.timeout(30_000),
       })))
       await smokeDesktopCommunityAccess(path => host.fetch(new Request(new URL(path, 'dsh-app://app/'), {
         signal: AbortSignal.timeout(30_000),
       })))
+      await smokeCommunityWorkspace(host, workspace, sessionId)
     }
   } finally {
     if (readyTimer !== undefined) clearTimeout(readyTimer)

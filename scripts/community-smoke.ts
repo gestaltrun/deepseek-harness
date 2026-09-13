@@ -270,7 +270,7 @@ export async function smokeCommunityWeb(runtime: string, scratch: string, bundle
 }
 
 async function main(): Promise<void> {
-  const { values } = parseArgs({ options: { keep: { type: 'boolean' }, resume: { type: 'string' } } })
+  const { values } = parseArgs({ options: { keep: { type: 'boolean' }, resume: { type: 'string' }, artifacts: { type: 'string' } } })
   const retained = values.resume === undefined ? undefined : readRetainedCandidate(values.resume)
   const scratch = retained?.scratch ?? realpathSync(mkdtempSync(join(tmpdir(), 'gestaltrun-community-smoke-')))
   const output = join(ROOT, '.artifacts/community-smoke.json')
@@ -283,7 +283,7 @@ async function main(): Promise<void> {
   writeFileSync(join(scratch, 'npmrc'), '', { mode: 0o600 })
   try {
     const plugins = readCommunityPlugins()
-    let communityOutput = COMMUNITY_OUTPUT
+    let communityOutput = values.artifacts === undefined ? COMMUNITY_OUTPUT : resolve(values.artifacts)
     let commits: Record<string, string>
     if (retained === undefined) {
       checkCommunitySources()

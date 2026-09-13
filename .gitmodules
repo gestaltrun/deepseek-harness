@@ -10,3 +10,12 @@
 [submodule "community/git-remotes"]
 	path = community/git-remotes
 	url = https://github.com/gestaltrun/dsh-git-remotes.git
+[submodule "community/ego-browser"]
+	path = community/ego-browser
+	url = https://github.com/gestaltrun/ego-browser.git
+[submodule "community/sidebar-office"]
+	path = community/sidebar-office
+	url = https://github.com/gestaltrun/dsh-plugin-better-sidebar-plugin-office.git
+[submodule "community/video-preview"]
+	path = community/video-preview
+	url = https://github.com/gestaltrun/dsh-video-preview.git

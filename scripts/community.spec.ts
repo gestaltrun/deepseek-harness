@@ -5,11 +5,13 @@ describe('community product package isolation', () => {
   it('mounts Better Sidebar once via the aggregate and enables independent product bundles', () => {
     const plugins = readCommunityPlugins()
     expect(plugins.map(plugin => plugin.package)).toEqual([
-      '@gestaltrun/dsh-better-sidebar', '@gestaltrun/dsh-web-all',
+      '@gestaltrun/dsh-better-sidebar', '@gestaltrun/dsh-web-all', '@gestaltrun/dsh-ego-browser',
       '@gestaltrun/dsh-github-workbench', '@gestaltrun/dsh-git-remotes',
+      '@gestaltrun/dsh-sidebar-office', '@gestaltrun/dsh-video-preview',
     ])
     expect(plugins.filter(plugin => plugin.defaultBundle).map(plugin => plugin.package)).toEqual([
-      '@gestaltrun/dsh-web-all', '@gestaltrun/dsh-github-workbench', '@gestaltrun/dsh-git-remotes',
+      '@gestaltrun/dsh-web-all', '@gestaltrun/dsh-ego-browser', '@gestaltrun/dsh-github-workbench', '@gestaltrun/dsh-git-remotes',
+      '@gestaltrun/dsh-sidebar-office', '@gestaltrun/dsh-video-preview',
     ])
   })
 
