@@ -164,6 +164,10 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Trust the checked-out Windows workspace
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: git config --global --add safe.directory "$($env:GITHUB_WORKSPACE.Replace('\', '/'))"
       - name: Use runner-owned temporary storage
         shell: bash
         run: |
@@ -200,6 +204,10 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Trust the checked-out Windows workspace
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: git config --global --add safe.directory "$($env:GITHUB_WORKSPACE.Replace('\', '/'))"
       - name: Use runner-owned temporary storage
         shell: bash
         run: |
