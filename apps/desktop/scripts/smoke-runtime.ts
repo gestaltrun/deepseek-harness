@@ -66,6 +66,27 @@ export async function smokeCommunityPluginRoutes(
 }
 
 /**
+ * Require usable Desktop remote controls and native-only Usage access in the packaged composition.
+ * @param fetchResource - Resource requests through the private Desktop carrier.
+ */
+export async function smokeDesktopCommunityAccess(
+  fetchResource: (path: string) => Promise<Response>,
+): Promise<void> {
+  const response = await fetchResource('/api/pair/lan-bind')
+  const state: unknown = await response.json()
+  if (response.status !== 200 || typeof state !== 'object' || state === null
+    || !('ok' in state) || state.ok !== true || !('listening' in state) || state.listening !== true
+    || !('bindHost' in state) || state.bindHost !== '127.0.0.1'
+    || !('port' in state) || typeof state.port !== 'number' || !Number.isInteger(state.port) || state.port <= 0
+    || !('pendingRestart' in state) || state.pendingRestart !== false) {
+    throw new Error('community smoke: Desktop remote access did not start on loopback')
+  }
+  const usage = await fetchResource('/api/dsh-usage/overview')
+  if (usage.status !== 200) throw new Error('community smoke: Desktop Usage route rejected its private carrier')
+  await usage.arrayBuffer()
+}
+
+/**
  * Prove the final resource tree boots and serves its matching Web frontend.
  * @param root - Materialized dsh resources.
  * @param node - Prepared target Node executable.
@@ -120,6 +141,9 @@ export function apply(ctx) {
     if (desktopRuntimeBundles(runtime).some(name => name.startsWith('@gestaltrun/'))) {
       await smokeCommunityPluginRoutes((path, init) => host.fetch(new Request(new URL(path, 'dsh-app://app/'), {
         ...init, signal: AbortSignal.timeout(30_000),
+      })))
+      await smokeDesktopCommunityAccess(path => host.fetch(new Request(new URL(path, 'dsh-app://app/'), {
+        signal: AbortSignal.timeout(30_000),
       })))
     }
   } finally {

@@ -93,7 +93,7 @@ async function readJson(request: Request): Promise<unknown> {
 export class DesktopCommunityTransport {
   /** Virtual authority used only inside this process. */
   readonly host = '127.0.0.1' as const
-  /** No listening port exists. Consumers requiring a network URL must remain disabled. */
+  /** The private carrier has no port; DesktopRemoteAccess owns optional network URLs. */
   readonly port = 0
   private readonly exact = new Map<string, WebRoute>()
   private readonly prefixes = new Map<string, WebRoute>()

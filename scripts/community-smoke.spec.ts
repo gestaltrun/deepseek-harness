@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { readRetainedCandidate, verifyCommunityArchives, verifyCommunityInstallation } from './community-smoke.ts'
-import { smokeCommunityPluginRoutes } from '../apps/desktop/scripts/smoke-runtime.ts'
+import { smokeCommunityPluginRoutes, smokeDesktopCommunityAccess } from '../apps/desktop/scripts/smoke-runtime.ts'
 import type { CommunityArtifact, CommunityPlugin } from './community.ts'
 
 const roots: string[] = []
@@ -149,6 +149,28 @@ describe('mounted community route verification', () => {
   it('rejects a successful route response reporting unavailable terminal dependencies', async () => {
     await expect(smokeCommunityPluginRoutes(path => path.endsWith('/terminal.deps')
       ? Promise.resolve(Response.json({ ok: true, value: { ok: false } })) : request(path))).rejects.toThrow('unavailable node-pty')
+  })
+})
+
+describe('Desktop community access verification', () => {
+  const listening = { ok: true, bindHost: '127.0.0.1', port: 31415, listening: true, pendingRestart: false }
+  it('accepts a loopback listener with native Usage access', async () => {
+    await smokeDesktopCommunityAccess(path => Promise.resolve(Response.json(path.endsWith('/lan-bind') ? listening : {})))
+  })
+
+  it.each([
+    { ...listening, listening: false },
+    { ...listening, port: 0 },
+    { ...listening, bindHost: '0.0.0.0' },
+    { ...listening, pendingRestart: true },
+    { ok: true },
+  ])('rejects unavailable or exposed default remote access: %j', async (state) => {
+    await expect(smokeDesktopCommunityAccess(() => Promise.resolve(Response.json(state)))).rejects.toThrow('did not start on loopback')
+  })
+
+  it('rejects the private-carrier Usage 403 regression', async () => {
+    await expect(smokeDesktopCommunityAccess(path => Promise.resolve(path.endsWith('/lan-bind')
+      ? Response.json(listening) : new Response('forbidden', { status: 403 })))).rejects.toThrow('Usage route rejected')
   })
 })
 
