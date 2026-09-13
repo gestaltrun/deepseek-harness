@@ -4,7 +4,7 @@ import { createServer, request as httpRequest, type IncomingMessage, type Server
 import type { Socket } from 'node:net'
 import { duplexPair, Readable, type Duplex } from 'node:stream'
 import type { Context } from '@deepseek-ai/cordis'
-import { renderIndexInjections, type IndexInjection, type WebRoute, type WebUpgradeRoute } from '@deepseek-ai/dsh-host-webserver'
+import { renderIndexInjections, type IndexInjection, type WebRoute, type WebUpgradeRoute, type WebServer } from '@deepseek-ai/dsh-host-webserver'
 import { WebSocket, type RawData } from 'ws'
 
 /** Local-only carrier reserved by the Desktop host. */
@@ -441,9 +441,14 @@ export class DesktopCommunityTransport {
 /**
  * Provide Desktop-local carriers before community plugins activate.
  * @param ctx - Boot context owning the carriers and their disposal.
+ * @param adaptWebServer - Optional network facade retaining the private carrier's registrations.
  * @returns adapter used by the Desktop Fetch dispatcher.
  */
-export function installDesktopCommunityTransport(ctx: Context): DesktopCommunityTransport {
+export function installDesktopCommunityTransport(
+  ctx: Context,
+  adaptWebServer?: (transport: DesktopCommunityTransport) => Pick<WebServer,
+    'host' | 'port' | 'register' | 'registerUpgrade' | 'registerFallback' | 'tapIndex' | 'applyIndexTaps' | 'collectIndexInjections' | 'renderIndex'>,
+): DesktopCommunityTransport {
   const transport = new DesktopCommunityTransport({
     collectIndexInjections: () => {
       const rows: IndexInjection[] = []
@@ -453,7 +458,7 @@ export function installDesktopCommunityTransport(ctx: Context): DesktopCommunity
     onError: (error) => { ctx.logger.warn(error) },
   })
   ctx.effect(() => () => transport.dispose(), 'Desktop community transport')
-  ctx.effect(() => ctx.reflect.provide('webServer', transport), 'Desktop community webServer')
+  ctx.effect(() => ctx.reflect.provide('webServer', adaptWebServer?.(transport) ?? transport), 'Desktop community webServer')
   ctx.effect(() => ctx.reflect.provide('webRuntime', { lanAddresses: [], trustedHosts: [] }), 'Desktop community webRuntime')
   return transport
 }

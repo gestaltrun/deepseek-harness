@@ -25,9 +25,11 @@ import type {} from '@deepseek-ai/dsh-api-gateway'
 import type { ConnectionFetchHandler } from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-client-modules'
 import { renderIndexInjections, type IndexInjection } from '@deepseek-ai/dsh-host-webserver'
+import * as FrontendStatic from '@deepseek-ai/dsh-host-frontend-static'
 import { installDesktopCommunityTransport, type DesktopCommunityTransport } from './community-transport.ts'
 import { DESKTOP_COMMUNITY_WEBSOCKET_SCRIPT } from './community-websocket-client.ts'
 import { DESKTOP_STREAM_PATH, dispatchDesktopFetch } from './fetch-dispatcher.ts'
+import { DesktopRemoteAccess } from './remote-access.ts'
 import {
   DESKTOP_HOST_PROTOCOL_VERSION,
   DESKTOP_PIPE_CHUNK_BYTES,
@@ -165,7 +167,6 @@ function desktopPatches(runtimeDir: string, projectDir: string, allowLinkedPacka
     loadOverlayPatches('dsh desktop', DESKTOP_PATCH),
   ]
   const rows = new Map(composeEntries(layers).flatMap(row => typeof row.id === 'string' ? [[row.id, row] as const] : []))
-  if (rows.has('web-ui-remote-web-ui')) layers.push([{ id: 'web-ui-remote-web-ui', disabled: true }])
   const agentPresets = rows.get('agent-presets')
   if (agentPresets !== undefined) {
     layers.push([{
@@ -291,13 +292,18 @@ export async function runDesktopHost(
   const environment = loadLayeredEnv('dsh desktop')
   let current: Context | undefined
   let community: DesktopCommunityTransport | undefined
+  let remoteAccess: DesktopRemoteAccess | undefined
   const ctx = await boot('dsh desktop', rootConfig, structuredClone(desktopPatches(
     resolve(runtimeDir),
     absoluteProject,
     options.allowLinkedPackages === true,
   )), (hostCtx) => {
     current = hostCtx
-    community = installDesktopCommunityTransport(hostCtx)
+    const remote = new DesktopRemoteAccess((error) => { hostCtx.logger.warn(error) })
+    remoteAccess = remote
+    hostCtx.effect(() => () => remote.dispose(), 'Desktop optional remote listener')
+    hostCtx.effect(() => hostCtx.reflect.provide('desktopRemoteAccess', remote), 'Desktop remote access control')
+    community = installDesktopCommunityTransport(hostCtx, transport => remote.webServer(transport))
     hostCtx.provide(DSH_LAUNCH_ENVIRONMENT_KEY, environment)
     provideCmdline(hostCtx, { args: [], exit: () => {} })
   })
@@ -315,6 +321,14 @@ export async function runDesktopHost(
     throw new Error('dsh desktop: community transport was not initialized')
   }
   const pluginTransport = community
+  const runtimeRequire = createRequire(join(resolve(runtimeDir), 'package.json'))
+  try {
+    await ctx.plugin(FrontendStatic, { distIndex: runtimeRequire.resolve('@deepseek-ai/dsh-web-frontend/dist/index.html') })
+    remoteAccess?.markReady()
+  } catch (error) {
+    await ctx.fiber.dispose()
+    throw error
+  }
   const assets = assetHandler(ctx, resolve(runtimeDir), pluginTransport)
   const streams = remoteStreamHandler(ctx)
   const requests = new Map<number, AbortController>()
