@@ -1,11 +1,11 @@
 ---
 name: record-browser-gif
-description: Record browser or Web UI interaction demos as optimized GIFs using the available browser-control workflow, optional Playwright Videos for higher capture frame rates, and deterministic encoding, then attach the GIF to a pull request with `gh --attach`, falling back to a dedicated assets branch where attach cannot apply. Use when asked to make, record, or generate a GIF that demonstrates a browser workflow, and for every pull request that changes product-user-visible GUI behavior, which MUST include a GIF recorded from the pull request's real server and model flow.
+description: Record truthful GUI demonstrations for ticket implementation and UI-fidelity review during combination verification, or for final pull-request evidence. Use for requested GIFs and every product-visible GUI PR; verify real product/model provenance and publish only to the authorized issue or PR.
 ---
 
 # Record Browser GIF
 
-Produce a short, truthful UI demonstration as a local GIF, and — only when the task includes attaching it to a pull request — publish it through the attach workflow at the end of this skill. The available browser-control workflow remains preferred. Use [Playwright Videos](https://playwright.dev/docs/videos) when that workflow supports continuous capture at higher frame rates; use the bundled encoder for trimming, playback speed, final hold, dimensions, and size.
+Produce a short, truthful UI demonstration as a local GIF, and publish it only when the task includes attaching it to an issue or pull request. The available browser-control workflow remains preferred for Web recordings. Use [Playwright Videos](https://playwright.dev/docs/videos) when that workflow supports continuous capture at higher frame rates; use the bundled encoder for trimming, playback speed, final hold, dimensions, and size.
 
 The [evidence-chain decision](../../notes/implemented/process/2026-08-08-browser-gif-evidence-chain.md) owns why one storyboard comes from one isolated run and why publication revalidates both the artifact and the demonstrated pull-request head.
 
@@ -15,16 +15,20 @@ A pull request that changes product-user-visible GUI behavior MUST include a dem
 
 The recording itself is part of the evidence: use a real server booted from that pull request's branch tree, a real API key, and real model rounds. Never substitute fixture queries, mock transports, synthetic event injection, or test-only hooks unless the user explicitly asked for a fixture recording. Next to the embed, state the exact demonstrated commit SHA, the tree and origin that served it, any mode flags or browser-state exceptions, and whether a real model round ran, so reviewers know exactly what the recording proves.
 
+## ODD ticket evidence
+
+For GUI tickets in ODD, begin during combination verification and read [ticket evidence and acceptance](../orchestrate-dsh-delivery/references/ticket-evidence.md). Record the exact integrated candidate and attach the result to its ticket before the main session's functional review, the original UI design session's fidelity review, and human acceptance. A PR need not exist yet. A ticket recording keeps its actual candidate identity; it is not automatically evidence for a later PR head. Final PR publication still follows the live-head checks below.
+
 ## Keep recording separate from publication
 
 - Recording produces local video or screenshots and one `.gif` artifact only; it never mutates remote state.
-- Publication — attaching the GIF to a pull request body with `gh --attach`, or pushing it to an assets branch and embedding its URL where attach cannot apply — is the separate final step, performed only when the task includes attaching the GIF to a pull request. It never touches the pull request's own branch.
+- Publication attaches or links the verified GIF to the authorized ticket or PR. It is separate from capture and never touches the implementation branch. Use the target-specific publication procedure below; recording alone does not authorize a remote edit.
 - Preserve the requested recording conditions. A real-server or real-API demo must not use fixture queries, mock transports, synthetic event injection, or test-only hooks. If credentials or the server are unavailable, report that limitation instead of substituting a fixture.
 - Never read or expose credential values. Use the application's normal configuration path and a benign demonstration prompt.
 
 ## Stage the application
 
-A GIF for a specific pull request demonstrates that pull request's tree, so stage per pull request:
+A ticket GIF demonstrates its recorded candidate; a PR GIF demonstrates that PR's tree. Stage each demonstrated candidate:
 
 1. Require a clean worktree, record its exact commit with `git rev-parse HEAD`, then build that recorded tree — here, `pnpm run build && pnpm run build:web`. A GIF recorded against another commit's build misattributes the evidence.
 2. Boot one server per port from that tree with fresh scratch `DSH_HOME`, `DSH_AGENTS_HOME`, workspace, and session state. Give the browser a fresh isolated context or profile as well; if the browser workflow cannot create one, clear that origin's cookies and site storage before navigation so persisted client state cannot affect the evidence. Source the root `.env` for the API key through the application's normal path; never echo the key.
@@ -34,6 +38,8 @@ A GIF for a specific pull request demonstrates that pull request's tree, so stag
 ## Record the flow
 
 Follow the available browser-control workflow's setup, interaction, and cleanup instructions. When it exposes `recordVideo`, enable video on the same controlled context to capture more intermediate frames. Otherwise use [screenshot capture](#screenshot-capture) within that workflow; video availability does not determine which browser-control workflow to use. Existing user browser state remains an explicit provenance exception.
+
+For required native Desktop behavior, use the supported native capture path with [dsh-desktop-test-instance](../dsh-desktop-test-instance/SKILL.md). Its launcher and state isolation replace the Web-specific staging recipe; the same exact-candidate, single-run, encoding, and publication rules apply. Keep A/B storyboards separate. A Web or headless fallback does not satisfy an explicitly required Electron recording; report an unavailable native capture path as missing evidence.
 
 Only when browser control is unavailable, use the repository-declared Playwright dependency in an isolated headless browser and state that fallback in the provenance. In this repository it resolves from `apps/web/package.json`; do not install another driver or open the user's browser.
 
@@ -109,15 +115,23 @@ One duration applies to every screenshot; otherwise supply one positive duration
 1. Read the encoder's JSON summary and confirm the output path, source interval and speed (or screenshot count), encoded frame count, dimensions, duration, and byte size.
 2. Visually read the encoded GIF itself, not only the source frames. Confirm that the transition is legible, the last state is held long enough, and no sensitive content appears. If the viewer renders only the first frame, decode representative frames from the encoded GIF with `ffmpeg` and inspect those; the pre-encode screenshots do not prove the encoded order, palette, or final hold.
 3. Run `git status --short` and confirm raw video, QA frames, and the artifact landed only under ignored paths.
-4. Return the absolute GIF path, render it when the client supports local media, and state whether the recording used a real API, fixture, or another transport. When the task does not include attaching the GIF to a pull request, stop here.
+4. Return the absolute GIF path, render it when the client supports local media, and state whether the recording used a real API, fixture, or another transport. When the task does not include attaching the GIF to an issue or pull request, stop here.
 
 Encoder maintenance: run `python3 -m unittest discover -s "$GIF_SKILL_DIR/scripts" -p 'test_*.py' -v` with the media prerequisites installed. These local media tests do not run in repository CI.
 
 ## Publish the GIF
 
-Perform this step only when the task includes attaching the GIF to a pull request.
+Perform this step only when the task includes attaching the GIF to the identified issue or pull request.
 
 Never commit a GIF to the pull request's own branch or any branch that merges into a long-lived branch: binary media committed there bloats the repository history for every future clone. Prefer `gh --attach`, which uploads the GIF to GitHub and rewrites the body reference in one command, so no branch carries the media.
+
+### Attach to a ticket
+
+Identify the exact repository and ticket from ODD's accepted tracker scope. Use a verified attachment/upload mechanism supported by that tracker and installed tool; the PR examples below do not establish that `gh issue` supports the same flags. If direct attachment is unavailable, use the media-only assets-branch procedure below and link its verified URL from the ticket. For a local ticket, retain a durable local artifact reference instead of publishing remotely.
+
+Keep existing ticket criteria and discussion intact. Add the GIF link, exact demonstrated source/artifact, route-to-criterion mapping, frozen draft reference, and review status through the authorized body or comment update. Immediately before and after publication, confirm the saved artifact checksum and candidate identity still match the evidence record. A newer candidate does not change what the older recording demonstrates.
+
+Re-read the updated ticket, verify its image/link renders and resolves through the intended reviewer's access path, and check the remote response and `image/gif` content type. Report the ticket and retrievable evidence link to ODD. A failed upload or local-only path on a remote ticket leaves attachment incomplete; it is not permission to skip the main-session and UI-design reviews.
 
 ### Attach with gh
 
@@ -142,7 +156,7 @@ gh pr edit <pr> --body-file <body.md> --attach <path/to/demo.gif>  # existing pu
 
 ### Fall back to an assets branch
 
-Use the assets-branch workflow only when `gh --attach` cannot apply: the GIF still exceeds 10 MB, `gh` is older than v2.99.0, or the repository is not on github.com. GIFs then live on a dedicated orphan assets branch — a branch with no parent commit and nothing but media — and one assets branch serves a whole pull request series (named `<series>-assets`; list existing ones with `git ls-remote --heads origin '*assets*'`).
+Use the assets-branch workflow only when direct attachment cannot apply: the GIF still exceeds the upload limit, the installed tool lacks support for the target, or the repository is not on a supported host. GIFs then live on a dedicated orphan assets branch — a branch with no parent commit and nothing but media — and one assets branch serves a whole delivery series (named `<series>-assets`; list existing ones with `git ls-remote --heads origin '*assets*'`).
 
 Before either workflow below pushes, verify that the assets branch contains media only and that the staged GIF's checksum matches the verified local artifact.
 
@@ -161,7 +175,7 @@ For a new series, make a fresh shallow scratch clone (`git clone --depth 1 <repo
 
 After pushing, use authenticated GitHub API or raw requests to confirm the remote path, byte size, checksum, `200` response, and `image/gif` content type. An anonymous `404` does not disprove a private-repository asset; authenticate the verification instead. This proves the repository-member review path, not public availability.
 
-Immediately before editing the pull-request body, re-read the demonstrated pull request's live head and compare it with the commit recorded next to the GIF. Stop and re-record when it moved. After the edit, re-read the demonstrated live head and require it to remain at that recorded commit. Separately, render the body through GitHub's Markdown API and confirm that the expected `<img>` is present.
+For a PR target, immediately before editing its body, re-read the demonstrated PR's live head and compare it with the commit recorded next to the GIF. Stop and re-record when it moved. After the edit, re-read that live head and require it to remain at the recorded commit. Separately, render the body through GitHub's Markdown API and confirm that the expected `<img>` is present. Ticket targets use the identity and attachment checks in [Attach to a ticket](#attach-to-a-ticket).
 
 Embed the GIF in the pull request body with the raw blob URL; the `?raw=true` suffix is required, because the plain blob URL renders GitHub's file page instead of the image:
 
