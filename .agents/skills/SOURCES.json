@@ -63,7 +63,7 @@
             "SCHEME.md",
             "SKILL.md"
           ],
-          "reason": "Preserve DSH capability terminology and route schemes and independent simplification through existing Agent Notes and ODD owners."
+          "reason": "Use current DSH terminology, Agent Notes, open-source research during scheme design, and independent simplification ownership."
         }
       ]
     },
@@ -263,7 +263,14 @@
       "sourcePath": "skills/engineering/research",
       "revision": "3cca18b368ae95cdbdebbff572ccafa662551015",
       "license": "MIT",
-      "localChanges": []
+      "localChanges": [
+        {
+          "files": [
+            "SKILL.md"
+          ],
+          "reason": "During ODD scheme design, reuse bounded research ownership, compare primary-source open-source implementations and return adoption implications without recursively delegating."
+        }
+      ]
     },
     {
       "name": "resolving-merge-conflicts",
@@ -277,7 +284,7 @@
           "files": [
             "SKILL.md"
           ],
-          "reason": "Preserve accepted DSH workflow, invocation, or repository tooling rules."
+          "reason": "Route verified PR/master and requested-master-merge conflicts through stable owners, preserve the requested strategy, and return exact commits plus affected ticket evidence to ODD."
         }
       ]
     },
@@ -429,7 +436,7 @@
             "SKILL.md",
             "agents/openai.yaml"
           ],
-          "reason": "Reuse accepted decomposition, verified tracker, stable owners, and released-data rules with ODD model invocation."
+          "reason": "Reuse accepted scope and tracker; require combination-stage ticket GIFs with main-session functional and UI-design fidelity conclusions before human acceptance."
         }
       ]
     },

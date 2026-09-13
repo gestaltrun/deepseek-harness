@@ -7,13 +7,13 @@ The map assigns jobs, not mandatory invocations. Preserve each skill's invocatio
 | Stage | Matt workflow | DSH integration and result |
 |---|---|---|
 | Intake | `ask-matt` routes an explicit request; `triage` handles incoming unstructured work; `diagnosing-bugs` establishes a reproducible signal; `wayfinder` resolves large decision maps | Upstream changes call `dsh-upstream-integration`; performance work calls `dsh-speed-up-perf`; pin the problem and the affected combination |
-| Design | `grill-with-docs` / `grilling`, `domain-modeling`, `research`, `codebase-design`, `prototype` | Public extension points, ownership, actual user route, and test observations are settled; `dsh-doc`, `dsh-prose-standard`, and new-note `dsh-archive-agent-notes` apply |
+| Design | `grill-with-docs` / `grilling`, `domain-modeling`, `research`, `codebase-design`, `prototype` | `research` supplies source-linked open-source implementation/dependency comparisons before the scheme is selected; public extension points, ownership, actual user route, and test observations are settled; `dsh-doc`, `dsh-prose-standard`, and new-note `dsh-archive-agent-notes` apply |
 | Specification | `to-spec` then `to-tickets` for work needing decomposition | Freeze accepted scope, draft/route, and vertical dependency graph; `dsh-ci-test-reliability` checks resource-owning test plans |
-| Implementation | `implement` and `tdd`; explicit `implement-spec` enters ODD | Stable owners deliver plugins and wrappers; `dsh-pre-push-checks` selects outgoing evidence, prose/doc rules accompany code |
-| Quality and initial experience | Repeatable scenarios and real supported product routes | Plugin behavior, real composition, package installation, snapshots, upgrade, and targeted performance evidence precede initial human acceptance; Desktop A/B uses `dsh-desktop-test-instance` |
+| Implementation | `implement` and `tdd`; explicit `implement-spec` enters ODD | Stable owners deliver plugins and wrappers; `dsh-pre-push-checks` selects outgoing evidence. PR/master or requested-master-merge conflicts route through `resolving-merge-conflicts`; prose/doc rules accompany code |
+| Quality and initial experience | Main-session functional review and original UI-design-session fidelity review | During combination verification, `record-browser-gif` records GUI routes and links them to tickets through [ticket evidence](ticket-evidence.md); both reviews pass before human acceptance. Plugin composition, installation, snapshots, upgrade, and applicable performance checks remain required; Desktop A/B uses `dsh-desktop-test-instance` |
 | Independent close audit | `code-review` keeps Standards and Spec separate | `dsh-code-review`, `dsh-find-simplifications`, `dsh-archive-agent-notes`, `dsh-doc`, `dsh-prose-standard`, and `dsh-trim-cot-leakage` inspect the affected final candidate |
 | Repair and retrospective | Existing owners fix findings; `retro` proposes environment improvements | Recheck affected behavior, obtain affected reacceptance, and apply only selected retrospective changes |
-| Final evidence and merge | ODD keeps live state and owners | `record-browser-gif` demonstrates the final GUI candidate; `dsh-pre-push-checks` and, for actual dependent PRs, `dsh-merging-stacked-prs` govern publication/merge evidence |
+| Final evidence and merge | ODD keeps live state and owners | `record-browser-gif` finalizes exact-head PR evidence from the ticket recordings; `resolving-merge-conflicts` handles confirmed PR/master or requested-master-merge conflicts. `dsh-pre-push-checks` and, for dependent PRs, `dsh-merging-stacked-prs` govern outgoing evidence |
 | Product release | Main demand owns related repositories | `dsh-upstream-integration` binds tested candidates and coordinated formal publication; installed upgrade remains separate evidence |
 | Periodic maintenance | Explicit `improve-codebase-architecture`, using `codebase-design` | `dsh-find-simplifications` supplies evidence-backed deletion candidates; selected work enters design/specification rather than being silently added to another demand |
 
@@ -30,7 +30,7 @@ Use `dsh-translate-docs` only for explicitly requested extended translation. Use
 | `setup-matt-pocock-skills` | Initial or explicitly requested tracker/domain setup; preserve existing repository owners and symlinks |
 | `setup-pre-commit`, `git-guardrails-claude-code`, `setup-ts-deep-modules`, `migrate-to-shoehorn`, `scaffold-exercises` | Explicit setup or migration in a matching repository; importing a skill does not install its tools, hooks, dependencies, or sample packages |
 | `wizard` | Prepare a verified manual setup, credential, or cutover procedure only for actions the human must perform; ODD retains accepted scope and release authorization |
-| `resolving-merge-conflicts` | Resolve an actual in-progress conflict by the accepted intent; unrelated user changes remain outside staging |
+| `resolving-merge-conflicts` | At PR preparation/live PR conflicts with verified master, or conflicts during a user-requested master merge; reuse integration/module owners, return the resolved commit and affected evidence to ODD |
 
 ## Product-provided skills and fixtures
 

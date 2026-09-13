@@ -14,7 +14,9 @@ Use equivalent independently seeded data and the same route, locale, provider/mo
 
 Define each route step with its starting state, action, expected result, and the difference under review. Cover affected existing behavior as well as the new capability. Walk both applications through native user input before handoff, capture the actual screens and results, and record backend or artifact observations needed to explain the visible result. Repeat a materially uncertain nondeterministic result under comparable conditions; performance claims use the owning performance workflow.
 
-Give the user both application paths, baseline and candidate identities, starting states, the common route, known differences, and unresolved limits. Keep the pair running for review. Only the recorded owner drives the applications, and only one side receives input at a time.
+When the pair verifies an implementation ticket, follow [ODD ticket evidence](../../orchestrate-dsh-delivery/references/ticket-evidence.md): attach separate baseline/candidate GIFs, obtain the main session's functional conclusion and the original UI design session's fidelity conclusion, then hand off for human acceptance. An exploratory comparison before a ticket exists remains adoption evidence, with its own identity and unresolved decision.
+
+Give the user both application paths, baseline and candidate identities, starting states, the common route, linked recordings and applicable review conclusions, known differences, and unresolved limits. Keep the pair running for review. Only the recorded owner drives the applications, and only one side receives input at a time.
 
 ## Revise and retire
 

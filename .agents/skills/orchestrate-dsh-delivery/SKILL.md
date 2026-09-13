@@ -23,6 +23,8 @@ Use `grilling` and `domain-modeling` for unresolved product decisions; facts obt
 
 Use [codebase-design](../codebase-design/SKILL.md) and its scheme reference when interfaces, ownership, lifecycle, or durable formats need design. Use [prototype](../prototype/SKILL.md) when a runnable state model or UI comparison can settle a question. A UI prototype uses existing product components, is exercised by the agent before human review, and leaves a frozen design pointer plus an experience route. Prototype evidence does not establish production readiness.
 
+During technical scheme design, use [research](../research/SKILL.md) to find open-source implementations and maintained dependencies that can inform or replace owned implementation. The scheme owner defines the bounded question and reuses a research subagent while continuing independent design work. Consume its source-linked comparison of behavior, extension points, maintenance, license/distribution obligations, and integration cost before selecting an implementation. Record reference-only, dependency adoption, plugin composition, or retained local implementation with the accepted scheme; unresolved facts remain explicit. Existing current evidence may satisfy this step. Adopting an external component also follows `dsh-upstream-integration`.
+
 Design [plugin delivery and verification](references/plugin-delivery.md) up front when the demand introduces or changes product plugins, bundles, presets, or a wrapped external project. Performance work uses [dsh-speed-up-perf](../dsh-speed-up-perf/SKILL.md) for a measured baseline before implementation. Test resource and concurrency choices use [dsh-ci-test-reliability](../dsh-ci-test-reliability/SKILL.md).
 
 For multi-session work, call [to-spec](../to-spec/SKILL.md) and then [to-tickets](../to-tickets/SKILL.md). Keep accepted decisions and any frozen draft readable from durable references before dispatch. Tickets are independently verifiable vertical slices with real blocking edges. An already accepted spec or ticket graph needs only the relevant delta.
@@ -37,13 +39,17 @@ For a coordinated feature, one integration branch and PR may close the spec and 
 
 Implementation uses [implement](../implement/SKILL.md) and [tdd](../tdd/SKILL.md) at already accepted observation points. Follow scoped test selection; do not run or repeat a full suite by habit. Before each outgoing push, use [dsh-pre-push-checks](../dsh-pre-push-checks/SKILL.md). Integrate only identified commits, preserving all user-owned dirty files and unrelated work.
 
+When PR preparation or the live PR reports a conflict with its verified target `master`, or a user-requested merge of `master` encounters conflicts, route the resolution to [resolving-merge-conflicts](../resolving-merge-conflicts/SKILL.md). Reuse the integration owner and affected module owners, preserve the requested merge strategy, and return exact resolved commits, affected behavior, checks, and unresolved decisions to ODD. A conflict-free base update needs no conflict workflow. After resolution, reassess the combined change and refresh affected ticket evidence and reviews before claiming readiness; ordinary same-repository conflicts do not automatically become upstream-adoption work.
+
 ## Validate and obtain initial acceptance
 
 Quality verifies the combined candidate through the required deterministic checks, real composition, snapshots, and E2E. Evidence names the exact source/artifact, environment, scenario, and result; a green unit suite does not establish product acceptance. Keep local CI separate from the frozen acceptance instance.
 
 For supported Desktop behavior, the environment owner uses [dsh-desktop-test-instance](../dsh-desktop-test-instance/SKILL.md). Web and other platforms use their real supported product paths. For an upstream comparison, preserve the explicit baseline/candidate pair and replace only the named side. No generic cleanup of goal-owned instances may destroy the other side or user-created comparison data.
 
-The agent walks the experience route and compares affected screens with the frozen draft before asking the user to accept. Hand off the verified instance, initial screenshots, exact version and starting state, known gaps, and repeatable steps. Do not delay this first handoff for final code review or GIF recording. If the task needs no human experience decision, document why that stage is inapplicable.
+For GUI tickets, activate [record-browser-gif](../record-browser-gif/SKILL.md) during combination verification and follow [ticket evidence and acceptance](references/ticket-evidence.md). Attach each demonstrated route to its owning ticket before human handoff. The main ODD session reviews the GIF against every ticket acceptance criterion and the complete demand; the original UI design session separately reviews fidelity against the frozen draft. Return failures to the existing writers, refresh affected evidence, and obtain both recorded conclusions before asking the user to accept. A GIF supports the functional check alongside deterministic, model, and integration evidence; it cannot prove invisible behavior on its own.
+
+Hand off the internally accepted instance, ticket GIFs, functional and UI-fidelity conclusions, exact version and starting state, known gaps, and repeatable steps. Final independent code review still follows initial human acceptance. For changes without GUI behavior, retain the applicable observable evidence instead of inventing a GIF; if no human experience decision applies, record why that stage is inapplicable.
 
 ## Audit the accepted candidate
 
@@ -65,7 +71,7 @@ After fixes, integrate the exact delta, rerun affected checks and independent re
 
 Each involved owner uses [retro](../retro/SKILL.md) on its own session to propose improvements to navigation, tools, checks, skills, or instructions. The coordinator consolidates recommendations for the user's keep/drop decision. Accepted edits stay with their owner and receive relevant revalidation; retrospective alone never authorizes unrelated changes.
 
-For GUI changes, [record-browser-gif](../record-browser-gif/SKILL.md) records the final accepted, reviewed, regression-passing candidate before merge. Any later change affecting the storyboard invalidates that evidence. Actual product instructions, installation and upgrade paths remain with their owners.
+For GUI changes, finalize the ticket recordings through [record-browser-gif](../record-browser-gif/SKILL.md) before merge. The PR embed must satisfy its exact live-head checks and represent the accepted, reviewed, regression-passing candidate. Reuse valid recordings for an unchanged candidate; re-record when its publication checks require it, and route affected behavior through the ticket reviews again. Earlier evidence keeps its original identity. Actual product instructions, installation and upgrade paths remain with their owners.
 
 Recheck the live PR base/head, reviews, threads, checks, and merge state. Use the repository's actual merge mechanism only within the authorized scope. Confirm merged state before closing delivery or retiring worktrees; a queued merge is pending. Remove only exact disposable, clean, merged resources with no unique work; preserve uncertain or retained artifacts with an owner and reason.
 

@@ -21,15 +21,15 @@ Launch through the repository's supported Desktop path. Do not invent an applica
 
 One accountable environment owner maintains the instance or pair. Each application has at most one active input driver. Verify that both comparison records correspond to separate live backends and state roots, not merely two windows.
 
-Walk the accepted experience route through actual native user input. Check the starting state, actions, visible results, relevant failures, and frozen UI draft; capture actual screenshots. Compare both sides under equivalent conditions and identify uncertain or nondeterministic observations honestly. Performance claims use the owning performance skill rather than a single favorable run.
+Walk the accepted experience route through actual native user input. Check the starting state, actions, visible results, relevant failures, and frozen UI draft. During combination verification, use [record-browser-gif](../record-browser-gif/SKILL.md) for the ticket routes and follow [ticket evidence and acceptance](../orchestrate-dsh-delivery/references/ticket-evidence.md). Compare both sides under equivalent conditions, retaining separate A/B recordings, and identify uncertain or nondeterministic observations honestly. Performance claims use the owning performance skill rather than a single favorable run.
 
-Before the first human handoff, provide the exact version/application paths, A/B identities where relevant, initial screenshots, starting state, reproducible route, known differences, and truthful evidence lane. Do not wait for final code review or GIF. Keep the frozen instance available during the user's acceptance; unrelated branch progress does not invalidate it.
+Before the first human handoff, the main ODD session checks ticket completeness from the linked recordings and supporting evidence, and the original UI design session confirms fidelity against the frozen draft. After both applicable reviews pass, provide the exact version/application paths, A/B identities, ticket GIFs and review conclusions, starting state, reproducible route, known differences, and truthful evidence lane. Final independent code review follows this initial human acceptance. Keep the frozen instance available during the user's acceptance; unrelated branch progress does not invalidate it.
 
 ## Replace one side
 
 For A/B work, retain the baseline when replacing the candidate. Name the selected record explicitly, save its evidence outside disposable roots, preserve user-created content, stop only its recorded processes, and verify its ports are released before replacement. A newly discovered upstream version is another adoption choice, not permission to retarget the frozen pair.
 
-Recheck the changed route and record the replacement's exact identity. Earlier screenshots/GIFs keep their original provenance. After user acceptance, independent review, and affected regressions pass, use [record-browser-gif](../record-browser-gif/SKILL.md) for the final GUI candidate; later relevant changes invalidate the corresponding storyboard.
+Recheck the changed route and record the replacement's exact identity. Refresh affected ticket GIFs and functional/fidelity reviews before user reacceptance. Earlier screenshots/GIFs keep their original provenance. Final PR evidence follows [record-browser-gif](../record-browser-gif/SKILL.md), including its live-head checks; later relevant changes invalidate the corresponding storyboard.
 
 ## Clean up without losing work
 

@@ -14,7 +14,9 @@ Status: implemented
 
 [ODD](../../../skills/orchestrate-dsh-delivery/SKILL.md) 负责协调交付，其[工作流图](../../../skills/orchestrate-dsh-delivery/references/workflow.md) 安排 Matt 方法和全部官方 DSH 技能。当前 DSH 规则继续作为依据。`implement`、`to-spec`、`to-tickets` 和 `retro` 特意允许模型调用以供 ODD 使用；两种元数据格式保持一致。其他仅限显式调用的入口保留该限制，包括扩展翻译。
 
-交付依次经过已接受的需求和方案、按需原型、必要的规格与任务、稳定且隔离的实现负责人、真实组合和产品验证、首次人工验收、独立简化检查与 Standards/Spec 审查、相关修复和再次验收、回顾决策、最终 GUI 证据，以及获授权的合入或发布终点。写作与新增记录规则在全过程生效；收尾时对受影响的文档、决策和冗余实现进行限定范围审计。
+交付依次经过已接受的需求和方案、按需原型、必要的规格与任务，以及稳定且隔离的实现负责人。组合验证阶段通过 [ticket GIF 证据](../../../skills/orchestrate-dsh-delivery/references/ticket-evidence.md)，由主 session 逐项审核功能完整性、原 UI 设计 session 审核还原度，两者通过后才进行首次人工验收。随后开展独立简化检查和 Standards/Spec 审查；相关修复补录并重做受影响的审核后再验收。回顾决策、对应准确提交的最终 GUI 证据，以及获授权的合入或发布终点完成交付。写作与新增记录规则在全过程生效；收尾时对受影响的文档、决策和冗余实现进行限定范围审计。
+
+技术方案设计使用 `research`，依据一手来源、集成成本和分发义务，对比可参考的开源实现与维护中的依赖。已确认的 PR/master 冲突，以及用户要求合并 master 时出现的冲突，使用 `resolving-merge-conflicts`，复用集成和模块负责人，并向 ODD 回传准确提交及受影响的验证结果。
 
 [上游融合](../../../skills/dsh-upstream-integration/SKILL.md) 记录逐能力的采用、组合、保留或暂缓选择，并分别决定分发、激活和工具开放策略。[Desktop 对比](../../../skills/dsh-desktop-test-instance/SKILL.md) 保留隔离的基线与候选；清理时保留用户创建或内容不确定的数据，并记录负责人和原因。相关 Gestaltrun 仓库在正式发布前，将准确候选和组合 CI 绑定到同一需求发布集合。安装这些指令不配置监控、registry 权限或跨仓库 CI。
 

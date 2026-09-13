@@ -8,6 +8,8 @@ ODD assigns an existing scheme owner or a bounded collaboration subagent with th
 
 Read current architecture, consumers, failure paths, and Agent Notes. Use DSH's precise service, event, API, slot, and capability terminology alongside [SKILL.md](SKILL.md). Existing capability obligations take precedence over an adapter-count heuristic.
 
+Use [research](../research/SKILL.md) during scheme design to identify open-source implementations worth referencing or adopting. The scheme owner supplies the bounded question, consumes primary-source findings and integration obligations, and records how they affect the selected design. Reuse existing current findings; a discovered project is a candidate, not authorization to adopt it.
+
 Use the [Agent Note format](../../notes/README.md): a proposal includes Problem, Proposal, Alternatives considered, Acceptance criteria, and Risks. Identify ownership, lifecycle/cancellation/disposal, configuration and data obligations, observable tests, and extension points. Use [dsh-prose-standard](../dsh-prose-standard/SKILL.md) and check related old notes through [dsh-archive-agent-notes](../dsh-archive-agent-notes/SKILL.md).
 
 Self-check accepted behavior, justified interfaces, failure and lifetime requirements, and real alternatives before human review. Do not turn a file list into a design or silently add requirements.
