@@ -25,7 +25,7 @@ Compose this package with the product IM API, the existing Workspace UI, setting
 
 ## Account and route operations
 
-Accounts display separate authorization and listener facts. Setup uses provider-discovered identities and sends credential fields only through the write-only Host operation. A failed setup stays visible; it never marks an account connected. Pause uses the displayed account revision. Disconnect and reconnect controls are disabled until corresponding provider lifecycle commands are available.
+Accounts display separate authorization and listener facts. Setup uses provider-discovered identities and sends credential fields only through the write-only Host operation. A failed setup stays visible; it never marks an account connected. Pause, disconnect, reconnect, and authorization refresh send lifecycle commands using the displayed account revision. Disconnect confirmation uses the account name, route count, and revision captured when it opens. Pending or unknown operations disable further account commands; the UI cannot reconcile an unknown outcome until the API exposes account-operation lookup.
 
 The route editor preserves every specific target. New routes start disabled. Existing ownership transfers require confirmation containing the observed owner and revision. Each target keeps its operation identity and outcome; partial and unknown results retain the draft. Unknown outcomes are queried before retry. Confirmed targets are not resent. Rebinding preserves the existing enabled state and applies the requested trigger settings using the returned revision.
 

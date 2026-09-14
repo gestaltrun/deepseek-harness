@@ -3,7 +3,7 @@ import type {} from '@gestaltrun/dsh-im-runtime'
 import type { Context } from '@deepseek-ai/cordis'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {
-  ImAccountCandidate, ImAccountMutationResult, ImAccountSetupRequest, ImAccountView, ImPlatform,
+  ImAccountCandidate, ImAccountLifecycleRequest, ImAccountMutationResult, ImAccountSetupRequest, ImAccountView, ImPlatform,
   ImConfigurationFrame, ImCreateRouteRequest, ImDeleteRouteRequest,
   ImRebindRouteRequest, ImRemoveSimulationTargetRequest, ImRouteBatchRequest,
   ImRouteBatchResult, ImRouteMutationResult, ImRouteOperationQuery,
@@ -104,6 +104,24 @@ export class ImApi extends TypertRemoteService {
   @Remote('setAccountPaused')
   setAccountPaused(request: ImSetAccountPausedRequest): Promise<ImAccountMutationResult> {
     return configurationResult(() => this.ctx.imRuntime.setAccountPaused(request))
+  }
+
+  /** @param request - account identity and revision observed before confirming disconnection. @returns durable intent change; rules and history remain retained. */
+  @Remote('disconnectAccount')
+  disconnectAccount(request: ImAccountLifecycleRequest): Promise<ImAccountMutationResult> {
+    return configurationResult(() => this.ctx.imRuntime.disconnectAccount(request))
+  }
+
+  /** @param request - account identity and observed revision. @returns durable connection intent; listener facts remain independent. */
+  @Remote('reconnectAccount')
+  reconnectAccount(request: ImAccountLifecycleRequest): Promise<ImAccountMutationResult> {
+    return configurationResult(() => this.ctx.imRuntime.reconnectAccount(request))
+  }
+
+  /** @param request - account identity and observed revision. @param signal - caller cancellation. @returns safe provider authorization facts committed under the observed revision. */
+  @Remote('refreshAccount')
+  refreshAccount(request: ImAccountLifecycleRequest, signal: AbortSignal): Promise<ImAccountMutationResult> {
+    return configurationResult(() => this.ctx.imRuntime.refreshAccount(request, signal))
   }
 
   /** @param request - new route tuple and owner. @returns durable receipt or conflict. */
