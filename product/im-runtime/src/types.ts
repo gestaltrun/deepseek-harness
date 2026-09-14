@@ -1,7 +1,7 @@
 /** Client-safe identifiers, views, and mutation requests for the IM runtime. */
 import type { Branded } from '@deepseek-ai/dsh-brand'
-import type { CredentialKey } from '@deepseek-ai/dsh-credentials'
-import type { WorkspaceId } from '@deepseek-ai/dsh-workspace'
+import type { CredentialKey } from '@deepseek-ai/dsh-credentials/types'
+import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 
 /** Identifier minted by the Host for one configured account. */
 export type ImAccountId = Branded<'ImAccountId'>
@@ -16,6 +16,24 @@ export type ImRevision = Branded<'ImRevision'>
 export type ImPlatform = 'dingtalk' | 'wangwang'
 /** Supported conversation categories. */
 export type ImConversationKind = 'direct' | 'group'
+
+/** Installed DingTalk employee profile available for explicit account setup. */
+export interface ImDingTalkAccountCandidate {
+  readonly platform: 'dingtalk'
+  readonly profile: string
+  readonly displayName: string
+}
+
+/** Admitted Wangwang merchant available for explicit account setup. */
+export interface ImWangwangAccountCandidate {
+  readonly platform: 'wangwang'
+  readonly candidateId: string
+  readonly displayName: string
+  readonly merchantId?: string
+}
+
+/** Safe provider-discovered account candidate. */
+export type ImAccountCandidate = ImDingTalkAccountCandidate | ImWangwangAccountCandidate
 
 /** Safe DingTalk employee identity returned by the registered transport. */
 export interface ImDingTalkIdentity {
@@ -232,47 +250,3 @@ export type ImRouteResolution =
   | { readonly state: 'disabled'; readonly route: ImRouteView }
   | { readonly state: 'account-paused' }
   | { readonly state: 'unmatched' }
-
-declare module '@deepseek-ai/cordis' {
-  interface Context {
-    imRuntime: ImRuntimeService
-  }
-  interface Events {
-    /**
-     * Durable IM configuration changed. The emitted revision is newer than every prior event from this process.
-     * @param change - committed configuration subject and generation revision.
-     * @mode emit
-     */
-    'imRuntime/changed'(change: ImRuntimeChange): void
-  }
-}
-
-/** Read and mutation surface consumed by the product BFF. */
-export interface ImRuntimeService {
-  /** @returns the current durable configuration projection. */
-  snapshot(): ImRuntimeSnapshot
-  /** @param listener - post-commit change observer. @returns disposer for this subscription. */
-  subscribe(listener: (change: ImRuntimeChange) => void): () => void
-  /** @param accountId - receiving account. @param conversationKind - provider category. @param conversationId - provider conversation. @returns precedence-ordered route resolution. */
-  resolveRoute(accountId: ImAccountId, conversationKind: ImConversationKind, conversationId: string): ImRouteResolution
-  /** @param request - transport-owned account setup input. @param signal - caller lifetime. @returns the persisted safe account. */
-  addAccount(request: import('./transport.ts').ImAccountSetupRequest, signal?: AbortSignal): Promise<ImAccountView>
-  /** @param request - guarded account pause mutation. @returns its durable outcome. */
-  setAccountPaused(request: ImSetAccountPausedRequest): Promise<ImAccountMutationResult>
-  /** @param request - new route tuple and workspace owner. @returns its durable outcome. */
-  createRoute(request: ImCreateRouteRequest): Promise<ImRouteMutationResult>
-  /** @param request - guarded non-ownership route edit. @returns its durable outcome. */
-  saveRoute(request: ImSaveRouteRequest): Promise<ImRouteMutationResult>
-  /** @param request - guarded ownership transfer. @returns its durable outcome. */
-  rebindRoute(request: ImRebindRouteRequest): Promise<ImRouteMutationResult>
-  /** @param request - guarded route deletion. @returns its durable outcome. */
-  deleteRoute(request: ImDeleteRouteRequest): Promise<ImRouteMutationResult>
-  /** @param accountId - owning account. @param operationId - idempotency identifier. @returns stored result or an explicit miss. */
-  queryRouteOperation(accountId: ImAccountId, operationId: ImOperationId): ImRouteOperationQuery
-  /** @param request - guarded simulation-target save. @returns its durable outcome. */
-  saveSimulationTarget(request: ImSaveSimulationTargetRequest): Promise<ImSimulationTargetMutationResult>
-  /** @param request - guarded simulation-target removal. @returns its durable outcome. */
-  removeSimulationTarget(request: ImRemoveSimulationTargetRequest): Promise<ImSimulationTargetMutationResult>
-  /** @param workspaceId - target-owning workspace. @param operationId - idempotency identifier. @returns stored result or an explicit miss. */
-  querySimulationTargetOperation(workspaceId: WorkspaceId, operationId: ImOperationId): ImSimulationTargetOperationQuery
-}

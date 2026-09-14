@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "repository": "https://github.com/gestaltrun/deepseek-harness-gestalt.git",
+    "commit": "17ce1b29d96f180a31e7cfa3be8770be20d589e7",
+    "dirtyPatchSha256": "8175cef04d3c542d7e0a93d2e85455b636e7e8530c392afa68789325cacfbea3",
+    "paths": [
+      "packages/im/im-core/src/config-errors.ts",
+      "packages/im/im-core/src/service.ts",
+      "packages/im/im-core/src/spec.ts",
+      "packages/im/im-core/src/types.ts",
+      "packages/im/im-core/tests/config-service.spec.ts"
+    ],
+    "license": "MIT"
+  },
+  "adoptedBehavior": [
+    "complete account and conversation route tuples",
+    "specific-route precedence including disabled binding retention",
+    "account pause without deleting route configuration",
+    "group trigger validation for mention, everyN, and fixedIntervalSeconds",
+    "explicit route rebind guarded by an observed mutation token"
+  ],
+  "productChanges": [
+    "Host-minted account and route lifecycle identifiers",
+    "single-account StorageDomain aggregates with durable operation receipts",
+    "workspace and revision compare-and-swap on rebind and delete",
+    "Credentials records instead of secrets or generic GUI metadata",
+    "simulation targets that reference configured route identifiers",
+    "client-safe DTO subpath separated from Host service declarations"
+  ]
+}

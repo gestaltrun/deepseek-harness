@@ -10,6 +10,10 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
+    "./types": {
+      "types": "./lib/types/types.d.ts",
+      "default": "./lib/types.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -22,7 +26,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/gestaltrun/deepseek-harness.git",
+    "url": "git+https://github.com/gestaltrun/deepseek-harness.git",
     "directory": "product/im-runtime"
   },
   "publishConfig": {
@@ -38,10 +42,11 @@
   "scripts": {
     "build": "node scripts/clean.mjs && tsc -p tsconfig.build.json && tsdown",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "smoke:loader": "node scripts/smoke-loader.mjs"
   },
   "dependencies": {
-    "zod": "4.4.3"
+    "zod": "4.6.2"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.2",
@@ -52,9 +57,14 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.2",
+    "@deepseek-ai/cordis-plugin-include": "1.0.7",
+    "@deepseek-ai/cordis-plugin-loader": "1.0.3",
     "@deepseek-ai/dsh-brand": "0.1.5-rc.2",
     "@deepseek-ai/dsh-credentials": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-credentials-local": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-storage": "0.1.5-rc.2",
     "@deepseek-ai/dsh-storage-domain": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-storage-json": "0.1.5-rc.2",
     "@deepseek-ai/dsh-workspace": "0.1.5-rc.2",
     "@types/node": "22.20.0",
     "tsdown": "0.22.2",
