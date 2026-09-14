@@ -1,10 +1,9 @@
 /**
  * Kimi usage-row extraction ported from the official CLIProxyAPI management
  * center (`src/utils/quota/builders.ts` `buildKimiQuotaRows` at ed5f1c48, MIT).
- * Window length comes only from explicit `duration`+`timeUnit` metadata:
- * the management center's label-keyword fallback (`daily`/`weekly`/…)
- * fabricates a time basis from display text, so this port drops it and
- * reports `periodHours: null` instead. Labels and row order are unaffected.
+ * Limit lengths use explicit duration metadata. The endpoint's `usage` field
+ * is the weekly allocation; absent summary metadata therefore means seven days.
+ * Labels never determine a time basis, and invalid explicit metadata stays unknown.
  * Unlike the management center's display rows, missing counters stay absent —
  * they are never defaulted to zero.
  * @module account-pool/quota/windows-kimi
@@ -73,8 +72,7 @@ function toKimiWindow(
   key: string,
   data: Record<string, unknown>,
   fallbackLabel: string | undefined,
-  duration: number | null,
-  rawTimeUnit: unknown,
+  periodHours: number | null,
   now: number,
 ): QuotaWindowObservation | null {
   const limit = normalizeIntValue(data['limit'])
@@ -98,8 +96,22 @@ function toKimiWindow(
     ...(remaining === null ? {} : { remaining }),
     ...(usedPercent === null ? {} : { usedPercent }),
     resetAtMs: kimiResetMs(data, now),
-    periodHours: kimiPeriodHours(duration, rawTimeUnit),
+    periodHours,
   }
+}
+
+/**
+ * Kimi CLI identifies `usage` as Weekly limit, and Kimi documents a seven-day reset.
+ * Explicit metadata takes precedence, including an invalid value that keeps time unknown.
+ * Sources: https://github.com/MoonshotAI/kimi-cli/blob/86f136422a0aae6b217ea49e7ea1d2e8a1defcd2/src/kimi_cli/ui/shell/usage.py#L113
+ * and https://www.kimi.com/help/kimi-code/benefits.
+ */
+function summaryPeriodHours(usage: Record<string, unknown>): number | null {
+  if (!('window' in usage) && !('duration' in usage) && !('timeUnit' in usage)) return 7 * 24
+  const metadata = 'window' in usage ? asRecord(usage['window']) : usage
+  if (metadata === null) return null
+  const period = kimiPeriodHours(normalizeIntValue(metadata['duration']), metadata['timeUnit'])
+  return period !== null && Number.isFinite(period) ? period : null
 }
 
 /**
@@ -127,13 +139,13 @@ export function buildKimiWindows(payload: KimiUsagePayload, now: number): QuotaW
       normalizeStringValue(item['title']) ??
       normalizeStringValue(item['scope']) ??
       undefined
-    const window = toKimiWindow(`limit-${String(index)}`, detail, fallbackLabel, duration, rawTimeUnit, now)
+    const window = toKimiWindow(`limit-${String(index)}`, detail, fallbackLabel, kimiPeriodHours(duration, rawTimeUnit), now)
     if (window !== null) windows.push(window)
   }
 
   const usage = asRecord(payload.usage)
   if (usage !== null) {
-    const summary = toKimiWindow('summary', usage, undefined, null, undefined, now)
+    const summary = toKimiWindow('summary', usage, undefined, summaryPeriodHours(usage), now)
     if (summary !== null) windows.push(summary)
   }
 

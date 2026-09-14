@@ -129,6 +129,36 @@ describe('buildKimiWindows', () => {
     expect(windows[0]?.periodHours).toBeNull()
   })
 
+  it('uses the endpoint weekly period only when summary metadata is absent', () => {
+    const window = buildKimiWindows({ usage: { used: 1, limit: 2, resetTime: RESET } }, NOW)[0]
+    expect(window).toMatchObject({ key: 'summary', periodHours: 168, resetAtMs: RESET_MS })
+    expect(window).not.toHaveProperty('label')
+  })
+
+  it.each([
+    { duration: 2, timeUnit: 'TIME_UNIT_DAY' },
+    { window: { duration: '48', timeUnit: 'TIME_UNIT_HOUR' } },
+  ])('prefers explicit summary window metadata %#', metadata => {
+    const window = buildKimiWindows({ usage: { used: 1, limit: 2, ...metadata } }, NOW)[0]
+    expect(window?.periodHours).toBe(48)
+  })
+
+  it.each([
+    { duration: 0, timeUnit: 'HOUR' },
+    { duration: -1, timeUnit: 'DAY' },
+    { duration: 'unknown', timeUnit: 'DAY' },
+    { duration: 7, timeUnit: 'FORTNIGHT' },
+    { duration: 7 },
+    { timeUnit: 'DAY' },
+    { window: null },
+    { window: {} },
+    { window: { duration: 7, timeUnit: null } },
+    { window: { duration: 1e308, timeUnit: 'WEEK' } },
+  ])('keeps invalid explicit summary metadata unknown %#', metadata => {
+    const window = buildKimiWindows({ usage: { name: 'Weekly quota', used: 1, limit: 2, ...metadata } }, NOW)[0]
+    expect(window?.periodHours).toBeNull()
+  })
+
   it('omits usedPercent when the limit is zero', () => {
     const payload = { limits: [{ used: 0, limit: 0 }] }
     const windows = buildKimiWindows(payload, NOW)

@@ -25,6 +25,8 @@ kind: "package-bundle"
 
 账号池设置页拥有登录、账号启停、字段、模型列表、配额刷新和显式凭据文件下载。模型页页脚展示只读路由信息，既有设置导航进入账号管理。未知、不支持、失败和过期配额观测保持区分。
 
+Kimi 的用量汇总对应提供方的[七天配额](https://www.kimi.com/help/kimi-code/benefits)；响应省略窗口元数据时，时间指针使用该周期。有效的显式元数据优先；元数据无效或缺少重置时间时不显示时间指针，显示标签不用于推断周期。
+
 [Bundle 补丁](cordis.patch.yml) 在隔离 scope 中选择本地 subprocess 实现，并把 Desktop 账号存储在 `$DSH_HOME/desktop/account-pool`。Web profile 应用此 bundle 时必须显式选择自己的绝对 `stateRoot` 和凭据导出策略。并发进程不能共享同一状态根。常规 profile/plugin 安装机制拥有 bundle 激活，仅复制目录不会激活它。
 
 凭据导出是一项显式下载操作。OAuth 账号导出 core 拥有的 auth 文件，GLM 账号导出产品凭据 JSON 文档。普通快照、模型设置和 Remote 响应不会返回这些文件内容。GLM 卡片标明供应商级模型列表，并把不可用的健康/历史值显示为未知。

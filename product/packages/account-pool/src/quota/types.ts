@@ -227,8 +227,9 @@ export interface AntigravityQuotaSummaryPayload {
   readonly groups?: unknown
 }
 
-/** Kimi usage detail: counters plus reset hints in absolute or relative form. */
+/** Kimi usage detail: counters, reset hints, and optional explicit window metadata. */
 export interface KimiUsageDetail {
+  readonly window?: unknown
   readonly used?: unknown
   readonly limit?: unknown
   readonly remaining?: unknown

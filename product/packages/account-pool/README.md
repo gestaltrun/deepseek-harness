@@ -25,6 +25,8 @@ English | [中文](README.zh.md)
 
 The account-pool Settings section owns login, account enablement, fields, model lists, quota refresh, and explicit credential-file download. The Models footer shows read-only route information; the existing Settings navigation opens account management. Unknown, unsupported, failed, and stale quota observations remain distinct.
 
+Kimi's usage summary follows the provider's [seven-day quota](https://www.kimi.com/help/kimi-code/benefits); its time needle uses that period when the response omits window metadata. Valid explicit metadata takes precedence. Invalid metadata or a missing reset instant leaves the time needle absent; display labels never supply a period.
+
 The [bundle patch](cordis.patch.yml) selects a local subprocess implementation in an isolated scope and stores Desktop accounts under `$DSH_HOME/desktop/account-pool`. A Web profile must explicitly choose its own absolute `stateRoot` and credential-export policy when applying this bundle. Concurrent processes cannot share one state root. The normal profile/plugin installation mechanism owns bundle activation; copying a directory alone does not activate it.
 
 Credential export is an explicit download operation. OAuth accounts export their core-owned auth file; GLM accounts export a product credential JSON document. Ordinary snapshots, model settings, and Remote responses do not return these file bodies. GLM cards identify provider-wide model listings and show unavailable health/history values as unknown.

@@ -8,7 +8,7 @@ import {
   type AccountPoolAccountRef, type AccountPoolCallback, type AccountPoolEditableFields,
   type AccountPoolFieldPatch, type AccountPoolGlmKey, type AccountPoolLoginKind,
   type AccountPoolLoginStart, type AccountPoolLoginState, type AccountPoolModel,
-  type AccountPoolQuotaWindow, type AccountPoolSnapshot,
+  type AccountPoolSnapshot,
 } from '../account-pool.ts'
 import { createQuotaObserver, isPaidXaiCredential, type QuotaObservation, type QuotaProvider } from '../quota/index.ts'
 import type { QuotaProbeInput } from '../quota/types.ts'
@@ -17,6 +17,7 @@ import { parseAccountPoolCatalog, mergeAccountPoolCatalogs, type AccountPoolCata
 import { activeGlmEntries, glmCard, newGlmAccount, patchGlmAccount, type GlmAccount } from './glm.ts'
 import { Config, resolve, type Spec } from './config.ts'
 import { coreFieldPatch, editableFields, fieldValues, oauthRef, roster } from './redaction.ts'
+import { projectQuotaWindows } from './quota-view.ts'
 import { Supervisor, type Generation } from './supervisor.ts'
 import { decodeCoreJson, type CoreMethod } from './transport.ts'
 import { callbackSchema, glmSchema, kindSchema, nameSchema, parseInput, patchSchema, recordSchema, stateSchema } from './validation.ts'
@@ -448,7 +449,7 @@ export class CLIProxyAccountPool extends AccountPool {
     const cache = this.quotas.get(account.ref)
     if (cache === undefined) return account
     const source = cache.latest.status === 'known' || cache.latest.status === 'partial' ? cache.latest : cache.successful
-    return { ...account, quota: source === undefined ? [] : windows(source), quotaState: {
+    return { ...account, quota: source === undefined ? [] : projectQuotaWindows(source), quotaState: {
       status: cache.latest.status, observedAt: cache.latest.observedAt,
       stale: source !== undefined && source !== cache.latest,
       ...cache.successful === undefined ? {} : { lastSuccessAt: cache.successful.observedAt },
@@ -560,24 +561,6 @@ export class CLIProxyAccountPool extends AccountPool {
     this.publish({ ...this.snapshot, state: 'error', error: error instanceof AccountPoolError
       ? error.message : 'The account engine is unavailable.' })
   }
-}
-
-function windows(observation: QuotaObservation): AccountPoolQuotaWindow[] {
-  return observation.windows.map(window => {
-    const remaining = window.remainingFraction === undefined
-      ? window.usedPercent === undefined ? undefined : 100 - window.usedPercent : window.remainingFraction * 100
-    const reset = window.resetAtMs
-    const period = window.periodHours
-    return { key: window.key, label: window.label ?? window.key, status: observation.status,
-      ...remaining === undefined ? {} : { remainingPercent: Math.min(100, Math.max(0, remaining)) },
-      ...typeof reset !== 'number' ? {} : { resetAtMs: reset },
-      ...typeof period !== 'number' ? {} : { periodHours: period },
-      ...remaining === undefined || typeof period !== 'number' || period <= 0 || typeof reset !== 'number' ? {}
-        : { timeRemainingPercent: Math.min(100, Math.max(0, (reset - observation.observedAt) / (period * 3600000) * 100)) },
-      ...window.group === undefined ? {} : { group: window.group },
-      ...window.groupDescription === undefined ? {} : { groupDescription: window.groupDescription },
-    }
-  })
 }
 
 export default CLIProxyAccountPool
