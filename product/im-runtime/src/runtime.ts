@@ -10,16 +10,21 @@ import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
 import type { KvTable } from '@deepseek-ai/dsh-storage-domain'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import { ImDeliveryStore } from './delivery.ts'
+import { z, type ZodType } from 'zod'
+import { encodeImScopeId, ImDeliveryStore } from './delivery.ts'
 import { imDeliveryDomainSpec } from './delivery-schema.ts'
-import type { ImDeliveryAggregate, ImProviderCursorAggregate } from './delivery-schema.ts'
+import type { ImDeliveryAggregate, ImExecutionAggregate, ImProviderCursorAggregate } from './delivery-schema.ts'
+import { ImAgentCoordinator } from './agent-coordinator.ts'
 import { ImRuntimeError } from './errors.ts'
 import { imRuntimeDomainSpec } from './schema.ts'
 import type { ImAccountAggregate, ImAccountRecord, ImSimulationTargetAggregate } from './schema.ts'
 import { ImTransports } from './transports.ts'
+import type { ImTransportInboundPage, ImTransportInboundPageReceipt, ImTransportSink } from './transport.ts'
 import type {
   ImBeginOutboundAttemptRequest,
   ImBeginOutboundAttemptResult,
+  ImAgentTaskId,
+  ImAgentTaskView,
   ImCancelPendingAiRequest,
   ImCommitProviderCursorRequest,
   ImConversationCursor,
@@ -43,6 +48,7 @@ import type {
   ImOutboundPage,
   ImOutboundQueryRequest,
   ImOutboundRequestId,
+  ImOutboundRouteBinding,
   ImOutboundView,
   ImPendingInboundRequest,
   ImProviderCursorCommitResult,
@@ -60,6 +66,7 @@ import type {
 import type {
   ImAccountId,
   ImAccountCandidate,
+  ImAccountLifecycleRequest,
   ImAccountSetupRequest,
   ImAccountMutationResult,
   ImAccountView,
@@ -93,9 +100,18 @@ const accountId = (): ImAccountId => brandString<ImAccountId>(`account-${randomU
 const routeId = (): ImRouteId => brandString<ImRouteId>(`route-${randomUUID()}`)
 const revision = (): ImRevision => brandString<ImRevision>(randomUUID())
 const assertNever = (value: never): never => { throw new Error(`unhandled IM value: ${String(value)}`) }
+const DEFAULT_ADMISSION_BATCH_SIZE = 1000
+
+/** Runtime limits applied to one durable Agent admission. */
+export interface Config {
+  /** Maximum inbound messages copied into one Agent input. */
+  readonly admissionBatchSize?: number
+}
+
+interface ResolvedConfig { readonly admissionBatchSize: number }
 
 const targetFingerprint = (target: ImRouteTarget): readonly unknown[] =>
-  [target.kind, target.kind === 'specific' ? target.conversationId : null]
+  [target.kind, target.kind === 'specific' ? target.conversationId : null, target.kind === 'specific' ? target.directRecipient ?? null : null]
 const triggerFingerprint = (trigger: ImRouteView['groupTrigger']): readonly unknown[] =>
   [trigger?.mention ?? null, trigger?.everyN ?? null, trigger?.fixedIntervalSeconds ?? null]
 const createRouteFingerprint = (request: ImCreateRouteRequest): string =>
@@ -111,22 +127,33 @@ function routeTupleKey(platform: ImRouteView['platform'], account: ImAccountId, 
   return JSON.stringify([platform, account, kind, target.kind, target.kind === 'specific' ? target.conversationId : null])
 }
 
-function triggerError(conversationKind: ImConversationKind, trigger: ImRouteView['groupTrigger']): string | undefined {
+function triggerError(conversationKind: ImConversationKind, trigger: ImRouteView['groupTrigger'], maximumEveryN: number): string | undefined {
   if (conversationKind === 'direct') return trigger === undefined ? undefined : 'direct routes cannot carry group trigger settings'
   if (trigger === undefined) return 'group routes require a group trigger'
   if (trigger.mention !== true && trigger.everyN === undefined && trigger.fixedIntervalSeconds === undefined) return 'group trigger must enable mention, everyN, or fixedIntervalSeconds'
   if (trigger.everyN !== undefined && (!Number.isSafeInteger(trigger.everyN) || trigger.everyN < 1)) return 'group trigger everyN must be a positive safe integer'
+  if (trigger.everyN !== undefined && trigger.everyN > maximumEveryN) return `group trigger everyN must not exceed admissionBatchSize (${maximumEveryN})`
   if (trigger.fixedIntervalSeconds !== undefined && (!Number.isSafeInteger(trigger.fixedIntervalSeconds) || trigger.fixedIntervalSeconds < 1)) return 'group trigger fixedIntervalSeconds must be a positive safe integer'
   return undefined
 }
 
-function accountView(record: ImAccountRecord, routes: Readonly<Record<string, ImRouteView>>): ImAccountView {
+function accountView(record: ImAccountRecord, routes: Readonly<Record<string, ImRouteView>>, active?: ImAccountView['listener']): ImAccountView {
   const listener: ImAccountView['listener'] = record.paused
     ? { state: 'stopped', reason: 'account-paused' }
+    : record.connectionIntent === 'disconnected'
+      ? { state: 'stopped', reason: 'manual' }
+    : record.authorization.state === 'required' || record.authorization.state === 'failed'
+      ? { state: 'stopped', reason: 'authorization-required' }
     : Object.values(routes).some(route => route.enabled)
-      ? { state: 'stopped', reason: 'disconnected' }
+      ? active ?? { state: 'stopped', reason: 'disconnected' }
       : { state: 'stopped', reason: 'no-enabled-route' }
   return { ...record, listener }
+}
+
+interface ActiveListener {
+  readonly controller: AbortController
+  readonly planFingerprint: string
+  dispose?: () => Promise<void>
 }
 
 function routeResult(operationId: ImOperationId, status: ImRouteMutationResult['status'], options: Omit<ImRouteMutationResult, 'operationId' | 'status'> = {}): ImRouteMutationResult {
@@ -146,20 +173,34 @@ function assertOperation(existing: { readonly fingerprint: string } | undefined,
 /** Host service implementing the durable configuration half of IM takeover. */
 export class ImRuntime extends Service implements ImRuntimeService {
   static inject = ['storageDomain', 'credentials']
+  static Config: ZodType<Config> = z.object({
+    admissionBatchSize: z.number().int().positive().max(1000).default(DEFAULT_ADMISSION_BATCH_SIZE),
+  }).default({ admissionBatchSize: DEFAULT_ADMISSION_BATCH_SIZE })
 
   private accounts?: KvTable<ImAccountId, ImAccountAggregate>
   private simulationTargets?: KvTable<WorkspaceId, ImSimulationTargetAggregate>
   private deliveryScopes?: KvTable<import('./delivery-types.ts').ImScopeId, ImDeliveryAggregate>
   private providerCursors?: KvTable<ImProviderCursorId, ImProviderCursorAggregate>
+  private executions?: KvTable<ImAgentTaskId, ImExecutionAggregate>
   private delivery?: ImDeliveryStore
+  private coordinator: ImAgentCoordinator | undefined
   private generation = 0
   private deliveryGeneration = 0
   private simulationTail: Promise<void> = Promise.resolve()
+  private readonly activeListeners = new Map<ImAccountId, ActiveListener>()
+  private readonly listenerStates = new Map<ImAccountId, ImAccountView['listener']>()
+  private readonly listenerTails = new Map<ImAccountId, Promise<void>>()
   readonly transports: ImTransports
+  readonly config: ResolvedConfig
 
-  /** @param ctx - Cordis context carrying StorageDomain and Credentials. */
-  constructor(ctx: Context) {
+  /** @param ctx - Cordis context carrying StorageDomain and Credentials. @param config - validated Agent admission limits. */
+  constructor(ctx: Context, config: Config = {}) {
     super(ctx, 'imRuntime')
+    const admissionBatchSize = config.admissionBatchSize ?? DEFAULT_ADMISSION_BATCH_SIZE
+    if (!Number.isSafeInteger(admissionBatchSize) || admissionBatchSize < 1 || admissionBatchSize > 1000) {
+      throw new TypeError('im-runtime: admissionBatchSize must be an integer from 1 through 1000')
+    }
+    this.config = { admissionBatchSize }
     this.transports = new ImTransports(ctx)
   }
 
@@ -169,10 +210,17 @@ export class ImRuntime extends Service implements ImRuntimeService {
     this.ctx.effect(() => () => domain.close(), 'imRuntime.domainClose')
     this.accounts = domain.table('accounts')
     this.simulationTargets = domain.table('simulation_targets')
+    for (const [, aggregate] of this.accountTable().entries()) {
+      for (const route of Object.values(aggregate.routes)) {
+        const error = triggerError(route.conversationKind, route.groupTrigger, this.config.admissionBatchSize)
+        if (error !== undefined) throw new TypeError(`im-runtime: stored route '${route.id}' is invalid: ${error}`)
+      }
+    }
     const deliveryDomain = await this.ctx.storageDomain.open(imDeliveryDomainSpec)
     this.ctx.effect(() => () => deliveryDomain.close(), 'imRuntime.deliveryDomainClose')
     this.deliveryScopes = deliveryDomain.table('scopes')
     this.providerCursors = deliveryDomain.table('provider_cursors')
+    this.executions = deliveryDomain.table('executions')
     this.delivery = new ImDeliveryStore(this.deliveryScopes, this.providerCursors, {
       inspectAccount: id => {
         const account = this.accountTable().get(id)?.account
@@ -187,6 +235,23 @@ export class ImRuntime extends Service implements ImRuntimeService {
       publish: change => { this.publishDelivery(change) },
     })
     await this.delivery.recoverInterruptedAttempts()
+    this.ctx.inject(['agentDefaultModel', 'agents', 'agentPresets', 'sessions', 'sessionPersistence', 'tools', 'workspaceRegistry'], (agentCtx: Context) => {
+      agentCtx.effect(async () => {
+        const coordinator = new ImAgentCoordinator(agentCtx, this, this.executionTable())
+        this.coordinator = coordinator
+        coordinator.start([...this.deliveryScopeTable().entries()].map(([, aggregate]) => aggregate.scope))
+        return async () => {
+          if (this.coordinator === coordinator) this.coordinator = undefined
+          await coordinator.dispose()
+        }
+      }, 'imRuntime.agentCoordinator()')
+    })
+    this.ctx.on('imTransports/changed', platform => {
+      for (const [id, aggregate] of this.accountTable().entries()) {
+        if (aggregate.account.platform === platform) this.scheduleListener(id)
+      }
+    })
+    this.ctx.effect(() => async () => { await this.stopAllListeners() }, 'imRuntime.listeners()')
   }
 
   snapshot(): ImRuntimeSnapshot {
@@ -195,7 +260,7 @@ export class ImRuntime extends Service implements ImRuntimeService {
       .sort((left, right) => left.id.localeCompare(right.id))
     return {
       revision: this.generation,
-      accounts: accounts.map(([, aggregate]) => accountView(aggregate.account, aggregate.routes)),
+      accounts: accounts.map(([id, aggregate]) => accountView(aggregate.account, aggregate.routes, this.listenerStates.get(id))),
       routes,
       simulationTargets: [...this.simulationTargetTable().entries()].flatMap(([, aggregate]) => aggregate.target === undefined ? [] : [aggregate.target])
         .sort((left, right) => left.workspaceId.localeCompare(right.workspaceId)),
@@ -236,6 +301,7 @@ export class ImRuntime extends Service implements ImRuntimeService {
       identity: prepared.identity,
       ...(storedKey === undefined ? {} : { credentialKey: storedKey }),
       authorization: prepared.authorization,
+      connectionIntent: 'connected',
       paused: false,
       revision: revision(),
       createdAt,
@@ -252,7 +318,7 @@ export class ImRuntime extends Service implements ImRuntimeService {
       throw error
     }
     this.publish({ kind: 'account', accountId: id })
-    return accountView(record, {})
+    return accountView(record, {}, this.listenerStates.get(record.id))
   }
 
   async setAccountPaused(request: ImSetAccountPausedRequest): Promise<ImAccountMutationResult> {
@@ -278,9 +344,33 @@ export class ImRuntime extends Service implements ImRuntimeService {
     }).catch(error => { throw this.accountError(request.accountId, error) })
     const stored = aggregate.accountOperations[request.operationId]
     if (stored === undefined) throw new Error(`IM account operation '${request.operationId}' was not recorded`)
-    const result: ImAccountMutationResult = { ...stored.result, account: accountView(stored.result.account, aggregate.routes) }
+    const result: ImAccountMutationResult = { ...stored.result, account: accountView(stored.result.account, aggregate.routes, this.listenerStates.get(request.accountId)) }
     if (!replayed) this.publish({ kind: 'account', accountId: request.accountId, operationId: request.operationId })
     return result
+  }
+
+  disconnectAccount(request: ImAccountLifecycleRequest): Promise<ImAccountMutationResult> {
+    return this.setConnectionIntent(request, 'disconnected')
+  }
+
+  reconnectAccount(request: ImAccountLifecycleRequest): Promise<ImAccountMutationResult> {
+    return this.setConnectionIntent(request, 'connected')
+  }
+
+  async refreshAccount(request: ImAccountLifecycleRequest, signal = new AbortController().signal): Promise<ImAccountMutationResult> {
+    const fingerprint = JSON.stringify(['refresh', request.accountId, request.observedRevision])
+    const before = this.requireAccount(request.accountId)
+    const existing = before.accountOperations[request.operationId]
+    assertOperation(existing, fingerprint, request.operationId)
+    if (existing !== undefined) {
+      return { ...existing.result, account: accountView(existing.result.account, before.routes, this.listenerStates.get(request.accountId)) }
+    }
+    if (before.account.revision !== request.observedRevision) {
+      return await this.storeRefreshResult(request, fingerprint, before.account.authorization, 'conflict')
+    }
+    const inspected = await this.transports.require(before.account.platform)
+      .refreshAccount(accountView(before.account, before.routes, this.listenerStates.get(request.accountId)), signal)
+    return await this.storeRefreshResult(request, fingerprint, inspected.authorization, undefined)
   }
 
   async createRoute(request: ImCreateRouteRequest): Promise<ImRouteMutationResult> {
@@ -292,7 +382,7 @@ export class ImRuntime extends Service implements ImRuntimeService {
     const aggregate = await this.updateAccountRoute(request.accountId, request.operationId, fingerprint, (current) => {
       const invalid = request.target.kind === 'specific' && request.target.conversationId.trim() === ''
         ? 'specific route conversationId must be non-empty'
-        : triggerError(request.conversationKind, request.groupTrigger)
+        : triggerError(request.conversationKind, request.groupTrigger, this.config.admissionBatchSize)
       if (invalid !== undefined) return [current, routeResult(request.operationId, 'rejected', { code: 'IM_ROUTE_INVALID', message: invalid })]
       const tuple = routeTupleKey(current.account.platform, current.account.id, request.conversationKind, request.target)
       const duplicate = Object.values(current.routes).find(route => routeTupleKey(route.platform, route.accountId, route.conversationKind, route.target) === tuple)
@@ -326,7 +416,7 @@ export class ImRuntime extends Service implements ImRuntimeService {
     const aggregate = await this.updateAccountRoute(request.accountId, request.operationId, fingerprint, (current) => {
       const route = current.routes[request.routeId]
       if (route === undefined) return [current, routeResult(request.operationId, 'rejected', { code: 'IM_ROUTE_NOT_FOUND', message: `route '${request.routeId}' is unknown` })]
-      const invalid = triggerError(route.conversationKind, request.groupTrigger)
+      const invalid = triggerError(route.conversationKind, request.groupTrigger, this.config.admissionBatchSize)
       if (invalid !== undefined) return [current, routeResult(request.operationId, 'rejected', { route, code: 'IM_ROUTE_INVALID', message: invalid })]
       if (route.revision !== request.observedRevision) return [current, routeResult(request.operationId, 'conflict', { route, code: 'IM_ROUTE_STALE', message: 'route revision changed' })]
       const unchanged = route.enabled === request.enabled && JSON.stringify(route.groupTrigger ?? null) === JSON.stringify(request.groupTrigger ?? null)
@@ -464,6 +554,16 @@ export class ImRuntime extends Service implements ImRuntimeService {
   }
 
   ingestInboundPage(request: ImIngestInboundPageRequest): Promise<ImInboundPageResult> {
+    if (request.scope.kind === 'simulation') {
+      if (request.observedCursor !== null || request.nextCursor !== null) {
+        throw new ImRuntimeError('IM_DELIVERY_SCOPE_INVALID', 'simulation input cannot carry a provider cursor')
+      }
+      const resolved = this.resolveRoute(request.scope.accountId, request.scope.conversationKind, request.scope.conversationId)
+      const target = resolved.state === 'matched' ? this.simulationTargetTable().get(resolved.route.workspaceId)?.target : undefined
+      if (resolved.state !== 'matched' || target === undefined || target.accountId !== request.scope.accountId || target.routeId !== resolved.route.id) {
+        throw new ImRuntimeError('IM_DELIVERY_SCOPE_INVALID', 'simulation input must use an enabled configured simulation target')
+      }
+    }
     return this.deliveryStore().ingestInboundPage(request)
   }
 
@@ -495,6 +595,22 @@ export class ImRuntime extends Service implements ImRuntimeService {
     return this.deliveryStore().pendingInbound(request)
   }
 
+  getAgentTask(scope: ImDeliveryScope): ImAgentTaskView | undefined {
+    const scopeId = encodeImScopeId(scope)
+    const task = [...this.executionTable().entries()]
+      .map(([, aggregate]) => aggregate)
+      .filter(aggregate => aggregate.scopeId === scopeId)
+      .sort((left, right) => right.generation - left.generation)[0]
+    if (task === undefined) return undefined
+    const { pendingAdmission: _pending, ...view } = task
+    return view
+  }
+
+  /** @param scope - complete conversation identity. @param messageId - stored inbound identity. @returns stored message. */
+  getInboundMessage(scope: ImDeliveryScope, messageId: ImMessageId): ImInboundMessageView {
+    return this.deliveryStore().getInbound(scope, messageId)
+  }
+
   messageSource(scope: ImDeliveryScope, messageId: ImMessageId): ImMessageSource {
     return this.deliveryStore().messageSource(scope, messageId)
   }
@@ -523,12 +639,20 @@ export class ImRuntime extends Service implements ImRuntimeService {
     let ignoredEvidenceCount = 0
     for (const event of events) {
       if (event.type !== 'user/message' || event.data.source.kind !== 'im') continue
-      const matched = this.deliveryStore().matchMessageSource(event.data.source)
-      if (matched === undefined) { ignoredEvidenceCount++; continue }
-      const scopeId = event.data.source.scopeId
-      const group = groups.get(scopeId) ?? { scope: matched.scope, messageIds: new Set<ImMessageId>() }
-      group.messageIds.add(matched.messageId)
-      groups.set(scopeId, group)
+      const imSource = event.data.source
+      const sources: ImMessageSource[] = imSource.admission === undefined
+        ? [imSource]
+        : imSource.admission.messages.map(message => ({
+            kind: 'im', scopeId: imSource.scopeId,
+            messageId: message.messageId, sequenceNumber: message.sequenceNumber,
+          }))
+      for (const source of sources) {
+        const matched = this.deliveryStore().matchMessageSource(source)
+        if (matched === undefined) { ignoredEvidenceCount++; continue }
+        const group = groups.get(source.scopeId) ?? { scope: matched.scope, messageIds: new Set<ImMessageId>() }
+        group.messageIds.add(matched.messageId)
+        groups.set(source.scopeId, group)
+      }
     }
     const submittedMessageIds: ImMessageId[] = []
     for (const group of groups.values()) {
@@ -544,6 +668,11 @@ export class ImRuntime extends Service implements ImRuntimeService {
 
   registerOutbound(request: ImRegisterOutboundRequest): Promise<ImOutboundView> {
     return this.deliveryStore().registerOutbound(request)
+  }
+
+  /** @param request - scope-fixed automated intent. @param binding - task generation recorded before Agent execution. @returns durable intent or a route-changed rejection. */
+  registerAgentOutbound(request: ImRegisterOutboundRequest, binding: ImOutboundRouteBinding): Promise<ImOutboundView> {
+    return this.deliveryStore().registerOutbound(request, binding)
   }
 
   beginOutboundAttempt(request: ImBeginOutboundAttemptRequest): Promise<ImBeginOutboundAttemptResult> {
@@ -577,7 +706,12 @@ export class ImRuntime extends Service implements ImRuntimeService {
   classifyInboundSender(scope: ImRealDeliveryScope, evidence: ImInboundSenderEvidence): ImSenderAttribution {
     switch (evidence.kind) {
       case 'external-actor':
-        return { kind: 'external', senderId: evidence.senderId, ...(evidence.senderDisplayName === undefined ? {} : { senderDisplayName: evidence.senderDisplayName }) }
+        return {
+          kind: 'external', senderId: evidence.senderId,
+          ...(evidence.senderDisplayName === undefined ? {} : { senderDisplayName: evidence.senderDisplayName }),
+          ...(evidence.userId === undefined ? {} : { userId: evidence.userId }),
+          ...(evidence.openDingTalkId === undefined ? {} : { openDingTalkId: evidence.openDingTalkId }),
+        }
       case 'configured-native':
         return { kind: 'human-native', accountId: scope.accountId, providerActorId: evidence.providerActorId }
       case 'configured-echo': {
@@ -609,6 +743,16 @@ export class ImRuntime extends Service implements ImRuntimeService {
   private deliveryStore(): ImDeliveryStore {
     if (this.delivery === undefined || this.deliveryScopes === undefined || this.providerCursors === undefined) throw new Error('IM delivery domain is not ready')
     return this.delivery
+  }
+
+  private deliveryScopeTable(): KvTable<import('./delivery-types.ts').ImScopeId, ImDeliveryAggregate> {
+    if (this.deliveryScopes === undefined) throw new Error('IM delivery domain is not ready')
+    return this.deliveryScopes
+  }
+
+  private executionTable(): KvTable<ImAgentTaskId, ImExecutionAggregate> {
+    if (this.executions === undefined) throw new Error('IM execution domain is not ready')
+    return this.executions
   }
 
   private requireAccount(id: ImAccountId): ImAccountAggregate {
@@ -644,10 +788,76 @@ export class ImRuntime extends Service implements ImRuntimeService {
     return result
   }
 
+  /** Persist a connection intent separately from pause and process listener state. */
+  private async setConnectionIntent(request: ImAccountLifecycleRequest, intent: ImAccountView['connectionIntent']): Promise<ImAccountMutationResult> {
+    const fingerprint = JSON.stringify([intent, request.accountId, request.observedRevision])
+    const nextRevision = revision()
+    const updatedAt = now()
+    let replayed = false
+    const aggregate = await this.accountTable().update(request.accountId, current => {
+      const existing = current.accountOperations[request.operationId]
+      assertOperation(existing, fingerprint, request.operationId)
+      if (existing !== undefined) { replayed = true; return current }
+      const status: ImAccountMutationResult['status'] = current.account.revision !== request.observedRevision
+        ? 'conflict'
+        : current.account.connectionIntent === intent ? 'unchanged' : 'applied'
+      const account = status === 'applied'
+        ? { ...current.account, connectionIntent: intent, revision: nextRevision, updatedAt }
+        : current.account
+      return {
+        ...current,
+        account,
+        accountOperations: { ...current.accountOperations, [request.operationId]: { fingerprint, result: { operationId: request.operationId, status, account } } },
+      }
+    }).catch(error => { throw this.accountError(request.accountId, error) })
+    const stored = aggregate.accountOperations[request.operationId]
+    if (stored === undefined) throw new Error(`IM account operation '${request.operationId}' was not recorded`)
+    const result = { ...stored.result, account: accountView(stored.result.account, aggregate.routes, this.listenerStates.get(request.accountId)) }
+    if (!replayed) this.publish({ kind: 'account', accountId: request.accountId, operationId: request.operationId })
+    return result
+  }
+
+  /** Store one provider authorization observation under the account revision CAS. */
+  private async storeRefreshResult(
+    request: ImAccountLifecycleRequest,
+    fingerprint: string,
+    authorization: ImAccountView['authorization'],
+    forcedStatus: 'conflict' | undefined,
+  ): Promise<ImAccountMutationResult> {
+    const nextRevision = revision()
+    const updatedAt = now()
+    const aggregate = await this.accountTable().update(request.accountId, current => {
+      const existing = current.accountOperations[request.operationId]
+      assertOperation(existing, fingerprint, request.operationId)
+      if (existing !== undefined) return current
+      const status: ImAccountMutationResult['status'] = forcedStatus ?? (current.account.revision !== request.observedRevision
+        ? 'conflict'
+        : JSON.stringify(current.account.authorization) === JSON.stringify(authorization) ? 'unchanged' : 'applied')
+      const account = status === 'applied'
+        ? { ...current.account, authorization, revision: nextRevision, updatedAt }
+        : current.account
+      return {
+        ...current,
+        account,
+        accountOperations: { ...current.accountOperations, [request.operationId]: { fingerprint, result: { operationId: request.operationId, status, account } } },
+      }
+    }).catch(error => { throw this.accountError(request.accountId, error) })
+    const stored = aggregate.accountOperations[request.operationId]
+    if (stored === undefined) throw new Error(`IM account operation '${request.operationId}' was not recorded`)
+    this.publish({ kind: 'account', accountId: request.accountId, operationId: request.operationId })
+    return { ...stored.result, account: accountView(stored.result.account, aggregate.routes, this.listenerStates.get(request.accountId)) }
+  }
+
   private publish(change: Omit<ImRuntimeChange, 'revision'>): void {
     const event: ImRuntimeChange = { revision: ++this.generation, ...change }
     try { this.ctx.emit('imRuntime/changed', event) } catch (error) {
       this.ctx.logger.warn(`IM runtime change listener failed after commit: ${String(error)}`)
+    }
+    if (change.accountId !== undefined) {
+      this.scheduleListener(change.accountId)
+      for (const [, aggregate] of this.deliveryScopeTable().entries()) {
+        if (aggregate.scope.accountId === change.accountId) this.coordinator?.notify(aggregate.scope)
+      }
     }
   }
 
@@ -655,6 +865,148 @@ export class ImRuntime extends Service implements ImRuntimeService {
     const event: ImDeliveryChange = { sequence: ++this.deliveryGeneration, ...change }
     try { this.ctx.emit('imRuntime/delivery-changed', event) } catch (error) {
       this.ctx.logger.warn(`IM delivery change listener failed after commit: ${String(error)}`)
+    }
+    if (change.kind === 'inbound') this.coordinator?.notify(change.scope)
+  }
+
+  /** Serialize listener state changes for one configured account. */
+  private scheduleListener(id: ImAccountId): void {
+    const prior = this.listenerTails.get(id) ?? Promise.resolve()
+    const next = prior.then(() => this.reconcileListener(id))
+    this.listenerTails.set(id, next.then(() => {}, error => {
+      this.ctx.logger.warn(`IM account '${id}' listener reconciliation failed: ${String(error)}`)
+    }))
+  }
+
+  /** Start or stop the provider listener from durable account and route facts. */
+  private async reconcileListener(id: ImAccountId): Promise<void> {
+    const aggregate = this.accountTable().get(id)
+    const shouldRun = aggregate !== undefined
+      && aggregate.account.connectionIntent === 'connected'
+      && (aggregate.account.authorization.state === 'ready' || aggregate.account.authorization.state === 'unchecked')
+      && !aggregate.account.paused
+      && Object.values(aggregate.routes).some(route => route.enabled)
+    const transport = aggregate === undefined ? undefined : this.transports.get(aggregate.account.platform)
+    const current = this.activeListeners.get(id)
+    if (!shouldRun || transport === undefined) {
+      if (current !== undefined) await this.stopListener(id, current)
+      return
+    }
+    const plan = {
+      routes: Object.values(aggregate.routes)
+        .filter(route => route.enabled)
+        .map(route => ({
+          routeId: route.id,
+          routeRevision: route.revision,
+          conversationKind: route.conversationKind,
+          target: route.target,
+          needsMentionEvidence: route.conversationKind === 'group' && route.groupTrigger?.mention === true,
+        })),
+    }
+    const planFingerprint = JSON.stringify(plan)
+    if (current?.planFingerprint === planFingerprint) return
+    if (current !== undefined) await this.stopListener(id, current)
+    const controller = new AbortController()
+    const active: ActiveListener = { controller, planFingerprint }
+    this.activeListeners.set(id, active)
+    this.listenerStates.set(id, { state: 'starting', since: now() })
+    this.publishListener(id)
+    try {
+      const view = accountView(aggregate.account, aggregate.routes, this.listenerStates.get(id))
+      const dispose = await transport.listen(view, plan, this.transportSink(id, aggregate.account.platform), controller.signal)
+      if (controller.signal.aborted) {
+        await dispose()
+        return
+      }
+      active.dispose = dispose
+      this.listenerStates.set(id, { state: 'running', readyAt: now() })
+      this.publishListener(id)
+    } catch {
+      this.activeListeners.delete(id)
+      if (!controller.signal.aborted) {
+        this.listenerStates.set(id, { state: 'failed', attempts: 1, lastError: 'provider listener failed' })
+        this.ctx.logger.warn(`IM account '${id}' listener failed`)
+        this.publishListener(id)
+      }
+    }
+  }
+
+  /** Stop one exact listener before publishing a later start for the same account. */
+  private async stopListener(id: ImAccountId, active: ActiveListener): Promise<void> {
+    active.controller.abort(new Error(`IM account '${id}' listener stopped`))
+    if (active.dispose !== undefined) await active.dispose()
+    if (this.activeListeners.get(id) === active) this.activeListeners.delete(id)
+    this.listenerStates.delete(id)
+    this.publishListener(id)
+  }
+
+  /** Drain every provider listener owned by this runtime. */
+  private async stopAllListeners(): Promise<void> {
+    const active = [...this.activeListeners]
+    await Promise.all(active.map(([id, listener]) => this.stopListener(id, listener)))
+    await Promise.all(this.listenerTails.values())
+  }
+
+  /** Bind a provider page sink to one configured account and its platform. */
+  private transportSink(accountId: ImAccountId, platform: ImPlatform): ImTransportSink {
+    return {
+      receivePage: page => this.receiveTransportPage(accountId, platform, page),
+    }
+  }
+
+  /** Persist every conversation page before committing the provider-owned cursor. */
+  private async receiveTransportPage(accountId: ImAccountId, platform: ImPlatform, page: ImTransportInboundPage): Promise<ImTransportInboundPageReceipt> {
+    if (page.owner.accountId !== accountId || page.owner.platform !== platform) {
+      throw new ImRuntimeError('IM_DELIVERY_SCOPE_INVALID', 'provider page owner must match the listener account and platform')
+    }
+    const conversations: ImInboundPageResult[] = []
+    for (const group of page.conversations) {
+      const scope: ImRealDeliveryScope = {
+        kind: 'real', platform, accountId,
+        conversationKind: group.conversationKind,
+        conversationId: group.conversationId,
+      }
+      const prior = this.getConversationCursor(scope).platformCursor
+      const result = await this.ingestInboundPage({
+        operationId: group.operationId,
+        scope,
+        observedCursor: prior,
+        nextCursor: prior,
+        messages: group.messages.map(message => ({
+          externalMessageId: message.externalMessageId,
+          sender: this.classifyInboundSender(scope, message.senderEvidence),
+          content: { text: message.text, format: message.format },
+          occurredAt: message.occurredAt,
+          ...(message.mentionedConfiguredAccount === undefined ? {} : { mentionedConfiguredAccount: message.mentionedConfiguredAccount }),
+        })),
+      })
+      if (result.status !== 'applied') {
+        throw new ImRuntimeError('IM_DELIVERY_SCOPE_INVALID', `provider conversation page '${group.operationId}' lost its cursor comparison`)
+      }
+      conversations.push(result)
+    }
+    const cursor = await this.commitProviderCursor({
+      operationId: page.operationId,
+      owner: page.owner,
+      observedCursor: page.observedCursor,
+      nextCursor: page.nextCursor,
+      pages: page.conversations.map(group => ({
+        scope: {
+          kind: 'real' as const, platform, accountId,
+          conversationKind: group.conversationKind,
+          conversationId: group.conversationId,
+        },
+        operationId: group.operationId,
+      })),
+    })
+    return { conversations, cursor }
+  }
+
+  /** Publish process listener facts without scheduling another reconciliation. */
+  private publishListener(accountId: ImAccountId): void {
+    const event: ImRuntimeChange = { revision: ++this.generation, kind: 'account-listener', accountId }
+    try { this.ctx.emit('imRuntime/changed', event) } catch (error) {
+      this.ctx.logger.warn(`IM runtime listener-state observer failed: ${String(error)}`)
     }
   }
 }

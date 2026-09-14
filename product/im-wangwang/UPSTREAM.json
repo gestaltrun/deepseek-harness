@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "repository": "https://github.com/gestaltrun/deepseek-harness-gestalt.git",
+    "commit": "17ce1b29d96f180a31e7cfa3be8770be20d589e7",
+    "paths": [
+      "packages/im/im-wangwang/src/auth.ts",
+      "packages/im/im-wangwang/src/client.ts",
+      "packages/im/im-wangwang/src/errors.ts",
+      "packages/im/im-wangwang/src/identity.ts",
+      "packages/im/im-wangwang/src/service.ts",
+      "packages/im/im-wangwang/src/spec.ts",
+      "packages/im/im-wangwang/src/types.ts",
+      "packages/im/im-wangwang/tests"
+    ],
+    "dirtyPatchSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "license": "MIT"
+  },
+  "adoptedBehavior": [
+    "static admitted merchant identity without whoami discovery",
+    "per-operation credential resolution",
+    "canonical HMAC-SHA256 request authentication",
+    "strict merchant, sender, and cursor parsing",
+    "whole-page progression across multiple conversations",
+    "provider receipt and result-unknown handling"
+  ],
+  "productChanges": [
+    "Credentials grant records replace configuration credential references",
+    "the product runtime owns durable page receipts and provider cursors",
+    "the provider emits explicit sender evidence through ImTransport",
+    "account authorization inspection remains separate from listener state"
+  ]
+}

@@ -1,0 +1,51 @@
+---
+description: "An installable product profile layer for durable IM account and route configuration."
+kind: "package-bundle"
+---
+
+# @gestaltrun/dsh-im-bundle
+
+English | [中文](README.zh.md)
+
+## Summary
+
+This bundle adds durable IM account and route configuration to a base-backed dsh profile. It selects the product runtime, generated configuration API, and Accounts/Workspace settings UI. The shipped Web template remains the underlying application. Platform providers and Agent execution are separate composition steps.
+
+## Table of Contents
+
+- [Install into a profile](#install-into-a-profile)
+- [Layer behavior](#layer-behavior)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Dev Note](#dev-note)
+
+<a id="install-into-a-profile"></a>
+## Install into a profile
+
+Build the four candidate archives with `pnpm --dir product run pack:im-bundle`. The [product workspace](../README.md) owns the build sequence and `product/dist` output directory. Candidate packages have not been published to the registry; a candidate installation must map their exact names and versions to the corresponding local archives.
+
+The repeatable installation check uses an isolated, already-installed `@deepseek-ai/dsh@0.1.5-rc.2` consumer. Set `DSH_IM_SMOKE_INSTALL_ROOT` to that consumer directory and run `pnpm --dir product run smoke:im-profile`. The check creates a fresh profile from the shipped Web template, records candidate archive hashes, binds unpublished dependencies to their local archives, and invokes `dsh plugin --profile im-profile-smoke add`. The profile disables automatic peer installation and shares the consumer's Cordis instance.
+
+`dsh --profile im-profile-smoke --dump-config` shows the three product rows after installation. The check also rejects malformed YAML in an extra overlay and runs `dsh plugin --profile im-profile-smoke remove @gestaltrun/dsh-im-bundle`; the product rows disappear while shared profile data remains. It does not launch a Web server, Electron, a model, or a provider.
+
+<a id="layer-behavior"></a>
+## Layer behavior
+
+The [patch](cordis.patch.yml) inserts `gestaltrun-im-runtime`, `gestaltrun-im-api`, and `gestaltrun-im-ui` once and selects the public browse directory Host with matching UI configuration. The underlying base supplies storage, credentials, and Typert services. [Runtime](../im-runtime/README.md) owns durable configuration, [API](../api-im/README.md) owns safe Remote commands and Client objects, and [UI](../ui-im/README.md) owns account and selected-Workspace controls. The exported [Web overlay](web.patch.yml) repeats the explicit browser pairing. The [Desktop overlay](desktop.patch.yml) disables the product browse row and selects native UI interaction; the Desktop Host applies its existing native-provider patch after the profile layers. Apply the product Desktop overlay in the profile before that final Desktop layer. The bundle has no runtime entry or service of its own.
+
+<a id="model-experience"></a>
+## Model Experience
+
+None. This configuration subset adds no model-facing tool or prompt.
+
+<a id="known-limitations-and-deferred-work"></a>
+## Known Limitations and Deferred Work
+
+- Platform providers, execution tools, and simulation composition are not included. The IM right pane reports unavailable until its API is composed.
+- Desktop does not yet select this bundle in its default product list.
+- Package installation and configuration dumps do not prove the complete IM experience; live provider and Web/Desktop acceptance remain separate.
+
+<a id="dev-note"></a>
+## Dev Note
+
+None.

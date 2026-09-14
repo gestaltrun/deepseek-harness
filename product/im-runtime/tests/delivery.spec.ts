@@ -50,6 +50,8 @@ function transport(): ImTransport {
         credentialRecord: { kind: 'grant', payload: { accessKeyId: request.accessKeyId, accessKeySecret: request.accessKeySecret } },
       }
     },
+    inspectAccount: async () => ({ authorization: { state: 'unchecked' } }),
+    refreshAccount: async () => ({ authorization: { state: 'unchecked' } }),
     discoverConversations: async () => ({ items: [] }),
     listen: async () => async () => {},
     send: async () => ({ state: 'unknown' }),
@@ -113,6 +115,32 @@ describe('inbound delivery', () => {
     expect(repeated.map(result => result.status).sort()).toEqual(['applied', 'conflict'])
     expect(ctx.imRuntime.getConversationCursor(scope)).toMatchObject({ lastReceivedSequenceNumber: 3, pendingCount: 3, platformCursor: 'cursor-2' })
     expect(ctx.imRuntime.queryHistory({ scope, limit: 10 }).items).toHaveLength(3)
+  })
+
+  it('monotonically merges later provider mention evidence without reopening a submitted message', async () => {
+    const { ctx } = await boot(undefined, true)
+    const { scope } = await configured(ctx)
+    const first = await ctx.imRuntime.ingestInboundPage({
+      operationId: deliveryOperation('all-group-frame'), scope, observedCursor: null, nextCursor: null,
+      messages: [external('shared-message', '2026-09-14T01:00:00.000Z')],
+    })
+    const message = first.messages[0]!
+    const sessionId = SessionId('mention-session')
+    await ctx.imRuntime.markSubmitted({ scope, messageIds: [message.messageId], sessionId })
+
+    const enriched = await ctx.imRuntime.ingestInboundPage({
+      operationId: deliveryOperation('at-me-frame'), scope, observedCursor: null, nextCursor: null,
+      messages: [{ ...external('shared-message', '2026-09-14T01:00:00.000Z'), mentionedConfiguredAccount: true }],
+    })
+
+    expect(enriched).toMatchObject({ acceptedCount: 0, duplicateCount: 1, evidenceMergedCount: 1 })
+    expect(enriched.messages).toMatchObject([{
+      messageId: message.messageId,
+      mentionedConfiguredAccount: true,
+      stage: 'submitted',
+      submission: { sessionId },
+    }])
+    expect(ctx.imRuntime.pendingInbound({ scope, limit: 10 })).toEqual([])
   })
 
   it('keeps page receipts, deduplication, and cursors across restart', async () => {

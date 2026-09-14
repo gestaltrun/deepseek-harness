@@ -28,6 +28,7 @@ import type {
   ImOutboundPage,
   ImOutboundQueryRequest,
   ImOutboundRequestId,
+  ImOutboundRouteBinding,
   ImOutboundView,
   ImPendingInboundRequest,
   ImProviderCursorCommitResult,
@@ -199,7 +200,7 @@ export class ImDeliveryStore {
   }
 
   async ingestInboundPage(request: ImIngestInboundPageRequest): Promise<ImInboundPageResult> {
-    this.assertRealScope(request.scope)
+    if (request.scope.kind === 'real') this.assertRealScope(request.scope)
     const scopeId = encodeImScopeId(request.scope)
     const fingerprint = pageFingerprint(request)
     return this.mutate<ImInboundPageResult>(request.scope, (current) => {
@@ -212,7 +213,7 @@ export class ImDeliveryStore {
       if (current.cursor.platformCursor !== request.observedCursor) {
         const result: ImInboundPageResult = {
           kind: 'page', operationId: request.operationId, status: 'conflict', acceptedCount: 0,
-          duplicateCount: 0, messages: [], cursor: current.cursor,
+          evidenceMergedCount: 0, duplicateCount: 0, messages: [], cursor: current.cursor,
         }
         return {
           aggregate: { ...current, operations: { ...current.operations, [request.operationId]: { fingerprint, result } } },
@@ -224,11 +225,22 @@ export class ImDeliveryStore {
       const messages = { ...current.messages }
       const byExternalId = { ...current.messageIdsByExternalId }
       const accepted: ImInboundMessageView[] = []
+      const evidenceMerged: ImInboundMessageView[] = []
       let duplicateCount = 0
       const ordered = [...request.messages].sort((left, right) => left.occurredAt.localeCompare(right.occurredAt) || left.externalMessageId.localeCompare(right.externalMessageId))
       const receivedAt = timestamp()
       for (const input of ordered) {
-        if (byExternalId[input.externalMessageId] !== undefined) { duplicateCount++; continue }
+        const existingId = byExternalId[input.externalMessageId]
+        if (existingId !== undefined) {
+          duplicateCount++
+          const existingMessage = messages[existingId]
+          if (existingMessage !== undefined && existingMessage.mentionedConfiguredAccount !== true && input.mentionedConfiguredAccount === true) {
+            const enriched = { ...existingMessage, mentionedConfiguredAccount: true }
+            messages[existingId] = enriched
+            evidenceMerged.push(enriched)
+          }
+          continue
+        }
         const id = messageIdentity(scopeId, input.externalMessageId)
         const message: ImInboundMessageView = {
           ...input,
@@ -252,7 +264,7 @@ export class ImDeliveryStore {
       }
       const result: ImInboundPageResult = {
         kind: 'page', operationId: request.operationId, status: 'applied', acceptedCount: accepted.length,
-        duplicateCount, messages: accepted, cursor,
+        evidenceMergedCount: evidenceMerged.length, duplicateCount, messages: [...accepted, ...evidenceMerged], cursor,
       }
       return {
         aggregate: {
@@ -481,13 +493,13 @@ export class ImDeliveryStore {
     })
   }
 
-  registerOutbound(request: ImRegisterOutboundRequest): Promise<ImOutboundView> {
+  registerOutbound(request: ImRegisterOutboundRequest, frozenBinding?: ImOutboundRouteBinding): Promise<ImOutboundView> {
     const scopeId = encodeImScopeId(request.scope)
     return this.mutate(request.scope, (current) => {
       const existing = current.outbounds[request.requestId]
       assertOutbound(existing, request)
       if (existing !== undefined) return { aggregate: current, value: existing, changed: false }
-      const policy = this.registrationPolicy(request)
+      const policy = this.registrationPolicy(request, frozenBinding)
       const createdAt = timestamp()
       const outbound: ImOutboundView = {
         requestId: request.requestId,
@@ -625,13 +637,21 @@ export class ImDeliveryStore {
       && (outbound.externalMessageId === externalMessageId || outbound.receipt?.providerReceiptId === externalMessageId))
   }
 
-  private registrationPolicy(request: ImRegisterOutboundRequest): { readonly binding?: ImOutboundView['routeBinding']; readonly reason?: NonNullable<ImOutboundView['preSendFailureReason']> } {
+  private registrationPolicy(request: ImRegisterOutboundRequest, frozenBinding?: ImOutboundRouteBinding): { readonly binding?: ImOutboundView['routeBinding']; readonly reason?: NonNullable<ImOutboundView['preSendFailureReason']> } {
     const account = this.host.inspectAccount(request.scope.accountId)
     if (account === undefined) return { reason: 'account-not-found' }
     if (account.platform !== request.scope.platform) return { reason: 'platform-mismatch' }
     if (request.scope.kind === 'simulation' || request.intent === 'human-manual') return {}
     if (account.paused) return { reason: 'account-paused' }
     const resolution = this.host.resolveRoute(request.scope)
+    if (frozenBinding !== undefined) {
+      const unchanged = resolution?.state === 'matched'
+        && account.revision === frozenBinding.accountRevision
+        && resolution.route.id === frozenBinding.routeId
+        && resolution.route.revision === frozenBinding.routeRevision
+        && resolution.route.workspaceId === frozenBinding.workspaceId
+      return unchanged ? { binding: frozenBinding } : { binding: frozenBinding, reason: 'route-changed' }
+    }
     if (resolution?.state === 'matched') return { binding: { routeId: resolution.route.id, routeRevision: resolution.route.revision, workspaceId: resolution.route.workspaceId, accountRevision: account.revision } }
     if (resolution?.state === 'disabled') return { reason: 'route-disabled' }
     return { reason: 'route-unmatched' }

@@ -1,0 +1,5 @@
+- id: gestaltrun-im-directory-picker-browse
+  disabled: true
+- id: gestaltrun-im-ui
+  config:
+    directoryPicker: native

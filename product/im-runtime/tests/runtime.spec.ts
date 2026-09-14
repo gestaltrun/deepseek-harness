@@ -15,6 +15,8 @@ import ImRuntime, {
   type ImRevision,
   type ImRouteId,
   type ImTransport,
+  type ImTransportListenPlan,
+  type ImTransportSink,
 } from '../src/index.ts'
 
 const roots: Context[] = []
@@ -27,7 +29,7 @@ afterEach(async () => {
 
 function operation(value: string): ImOperationId { return brandString<ImOperationId>(value) }
 
-function fixtureTransport(): ImTransport {
+function fixtureTransport(onListen?: (sink: ImTransportSink) => void, onDispose?: () => void): ImTransport {
   return {
     platform: 'wangwang',
     listAccountCandidates: async () => [{ platform: 'wangwang', candidateId: 'merchant-1', displayName: 'Fixture merchant', merchantId: 'merchant-1' }],
@@ -40,17 +42,16 @@ function fixtureTransport(): ImTransport {
         credentialRecord: { kind: 'grant', payload: { accessKeyId: request.accessKeyId, accessKeySecret: request.accessKeySecret } },
       }
     },
+    inspectAccount: async () => ({ authorization: { state: 'unchecked' } }),
+    refreshAccount: async () => ({ authorization: { state: 'unchecked' } }),
     discoverConversations: async () => ({ items: [] }),
-    listen: async () => async () => {},
+    listen: async (_account, _plan, sink) => { onListen?.(sink); return async () => { onDispose?.() } },
     send: async () => ({ state: 'unknown' }),
     confirm: async () => ({ state: 'unknown' }),
   }
 }
 
-function fixtureProvider(ctx: Context): void { ctx.imTransports.register(fixtureTransport()) }
-fixtureProvider.inject = ['imTransports']
-
-async function boot(directory?: string) {
+async function boot(directory?: string, transport = fixtureTransport()) {
   const root = directory ?? await mkdtemp(join(tmpdir(), 'dsh-im-runtime-'))
   if (directory === undefined) directories.push(root)
   const ctx = new Context()
@@ -60,6 +61,8 @@ async function boot(directory?: string) {
   await ctx.plugin(StorageDomain, { backend: 'json' })
   await ctx.plugin(LocalCredentialProvider, { path: join(root, 'credentials.yaml'), watch: false })
   await ctx.plugin(ImRuntime)
+  function fixtureProvider(ctx: Context): void { ctx.imTransports.register(transport) }
+  fixtureProvider.inject = ['imTransports']
   const provider = ctx.plugin(fixtureProvider)
   await provider
   return { ctx, root }
@@ -75,6 +78,167 @@ async function addAccount(ctx: Context) {
 }
 
 describe('ImRuntime configuration', () => {
+  it('passes enabled route and mention-evidence requirements to the provider listener', async () => {
+    const plans: ImTransportListenPlan[] = []
+    let stops = 0
+    const fixture = fixtureTransport()
+    const { ctx } = await boot(undefined, {
+      ...fixture,
+      listen: async (_account, nextPlan) => { plans.push(nextPlan); return async () => { stops++ } },
+    })
+    const account = await addAccount(ctx)
+    const created = await ctx.imRuntime.createRoute({
+      operationId: operation('mention-plan'), accountId: account.id, conversationKind: 'group',
+      target: { kind: 'all' }, workspaceId: WorkspaceId('workspace-a'), enabled: true,
+      groupTrigger: { mention: true, everyN: 5 },
+    })
+    await expect.poll(() => plans.length).toBe(1)
+    expect(plans[0]).toEqual({ routes: [expect.objectContaining({ conversationKind: 'group', target: { kind: 'all' }, needsMentionEvidence: true })] })
+    const route = created.route
+    if (route === undefined) throw new Error('fixture route was not created')
+    await ctx.imRuntime.saveRoute({
+      operationId: operation('disable-mention'), accountId: account.id, routeId: route.id,
+      observedRevision: route.revision, enabled: true, groupTrigger: { everyN: 5 },
+    })
+    await expect.poll(() => plans.length).toBe(2)
+    expect(stops).toBe(1)
+    expect(plans[1]).toEqual({ routes: [expect.objectContaining({ needsMentionEvidence: false })] })
+  })
+
+  it('persists every conversation group before committing one provider cursor', async () => {
+    let sink: ImTransportSink | undefined
+    const { ctx } = await boot(undefined, fixtureTransport(value => { sink = value }))
+    const account = await addAccount(ctx)
+    await ctx.imRuntime.createRoute({
+      operationId: operation('listen-route'), accountId: account.id, conversationKind: 'direct',
+      target: { kind: 'all' }, workspaceId: WorkspaceId('workspace-a'), enabled: true,
+    })
+    await expect.poll(() => sink).toBeDefined()
+
+    const receipt = await sink!.receivePage({
+      operationId: brandString('merchant-page'),
+      owner: { platform: 'wangwang', accountId: account.id, streamId: 'merchant-inbox' },
+      observedCursor: null,
+      nextCursor: 'merchant-cursor-1',
+      conversations: [
+        {
+          operationId: brandString('buyer-a-page'), conversationKind: 'direct', conversationId: 'buyer-a',
+          messages: [{
+            externalMessageId: 'message-a', senderEvidence: { kind: 'external-actor', senderId: 'buyer-a' },
+            text: 'hello', format: 'text', occurredAt: '2026-09-14T01:00:00.000Z', mentionedConfiguredAccount: true,
+          }],
+        },
+        {
+          operationId: brandString('buyer-b-page'), conversationKind: 'direct', conversationId: 'buyer-b',
+          messages: [{
+            externalMessageId: 'message-b', senderEvidence: { kind: 'provider-unknown' },
+            text: 'world', format: 'text', occurredAt: '2026-09-14T01:01:00.000Z',
+          }],
+        },
+      ],
+    })
+
+    expect(receipt.conversations.map(value => value.acceptedCount)).toEqual([1, 1])
+    expect(receipt.cursor).toMatchObject({ status: 'applied', cursor: { cursor: 'merchant-cursor-1' } })
+    expect(receipt.conversations[0]?.messages[0]).toMatchObject({
+      sender: { kind: 'external', senderId: 'buyer-a' }, mentionedConfiguredAccount: true,
+    })
+  })
+
+  it('keeps connection intent separate from pause and refreshes provider authorization facts', async () => {
+    let starts = 0
+    let stops = 0
+    const plans: ImTransportListenPlan[] = []
+    const listenerStates: string[] = []
+    const ready = Promise.withResolvers<void>()
+    const fixture = fixtureTransport()
+    const base: ImTransport = {
+      ...fixture,
+      listen: async (_account, plan) => {
+        starts++
+        plans.push(plan)
+        await ready.promise
+        return async () => { stops++ }
+      },
+    }
+    const { ctx } = await boot(undefined, {
+      ...base,
+      refreshAccount: async () => ({ authorization: { state: 'ready', checkedAt: '2026-09-14T02:00:00.000Z' } }),
+    })
+    ctx.imRuntime.subscribe((change) => {
+      if (change.kind === 'account-listener') {
+        const state = ctx.imRuntime.snapshot().accounts[0]?.listener.state
+        if (state !== undefined) listenerStates.push(state)
+      }
+    })
+    const account = await addAccount(ctx)
+    await ctx.imRuntime.createRoute({
+      operationId: operation('lifecycle-route'), accountId: account.id, conversationKind: 'direct',
+      target: { kind: 'all' }, workspaceId: WorkspaceId('workspace-a'), enabled: true,
+    })
+    await expect.poll(() => starts).toBe(1)
+    expect(ctx.imRuntime.snapshot().accounts[0]?.listener.state).toBe('starting')
+    ready.resolve()
+    await expect.poll(() => ctx.imRuntime.snapshot().accounts[0]?.listener.state).toBe('running')
+    expect(plans[0]).toEqual({ routes: [expect.objectContaining({ conversationKind: 'direct', target: { kind: 'all' }, needsMentionEvidence: false })] })
+
+    const disconnected = await ctx.imRuntime.disconnectAccount({
+      operationId: operation('disconnect'), accountId: account.id, observedRevision: account.revision,
+    })
+    expect(disconnected).toMatchObject({ status: 'applied', account: { connectionIntent: 'disconnected', paused: false, listener: { state: 'stopped', reason: 'manual' } } })
+    await expect.poll(() => stops).toBe(1)
+    const reconnected = await ctx.imRuntime.reconnectAccount({
+      operationId: operation('reconnect'), accountId: account.id, observedRevision: disconnected.account.revision,
+    })
+    await expect.poll(() => starts).toBe(2)
+    const refreshed = await ctx.imRuntime.refreshAccount({
+      operationId: operation('refresh'), accountId: account.id, observedRevision: reconnected.account.revision,
+    })
+    expect(refreshed).toMatchObject({ status: 'applied', account: { authorization: { state: 'ready' }, connectionIntent: 'connected' } })
+    expect(listenerStates).toEqual(expect.arrayContaining(['starting', 'running', 'stopped']))
+  })
+
+  it('does not start an unauthorized listener or expose a provider failure', async () => {
+    let starts = 0
+    const unauthorized = fixtureTransport(() => { starts++ })
+    const required = {
+      ...unauthorized,
+      prepareAccount: async () => ({
+        displayName: 'Merchant',
+        identity: { platform: 'wangwang' as const, merchantId: 'merchant-1', displayName: 'Merchant' },
+        authorization: { state: 'required' as const, reason: 'missing' as const },
+      }),
+    }
+    const first = await boot(undefined, required)
+    const account = await addAccount(first.ctx)
+    await first.ctx.imRuntime.createRoute({
+      operationId: operation('unauthorized-route'), accountId: account.id, conversationKind: 'direct',
+      target: { kind: 'all' }, workspaceId: WorkspaceId('workspace-a'), enabled: true,
+    })
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(starts).toBe(0)
+    expect(first.ctx.imRuntime.snapshot().accounts[0]?.listener).toEqual({ state: 'stopped', reason: 'authorization-required' })
+
+    const sentinel = 'credential-sentinel-do-not-project'
+    const failing = fixtureTransport(() => { throw new Error(sentinel) })
+    const second = await boot(undefined, failing)
+    const warnings: string[] = []
+    second.ctx.logger.warn = ((message: unknown) => { warnings.push(String(message)) }) as typeof second.ctx.logger.warn
+    const changes: unknown[] = []
+    second.ctx.imRuntime.subscribe(change => { changes.push(change) })
+    const failingAccount = await addAccount(second.ctx)
+    await second.ctx.imRuntime.createRoute({
+      operationId: operation('failing-route'), accountId: failingAccount.id, conversationKind: 'direct',
+      target: { kind: 'all' }, workspaceId: WorkspaceId('workspace-b'), enabled: true,
+    })
+    await expect.poll(() => second.ctx.imRuntime.snapshot().accounts[0]?.listener.state).toBe('failed')
+    expect(JSON.stringify(second.ctx.imRuntime.snapshot())).not.toContain(sentinel)
+    expect(JSON.stringify(changes)).not.toContain(sentinel)
+    expect(JSON.stringify(warnings)).not.toContain(sentinel)
+    expect(warnings).toEqual([expect.stringContaining('listener failed')])
+    expect(second.ctx.imRuntime.snapshot().accounts[0]?.listener).toEqual({ state: 'failed', attempts: 1, lastError: 'provider listener failed' })
+  })
+
   it('persists only safe account facts and reloads them from the JSON domain', async () => {
     const first = await boot()
     await expect(first.ctx.imRuntime.listAccountCandidates('wangwang')).resolves.toEqual([
@@ -183,8 +347,9 @@ describe('ImRuntime configuration', () => {
     await ctx.imRuntime.saveRoute({ operationId: operation('after-unsubscribe'), accountId: account.id, routeId: first.route!.id, observedRevision: first.route!.revision, enabled: false })
 
     expect(replay).toEqual(first)
-    expect(changes).toHaveLength(1)
-    expect(changes[0]).toMatchObject({ operationId: operation('once'), kind: 'route' })
+    const operationChanges = changes.filter(change => change.operationId !== undefined)
+    expect(operationChanges).toHaveLength(1)
+    expect(operationChanges[0]).toMatchObject({ operationId: operation('once'), kind: 'route' })
   })
 
   it('stores invalid and duplicate route outcomes and serializes concurrent tuple creation', async () => {

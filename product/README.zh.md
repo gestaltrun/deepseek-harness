@@ -4,7 +4,7 @@
 
 ## 概述
 
-产品包使用这个独立的 pnpm 工作区和已发布的 DSH 对等依赖。使用 `pnpm --dir product install --frozen-lockfile --ignore-scripts` 安装依赖。工作区把 Zod 固定为 `4.4.3`，使产品 schema 与已发布 DSH schema 接口解析到同一实现。`build`、`test`、`typecheck` 和 `pack` 脚本选择 [Model Center](model-center/README.zh.md)；对应命令和运行时行为由该包定义。
+产品包使用这个独立的 pnpm 工作区和已发布的 DSH 对等依赖。使用 `pnpm --dir product install --frozen-lockfile --ignore-scripts` 安装依赖。工作区把 Zod 固定为 `4.4.3`，使产品 schema 与已发布 DSH schema 接口解析到同一实现。默认 `build`、`test`、`typecheck` 和 `pack` 脚本包括 [Model Center](model-center/README.zh.md)、IM Runtime、API 和 UI；`test` 还运行产品构建辅助检查，`pack` 包括 IM bundle。
 
 ## 目录
 
@@ -17,6 +17,8 @@
 [已认可的 IM 架构](../.agents/notes/proposed/architecture/2026-09-14-im-takeover-plugin-migration.zh.md) 分配运行时、API、UI 和分发职责。`tsconfig.host.json` 与 `tsconfig.client.json` 分别选择独立编译面。产品源码导入通过共享基础配置解析；Client Remote 导入消费 Host 生成的产物。
 
 `pnpm --dir product run build:im-api` 依次构建运行时、API Host、生成的 Remote 产物和 API Client。`pnpm --dir product run pack:im-api` 执行相同构建，并把两个 npm 归档写入 `product/dist`。
+
+`pnpm --dir product run build:im` 在运行时/API 顺序之后增加 UI 构建。`pnpm --dir product run pack:im-bundle` 构建这些包，并把它们和[配置 bundle](im-bundle/README.zh.md)一起打包。`typecheck` 在检查所有产品包前准备生成的 Remote 声明。bundle 定义已安装 profile 的检查和当前组合限制。
 
 构建 IM 运行时和 API Host 后，运行 `pnpm --dir product run generate:im`。所有引用的工作区成员及其已安装对等依赖都必须存在；缺少输入会使命令失败。它在 API Client 和 UI 构建之前生成 API 包的 Host 反射及 Remote Client 产物。`pnpm --dir product run test:build` 使用真实已发布的 npm 声明验证该构建步骤。
 

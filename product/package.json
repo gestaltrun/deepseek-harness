@@ -4,18 +4,25 @@
   "type": "module",
   "packageManager": "pnpm@11.7.0",
   "scripts": {
-    "build": "pnpm --filter @gestaltrun/dsh-model-center build",
+    "build": "pnpm --filter @gestaltrun/dsh-model-center --fail-if-no-match run build && pnpm run build:im",
+    "build:im": "pnpm run build:im-api && pnpm --filter @gestaltrun/dsh-ui-im --fail-if-no-match run build",
     "build:im-api": "pnpm --filter @gestaltrun/dsh-im-runtime --fail-if-no-match run build && pnpm --filter @gestaltrun/dsh-api-im --fail-if-no-match run build:host && pnpm run generate:im && pnpm --filter @gestaltrun/dsh-api-im --fail-if-no-match run build:client",
-    "test": "pnpm --filter @gestaltrun/dsh-model-center test",
-    "test:build": "node --test scripts/typert-build.test.mjs",
+    "test": "pnpm run test:build && pnpm --recursive --workspace-concurrency=1 --filter @gestaltrun/dsh-model-center --filter @gestaltrun/dsh-im-runtime --filter @gestaltrun/dsh-api-im --filter @gestaltrun/dsh-ui-im --fail-if-no-match run test",
+    "test:build": "node --test scripts/typert-build.test.mjs scripts/directory-picker.test.mjs",
     "smoke:im-loader": "node scripts/smoke-im-loader.mjs",
-    "typecheck": "pnpm --filter @gestaltrun/dsh-model-center typecheck",
+    "smoke:im-profile": "node scripts/smoke-im-profile.mjs",
+    "typecheck": "pnpm run build:im-api && pnpm --recursive --workspace-concurrency=1 --filter @gestaltrun/dsh-model-center --filter @gestaltrun/dsh-im-runtime --filter @gestaltrun/dsh-api-im --filter @gestaltrun/dsh-ui-im --fail-if-no-match run typecheck",
     "generate:im": "node scripts/generate-im-typert.mjs",
-    "pack": "pnpm --filter @gestaltrun/dsh-model-center release:pack",
-    "pack:im-api": "pnpm run build:im-api && pnpm --filter @gestaltrun/dsh-im-runtime --fail-if-no-match pack --pack-destination dist && pnpm --filter @gestaltrun/dsh-api-im --fail-if-no-match pack --pack-destination dist"
+    "pack": "pnpm run build && pnpm --recursive --workspace-concurrency=1 --filter @gestaltrun/dsh-model-center --filter @gestaltrun/dsh-im-runtime --filter @gestaltrun/dsh-api-im --filter @gestaltrun/dsh-ui-im --filter @gestaltrun/dsh-im-bundle --fail-if-no-match pack --pack-destination dist",
+    "pack:im-api": "pnpm run build:im-api && pnpm --filter @gestaltrun/dsh-im-runtime --fail-if-no-match pack --pack-destination dist && pnpm --filter @gestaltrun/dsh-api-im --fail-if-no-match pack --pack-destination dist",
+    "pack:im-bundle": "pnpm run build:im && pnpm --recursive --workspace-concurrency=1 --filter @gestaltrun/dsh-im-runtime --filter @gestaltrun/dsh-api-im --filter @gestaltrun/dsh-ui-im --filter @gestaltrun/dsh-im-bundle --fail-if-no-match pack --pack-destination dist"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.2",
+    "@deepseek-ai/dsh-api-workspace-controller": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-host-directory-picker": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-host-directory-picker-browse": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-host-directory-picker-native": "0.1.5-rc.2",
     "@deepseek-ai/dsh-typert-generator": "0.1.5-rc.2",
     "typescript": "6.0.3"
   }

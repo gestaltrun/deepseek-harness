@@ -83,9 +83,12 @@ export type ImAccountAuthorization =
   | { readonly state: 'required'; readonly reason: 'missing' | 'expired' | 'revoked'; readonly checkedAt?: string }
   | { readonly state: 'failed'; readonly code: string; readonly message: string; readonly checkedAt: string }
 
+/** Durable operator intent; process listener facts are projected separately. */
+export type ImAccountConnectionIntent = 'connected' | 'disconnected'
+
 /** Process listener state projected separately from authorization. */
 export type ImAccountListener =
-  | { readonly state: 'stopped'; readonly reason: 'no-enabled-route' | 'account-paused' | 'disconnected' | 'manual' }
+  | { readonly state: 'stopped'; readonly reason: 'no-enabled-route' | 'account-paused' | 'authorization-required' | 'disconnected' | 'manual' }
   | { readonly state: 'starting'; readonly since: string }
   | { readonly state: 'running'; readonly readyAt: string; readonly lastEventAt?: string }
   | { readonly state: 'reconnecting'; readonly attempt: number; readonly since: string; readonly lastError: string }
@@ -100,6 +103,7 @@ export interface ImAccountView {
   readonly credentialKey?: CredentialKey
   readonly authorization: ImAccountAuthorization
   readonly listener: ImAccountListener
+  readonly connectionIntent: ImAccountConnectionIntent
   readonly paused: boolean
   readonly revision: ImRevision
   readonly createdAt: string
@@ -108,8 +112,14 @@ export interface ImAccountView {
 
 /** Match every conversation of one account and category, including future conversations. */
 export interface ImAllConversationsTarget { readonly kind: 'all' }
-/** Match one provider conversation identifier. */
-export interface ImSpecificConversationTarget { readonly kind: 'specific'; readonly conversationId: string }
+/** Provider peer identifiers retained separately from the stable platform conversation id. */
+export interface ImDirectRecipient {
+  readonly providerActorId: string
+  readonly userId?: string
+  readonly openDingTalkId?: string
+}
+/** Match one provider conversation identifier and retain its direct-send peer when known. */
+export interface ImSpecificConversationTarget { readonly kind: 'specific'; readonly conversationId: string; readonly directRecipient?: ImDirectRecipient }
 /** Conversation selection component of a route tuple. */
 export type ImRouteTarget = ImAllConversationsTarget | ImSpecificConversationTarget
 
@@ -198,6 +208,13 @@ export interface ImSetAccountPausedRequest {
   readonly paused: boolean
 }
 
+/** Guarded disconnect, reconnect, or refresh account request. */
+export interface ImAccountLifecycleRequest {
+  readonly operationId: ImOperationId
+  readonly accountId: ImAccountId
+  readonly observedRevision: ImRevision
+}
+
 /** Stable account mutation outcome. */
 export interface ImAccountMutationResult {
   readonly operationId: ImOperationId
@@ -258,7 +275,7 @@ export interface ImRuntimeSnapshot {
 /** Post-commit configuration change notification. */
 export interface ImRuntimeChange {
   readonly revision: number
-  readonly kind: 'account' | 'route' | 'simulation-target'
+  readonly kind: 'account' | 'account-listener' | 'route' | 'simulation-target'
   readonly accountId?: ImAccountId
   readonly routeId?: ImRouteId
   readonly workspaceId?: WorkspaceId

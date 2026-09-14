@@ -5,6 +5,9 @@ import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import { WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import { z, type ZodType } from 'zod'
 import type {
+  ImAdmissionId,
+  ImAgentTaskId,
+  ImAgentTaskView,
   ImDeliveryOperationId,
   ImInboundOperationResult,
   ImDeliveryScope,
@@ -18,6 +21,7 @@ import type {
   ImProviderCursorCommitResult,
   ImProviderCursorId,
   ImProviderCursorOwner,
+  ImTriggerReason,
 } from './delivery-types.ts'
 import type { ImAccountId, ImRevision, ImRouteId } from './types.ts'
 
@@ -28,6 +32,8 @@ const outboundRequestId = z.string().min(1).transform(value => brandString<ImOut
 const outboundAttemptId = z.string().min(1).transform(value => brandString<ImOutboundAttemptId>(value))
 const scopeId = z.string().min(1).transform(value => brandString<ImScopeId>(value))
 const providerCursorId = z.string().min(1).transform(value => brandString<ImProviderCursorId>(value))
+const admissionId = z.string().min(1).transform(value => brandString<ImAdmissionId>(value))
+const agentTaskId = z.string().min(1).transform(value => brandString<ImAgentTaskId>(value))
 const timestamp = z.iso.datetime()
 
 const realScope = z.object({
@@ -50,7 +56,10 @@ const simulationScope = z.object({
 export const imDeliveryScopeSchema = z.discriminatedUnion('kind', [realScope, simulationScope]) as ZodType<ImDeliveryScope>
 
 const sender = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('external'), senderId: z.string().min(1), senderDisplayName: z.string().optional() }),
+  z.object({
+    kind: z.literal('external'), senderId: z.string().min(1), senderDisplayName: z.string().optional(),
+    userId: z.string().min(1).optional(), openDingTalkId: z.string().min(1).optional(),
+  }),
   z.object({ kind: z.literal('human-native'), accountId, providerActorId: z.string().min(1) }),
   z.object({ kind: z.literal('human-dsh'), outboundRequestId }),
   z.object({ kind: z.literal('ai'), outboundRequestId }),
@@ -69,6 +78,7 @@ export const imInboundMessageInputSchema = z.object({
   sender,
   content,
   occurredAt: timestamp,
+  mentionedConfiguredAccount: z.boolean().optional(),
 }) as ZodType<ImInboundMessageInput>
 
 const inboundMessage = z.object({
@@ -81,6 +91,7 @@ const inboundMessage = z.object({
   stage: z.enum(['received', 'submitted']),
   sequenceNumber: z.number().int().positive(),
   occurredAt: timestamp,
+  mentionedConfiguredAccount: z.boolean().optional(),
   receivedAt: timestamp,
   submission: z.object({ sessionId: z.string().min(1).transform(SessionId), submittedAt: timestamp }).optional(),
 }) as ZodType<ImInboundMessageView>
@@ -99,6 +110,7 @@ const pageResult = z.object({
   operationId,
   status: z.enum(['applied', 'conflict']),
   acceptedCount: z.number().int().nonnegative(),
+  evidenceMergedCount: z.number().int().nonnegative().optional(),
   duplicateCount: z.number().int().nonnegative(),
   messages: z.array(inboundMessage),
   cursor,
@@ -115,8 +127,8 @@ const importResult = z.object({
 const routeBinding = z.object({
   routeId: z.string().min(1).transform(value => brandString<ImRouteId>(value)),
   routeRevision: z.string().min(1).transform(value => brandString<ImRevision>(value)),
-  workspaceId: z.string().min(1).transform(WorkspaceId),
   accountRevision: z.string().min(1).transform(value => brandString<ImRevision>(value)),
+  workspaceId: z.string().min(1).transform(WorkspaceId),
 })
 
 const receipt = z.object({
@@ -211,6 +223,52 @@ const imProviderCursorAggregateSchema = z.object({
   operations: z.record(z.string(), z.object({ fingerprint: z.string(), result: providerCursorResult })),
 }) as ZodType<ImProviderCursorAggregate>
 
+/** Batch frozen before Agent creation or steering begins. */
+export interface ImPendingAdmission {
+  readonly admissionId: ImAdmissionId
+  readonly messageIds: readonly ImMessageId[]
+  readonly triggerReasons: readonly ImTriggerReason[]
+  readonly createdAt: string
+}
+
+/** Durable execution assignment for one conversation scope. */
+export interface ImExecutionAggregate extends ImAgentTaskView {
+  readonly pendingAdmission?: ImPendingAdmission
+}
+
+const triggerReason = z.enum(['direct', 'mention', 'every-n', 'fixed-interval'])
+
+const imExecutionAggregateSchema = z.object({
+  taskId: agentTaskId,
+  generation: z.number().int().positive(),
+  scope: imDeliveryScopeSchema,
+  scopeId,
+  sessionId: z.string().min(1).transform(SessionId),
+  routeId: z.string().min(1).transform(value => brandString<ImRouteId>(value)),
+  routeRevision: z.string().min(1).transform(value => brandString<ImRevision>(value)),
+  accountRevision: z.string().min(1).transform(value => brandString<ImRevision>(value)),
+  workspaceId: z.string().min(1).transform(WorkspaceId),
+  agentPreset: z.string().min(1),
+  groupTrigger: z.object({
+    mention: z.boolean().optional(),
+    everyN: z.number().int().positive().optional(),
+    fixedIntervalSeconds: z.number().int().positive().optional(),
+  }).optional(),
+  directRecipient: z.object({
+    providerActorId: z.string().min(1),
+    userId: z.string().min(1).optional(),
+    openDingTalkId: z.string().min(1).optional(),
+  }).optional(),
+  createdAt: timestamp,
+  updatedAt: timestamp,
+  pendingAdmission: z.object({
+    admissionId,
+    messageIds: z.array(messageId).min(1),
+    triggerReasons: z.array(triggerReason).min(1),
+    createdAt: timestamp,
+  }).optional(),
+}) as ZodType<ImExecutionAggregate>
+
 /** IM delivery domain. Each mutation writes exactly one scope aggregate. */
 export const imDeliveryDomainSpec = defineDomain({
   name: 'gestaltrun_im_delivery',
@@ -218,5 +276,6 @@ export const imDeliveryDomainSpec = defineDomain({
   tables: {
     scopes: domainTable<ImScopeId, ImDeliveryAggregate>(imDeliveryAggregateSchema),
     provider_cursors: domainTable<ImProviderCursorId, ImProviderCursorAggregate>(imProviderCursorAggregateSchema),
+    executions: domainTable<ImAgentTaskId, ImExecutionAggregate>(imExecutionAggregateSchema),
   },
 })
