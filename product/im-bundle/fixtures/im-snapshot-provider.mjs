@@ -1,6 +1,6 @@
 /** Synthetic inbound transport for the authored Web recorded-session scenario. */
 import assert from 'node:assert/strict'
-import { access, writeFile } from 'node:fs/promises'
+import { access, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 
@@ -27,6 +27,16 @@ async function exists(path) {
     if (error?.code === 'ENOENT') return false
     throw error
   }
+}
+
+async function publish(path, content) {
+  const dataTemp = `${path}.${process.pid}.tmp`
+  const marker = `${path}.complete`
+  const markerTemp = `${marker}.${process.pid}.tmp`
+  await writeFile(dataTemp, content)
+  await rename(dataTemp, path)
+  await writeFile(markerTemp, 'complete\n')
+  await rename(markerTemp, marker)
 }
 
 /**
@@ -96,7 +106,7 @@ export function apply(ctx) {
   ctx.effect(() => {
     const controller = new AbortController()
     void run(controller.signal).catch(async error => {
-      if (!controller.signal.aborted) await writeFile(failureFile, String(error?.stack ?? error))
+      if (!controller.signal.aborted) await publish(failureFile, String(error?.stack ?? error))
     })
     return () => { controller.abort(new Error('IM snapshot fixture disposed')) }
   }, 'IM snapshot admission')
@@ -163,7 +173,7 @@ export function apply(ctx) {
     assert.equal(outbound.length, 1)
     assert.equal(outbound[0].status, 'sent')
     assert.equal(outbound[0].externalMessageId, 'snapshot-outbound-1')
-    await writeFile(proofFile, JSON.stringify({
+    await publish(proofFile, JSON.stringify({
       sessionId: task.sessionId,
       outboundStatus: outbound[0].status,
       outboundExternalMessageId: outbound[0].externalMessageId,

@@ -266,7 +266,7 @@ jobs:
           pnpm --dir product run typecheck
           pnpm --dir product run test
           pnpm --dir product run pack
-          DSH_EXAMPLE_MODE=lib pnpm exec vitest run --config vitest.snapshot.config.ts apps/web/tests/im-runtime-admission.snapshot.ts scripts/session-snapshot-corpus.corpus.ts
+          DSH_PRODUCT_IM_SNAPSHOT_REQUIRED=1 DSH_EXAMPLE_MODE=lib pnpm exec vitest run --config vitest.snapshot.config.ts apps/web/tests/im-runtime-admission.snapshot.ts scripts/session-snapshot-corpus.corpus.ts
       - run: pnpm run ci:run --plan "${{ runner.temp }}/fork-ci-plan/fork-ci-plan.json" --lane product
       - run: pnpm run community:smoke
 
