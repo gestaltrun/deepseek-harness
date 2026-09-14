@@ -115,6 +115,8 @@ function RealConversation(props: ConversationTabProps & {
   const blocked = manual.state === 'unavailable'
   const disconnected = manual.state === 'unavailable' && manual.reason === 'disconnected'
   const title = destination.displayName ?? destination.conversationId
+  const workspaceTitle = props.useWorkspaces(value => value.items.find(item => item.workspaceId === binding.workspaceId)?.title) ?? binding.workspaceId
+  const liveAccountRevision = props.useConfiguration(value => value.value?.accounts.find(item => item.id === senderIdentity.accountId)?.revision) ?? binding.accountRevision
   const busy = ui.sending || blocked
   const pending = ui.manualUnknown
 
@@ -173,9 +175,12 @@ function RealConversation(props: ConversationTabProps & {
     patch({ error: undefined, feedback: undefined })
     const result = await props.setPaused({
       operationId: props.operationId(), accountId: senderIdentity.accountId,
-      observedRevision: binding.accountRevision, paused,
+      observedRevision: liveAccountRevision, paused,
     })
-    if (!result.ok) patch({ error: result.message })
+    if (!result.ok) { patch({ error: result.message }); return }
+    if (result.value.status === 'conflict' || result.value.status === 'rejected') {
+      patch({ error: result.value.message ?? t('pauseNotApplied') })
+    }
   }
 
   return <section className={css.pane} data-im-conversation data-im-real data-im-strip={blocked ? 'offline' : accountState.paused ? 'disabled' : 'live'}>
@@ -187,7 +192,7 @@ function RealConversation(props: ConversationTabProps & {
       <div className={css.meta}>
         <span>{t('realAccount')}: {senderIdentity.displayName}</span>
         {destination.conversationKind === 'group' && destination.memberCount !== undefined && <span>{t('realMembers').replace('{count}', String(destination.memberCount))}</span>}
-        <span>{t('realWorkspace')}: {binding.workspaceId}</span>
+        <span>{t('realWorkspace')}: {workspaceTitle}</span>
       </div>
     </header>
     <RealStrip {...props} onToggle={togglePaused} />

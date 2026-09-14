@@ -67,8 +67,17 @@ const instance = (status: ImSimulationInstanceView['status'], historyImports: Im
   ...(status === 'failed' ? { failure: { code: 'IM_SIMULATION_CREATE_FAILED', message: 'creation failed' } } : {}),
 })
 
+const liveRevision = brandString<ImRevision>('revision-live')
+
+const configuredAccount = {
+  id: accountId, platform: 'dingtalk' as const, displayName: '张伟',
+  identity: { platform: 'dingtalk' as const, profile: 'default', corpId: 'corp', userId: 'user', displayName: '张伟' },
+  authorization: { state: 'ready' as const, checkedAt: now }, listener: { state: 'running' as const, readyAt: now },
+  connectionIntent: 'connected' as const, paused: false, revision: liveRevision, createdAt: now, updatedAt: now,
+}
+
 const configuration: ImRuntimeSnapshot = {
-  revision: 1, accounts: [], routes: [],
+  revision: 1, accounts: [configuredAccount], routes: [],
   simulationTargets: [{ workspaceId, accountId, routeId, revision, updatedAt: now }],
 }
 
@@ -112,7 +121,7 @@ function mount(options: {
   const queryManual = options.queryManual ?? vi.fn(async () => ({ ok: true, value: { state: 'not-found' } }))
   const confirmManual = options.confirmManual ?? vi.fn(async () => ({ ok: true, value: { outbound: outbound('sent', { format: 'text', text: 'hi' }, brandString<ImOutboundRequestId>('sent')) } }))
   const retryManual = options.retryManual ?? vi.fn(async () => ({ ok: true, value: { outbound: outbound('sent', { format: 'text', text: 'hi' }, brandString<ImOutboundRequestId>('retry')) } }))
-  const setPaused = options.setPaused ?? vi.fn(async () => ({ ok: true, value: {} }))
+  const setPaused = options.setPaused ?? vi.fn(async () => ({ ok: true, value: { operationId: 'operation', status: 'applied', account: configuredAccount } }))
   const openSession = vi.fn()
   const snapshot = options.configured === false ? { ...configuration, simulationTargets: [] } : configuration
   render(<ConversationTab {...({
@@ -212,6 +221,7 @@ describe('real IM conversation sidebar', () => {
     expect(screen.getByText(`${zh.kindGroup}: 售后群`)).toBeTruthy()
     expect(screen.getByText(`${zh.realAccount}: 张伟`)).toBeTruthy()
     expect(screen.getByText(zh.realMembers.replace('{count}', '12'))).toBeTruthy()
+    expect(screen.getByText(`${zh.realWorkspace}: Sim`)).toBeTruthy()
     expect(screen.getByText(zh.live)).toBeTruthy()
     expect(screen.getByText(zh.sendIdentityReal.replace('{account}', '张伟').replace('{title}', '售后群'))).toBeTruthy()
   })
@@ -220,8 +230,15 @@ describe('real IM conversation sidebar', () => {
     const { setPaused } = mount({ binding: realBinding() })
     fireEvent.click(screen.getByRole('button', { name: zh.liveDisable }))
     await waitFor(() => {
-      expect(setPaused).toHaveBeenCalledWith({ operationId: 'operation', accountId, observedRevision: revision, paused: true })
+      expect(setPaused).toHaveBeenCalledWith({ operationId: 'operation', accountId, observedRevision: liveRevision, paused: true })
     })
+  })
+
+  it('reports a rejected pause change instead of leaving the strip silent', async () => {
+    const setPaused = vi.fn(async () => ({ ok: true, value: { operationId: 'operation', status: 'conflict', account: configuredAccount } }))
+    mount({ binding: realBinding(), setPaused })
+    fireEvent.click(screen.getByRole('button', { name: zh.liveDisable }))
+    await waitFor(() => { expect(screen.getByRole('alert').textContent).toBe(zh.pauseNotApplied) })
   })
 
   it('keeps manual sending available while automatic handling is paused', () => {

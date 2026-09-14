@@ -1,6 +1,6 @@
 /** Plain callback and observable inputs assembled by the IM UI plugin. */
 import type {
-  IImClient, ImAccountLifecycleRequest, ImAccountOperationQueryRequest, ImAccountSetupId,
+  IImClient, ImAccountLifecycleRequest, ImAccountMutationResult, ImAccountOperationQueryRequest, ImAccountSetupId,
   ImAccountSetupPreview, ImAccountSetupRequest, ImCancelAccountSetupResult,
   ImConfirmAccountSetupRequest, ImOperationId, ImSetAccountPausedRequest,
   ImAccountCandidatesSource, ImConfigurationSource, ImPlatform,
@@ -92,7 +92,7 @@ export interface ConversationFace {
   readonly confirmManual: (request: ImManualMessageQueryRequest) => Promise<UiResult<ImManualMessageResult>>
   readonly retryManual: (request: ImRetryManualMessageRequest) => Promise<UiResult<ImManualMessageResult>>
   readonly importHistory: (request: ImImportSimulationHistoryRequest) => Promise<UiResult<ImImportSimulationHistoryResult>>
-  readonly setPaused: (request: ImSetAccountPausedRequest) => Promise<UiResult<unknown>>
+  readonly setPaused: (request: ImSetAccountPausedRequest) => Promise<UiResult<ImAccountMutationResult>>
   readonly operationId: () => ImOperationId
   readonly openSession: (sessionId: SessionId) => void
 }

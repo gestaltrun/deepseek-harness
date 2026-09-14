@@ -1,6 +1,6 @@
 /** Generated IM namespace assembly and React-free configuration objects. */
 import { Service, type Context } from '@deepseek-ai/cordis'
-import { RemoteSnapshotStream, RemoteStreamCarrierError } from '@deepseek-ai/dsh-api-gateway/client'
+import { RemoteSnapshotStream, RemoteStreamCarrierError, type ClientRemote } from '@deepseek-ai/dsh-api-gateway/client'
 import type {} from '@deepseek-ai/dsh-api-gateway/client'
 import imRemote from '@gestaltrun/dsh-api-im/remote'
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
@@ -127,6 +127,9 @@ class ImClient extends Service implements IImClient {
   private readonly model = new ImConfigurationModel()
   readonly configuration: ImConfigurationSource = this.model
   private readonly remote: ImRemote
+  private readonly openSimulationSession: (sessionId: ImSessionId) => ImSimulationSessionReader
+  private readonly openRealSession: (sessionId: ImSessionId) => ImRealSessionReader
+  private readonly openDelivery: (request: ImDeliveryFollowRequest) => ImDeliveryReader
   private readonly candidates: ImAccountCandidatesModel
   readonly accountCandidates: ImAccountCandidatesSource
   private readonly instances: ImSimulationInstancesReader
@@ -137,7 +140,11 @@ class ImClient extends Service implements IImClient {
 
   constructor(ctx: Context) {
     super(ctx, 'im')
-    this.remote = ctx.remote.im
+    const connection: ClientRemote = ctx.remote
+    this.remote = connection.im
+    this.openSimulationSession = sessionId => new ImSimulationSessionReader(connection, sessionId)
+    this.openRealSession = sessionId => new ImRealSessionReader(connection, sessionId)
+    this.openDelivery = request => new ImDeliveryReader(connection, request)
     this.candidates = new ImAccountCandidatesModel((platform, signal) => this.remote.listAccountCandidates(platform, signal))
     this.accountCandidates = this.candidates
     this.instances = new ImSimulationInstancesReader(ctx.remote)
@@ -173,7 +180,7 @@ class ImClient extends Service implements IImClient {
   }
 
   watchSimulationSession(sessionId: ImSessionId): ImSimulationSessionSource {
-    const reader = new ImSimulationSessionReader(this.ctx.remote, sessionId)
+    const reader = this.openSimulationSession(sessionId)
     const source: ImSimulationSessionSource = {
       getSnapshot: reader.getSnapshot,
       subscribe: reader.subscribe,
@@ -184,7 +191,7 @@ class ImClient extends Service implements IImClient {
   }
 
   watchRealSession(sessionId: ImSessionId): ImRealSessionSource {
-    const reader = new ImRealSessionReader(this.ctx.remote, sessionId)
+    const reader = this.openRealSession(sessionId)
     const source: ImRealSessionSource = {
       getSnapshot: reader.getSnapshot,
       subscribe: reader.subscribe,
@@ -195,7 +202,7 @@ class ImClient extends Service implements IImClient {
   }
 
   watchDelivery(request: ImDeliveryFollowRequest): ImDeliverySource {
-    const reader = new ImDeliveryReader(this.ctx.remote, request)
+    const reader = this.openDelivery(request)
     const source: ImDeliverySource = {
       getSnapshot: reader.getSnapshot,
       subscribe: reader.subscribe,
