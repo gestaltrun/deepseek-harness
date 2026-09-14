@@ -5,7 +5,8 @@ import type {} from '@deepseek-ai/dsh-api-gateway/client'
 import imRemote from '@gestaltrun/dsh-api-im/remote'
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 import type {
-  ImAccountLifecycleRequest, ImAccountSetupRequest, ImConfigurationBaseline, ImConfigurationFrame, ImPlatform,
+  ImAccountLifecycleRequest, ImAccountOperationQueryRequest, ImAccountSetupId, ImAccountSetupRequest,
+  ImConfirmAccountSetupRequest, ImConfigurationBaseline, ImConfigurationFrame, ImPlatform,
   ImConfigurationReplacement, ImRemoveSimulationTargetRequest, ImRouteBatchRequest,
   ImRouteOperationQueryRequest, ImSaveSimulationTargetRequest, ImSetAccountPausedRequest,
   ImTargetOperationQueryRequest,
@@ -43,8 +44,12 @@ export interface IImClient {
   watchDelivery(request: ImDeliveryFollowRequest): ImDeliverySource
   /** @param platform - platform selected for setup. @param signal - caller cancellation. @returns safe available identities. */
   listAccountCandidates(platform: ImPlatform, signal?: AbortSignal): ReturnType<ImRemote['listAccountCandidates']>
-  /** @param request - write-only setup fields. @param signal - caller cancellation. @returns safe Host account facts. */
-  connectAccount(request: ImAccountSetupRequest, signal?: AbortSignal): ReturnType<ImRemote['connectAccount']>
+  /** @param request - candidate-bound write-only fields. @param signal - caller cancellation. @returns safe verified identity and a short-lived Host setup identifier. */
+  previewAccountSetup(request: ImAccountSetupRequest, signal?: AbortSignal): ReturnType<ImRemote['previewAccountSetup']>
+  /** @param request - retained setup and operation identifiers. @returns durable account-creation receipt. */
+  confirmAccountSetup(request: ImConfirmAccountSetupRequest): ReturnType<ImRemote['confirmAccountSetup']>
+  /** @param setupId - unconfirmed setup. @returns the actual release or confirmation state. */
+  cancelAccountSetup(setupId: ImAccountSetupId): ReturnType<ImRemote['cancelAccountSetup']>
   /** @param request - account revision and desired pause state. @returns Host mutation receipt. */
   setAccountPaused(request: ImSetAccountPausedRequest): ReturnType<ImRemote['setAccountPaused']>
   /** @param request - account and revision observed when disconnection was confirmed. @returns durable acknowledgement without merging it over the follow projection. */
@@ -53,6 +58,8 @@ export interface IImClient {
   reconnectAccount(request: ImAccountLifecycleRequest): ReturnType<ImRemote['reconnectAccount']>
   /** @param request - account and observed revision. @param signal - caller cancellation. @returns safe authorization refresh acknowledgement. */
   refreshAccount(request: ImAccountLifecycleRequest, signal?: AbortSignal): ReturnType<ImRemote['refreshAccount']>
+  /** @param request - retained account and operation identifiers. @returns durable receipt or explicit absence. */
+  queryAccountOperation(request: ImAccountOperationQueryRequest): ReturnType<ImRemote['queryAccountOperation']>
   /** @param request - independent route operations. @param signal - caller cancellation. @returns per-item outcomes. */
   applyRoutes(request: ImRouteBatchRequest, signal?: AbortSignal): ReturnType<ImRemote['applyRoutes']>
   /** @param request - owning account and operation identity. @returns durable receipt or absence. */
@@ -126,8 +133,16 @@ class ImClient extends Service implements IImClient {
     return this.candidates.load(platform, signal)
   }
 
-  connectAccount(request: ImAccountSetupRequest, signal?: AbortSignal): ReturnType<ImRemote['connectAccount']> {
-    return this.remote.connectAccount(request, signal)
+  previewAccountSetup(request: ImAccountSetupRequest, signal?: AbortSignal): ReturnType<ImRemote['previewAccountSetup']> {
+    return this.remote.previewAccountSetup(request, signal)
+  }
+
+  confirmAccountSetup(request: ImConfirmAccountSetupRequest): ReturnType<ImRemote['confirmAccountSetup']> {
+    return this.remote.confirmAccountSetup(request)
+  }
+
+  cancelAccountSetup(setupId: ImAccountSetupId): ReturnType<ImRemote['cancelAccountSetup']> {
+    return this.remote.cancelAccountSetup(setupId)
   }
 
   setAccountPaused(request: ImSetAccountPausedRequest): ReturnType<ImRemote['setAccountPaused']> {
@@ -144,6 +159,10 @@ class ImClient extends Service implements IImClient {
 
   refreshAccount(request: ImAccountLifecycleRequest, signal?: AbortSignal): ReturnType<ImRemote['refreshAccount']> {
     return this.remote.refreshAccount(request, signal)
+  }
+
+  queryAccountOperation(request: ImAccountOperationQueryRequest): ReturnType<ImRemote['queryAccountOperation']> {
+    return this.remote.queryAccountOperation(request)
   }
 
   applyRoutes(request: ImRouteBatchRequest, signal?: AbortSignal): ReturnType<ImRemote['applyRoutes']> {

@@ -3,7 +3,9 @@ import type {} from '@gestaltrun/dsh-im-runtime'
 import type { Context } from '@deepseek-ai/cordis'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {
-  ImAccountCandidate, ImAccountLifecycleRequest, ImAccountMutationResult, ImAccountSetupRequest, ImAccountView, ImPlatform,
+  ImAccountCandidate, ImAccountLifecycleRequest, ImAccountMutationResult, ImAccountOperationQuery,
+  ImAccountOperationQueryRequest, ImAccountSetupId, ImAccountSetupPreview, ImAccountSetupRequest,
+  ImCancelAccountSetupResult, ImConfirmAccountSetupRequest, ImPlatform,
   ImConfigurationFrame, ImCreateRouteRequest, ImDeleteRouteRequest,
   ImRebindRouteRequest, ImRemoveSimulationTargetRequest, ImRouteBatchRequest,
   ImRouteBatchResult, ImRouteMutationResult, ImRouteOperationQuery,
@@ -89,15 +91,22 @@ export class ImApi extends TypertRemoteService {
     return configurationResult(() => this.ctx.imRuntime.listAccountCandidates(platform, signal))
   }
 
-  /**
-   * Verify provider identity and persist its credentials through the Host.
-   * @param request - write-only account setup fields.
-   * @param signal - cancellation before account setup completes.
-   * @returns only safe persisted account facts.
-   */
-  @Remote('connectAccount')
-  connectAccount(request: ImAccountSetupRequest, signal: AbortSignal): Promise<ImAccountView> {
-    return configurationResult(() => this.ctx.imRuntime.addAccount(request, signal))
+  /** @param request - candidate-bound write-only fields. @param signal - caller lifetime. @returns safe verified identity and a short-lived setup identifier. */
+  @Remote('previewAccountSetup')
+  previewAccountSetup(request: ImAccountSetupRequest, signal: AbortSignal): Promise<ImAccountSetupPreview> {
+    return configurationResult(() => this.ctx.imRuntime.previewAccountSetup(request, signal))
+  }
+
+  /** @param request - Host setup and idempotency identifiers. @returns durable account-creation receipt. */
+  @Remote('confirmAccountSetup')
+  confirmAccountSetup(request: ImConfirmAccountSetupRequest): Promise<ImAccountMutationResult> {
+    return configurationResult(() => this.ctx.imRuntime.confirmAccountSetup(request))
+  }
+
+  /** @param setupId - unconfirmed Host setup. @returns its actual release or confirmation state. */
+  @Remote('cancelAccountSetup')
+  cancelAccountSetup(setupId: ImAccountSetupId): Promise<ImCancelAccountSetupResult> {
+    return configurationResult(() => this.ctx.imRuntime.cancelAccountSetup(setupId))
   }
 
   /** @param request - observed account revision and desired pause state. @returns durable receipt. */
@@ -122,6 +131,12 @@ export class ImApi extends TypertRemoteService {
   @Remote('refreshAccount')
   refreshAccount(request: ImAccountLifecycleRequest, signal: AbortSignal): Promise<ImAccountMutationResult> {
     return configurationResult(() => this.ctx.imRuntime.refreshAccount(request, signal))
+  }
+
+  /** @param request - account and operation identifiers retained by the caller. @returns durable receipt or explicit absence. */
+  @Remote('queryAccountOperation')
+  queryAccountOperation(request: ImAccountOperationQueryRequest): Promise<ImAccountOperationQuery> {
+    return configurationResult(() => this.ctx.imRuntime.queryAccountOperation(request.accountId, request.operationId))
   }
 
   /** @param request - new route tuple and owner. @returns durable receipt or conflict. */
