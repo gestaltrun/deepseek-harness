@@ -1,0 +1,330 @@
+{
+  "schemaVersion": 1,
+  "description": "Byte-preserved accepted legacy design inputs. Current migration-delivery and the 2026-09-14 product architecture note override historical architecture and workflow statements.",
+  "designFileCount": 48,
+  "historicalNoteFileCount": 3,
+  "acceptanceItemCount": 79,
+  "acceptanceCounts": {
+    "A": 24,
+    "B": 16,
+    "C": 9,
+    "D": 30
+  },
+  "files": [
+    {
+      "source": ".agents/design/im-takeover/B0-INTERFACE-REVIEW.md",
+      "sha256": "004c5d8a0428128122d355376cb8e587db2f6717d736ee0d7785aef9447b5395",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/B0-INTERFACE-REVIEW.md"
+    },
+    {
+      "source": ".agents/design/im-takeover/LEDGER.md",
+      "sha256": "39e271ae7e5654cdee83b7ea49f53f1e166efeb822ddd281764d462d6afe62bf",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/LEDGER.md"
+    },
+    {
+      "source": ".agents/design/im-takeover/README.i18n.yaml",
+      "sha256": "6fc98bb563f3ef519a3eb7985f3581dd48842cb21b65ef9967c14e29a91fd1fc",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/README.i18n.yaml"
+    },
+    {
+      "source": ".agents/design/im-takeover/README.md",
+      "sha256": "b66ee1480374d925ee03645fee8d2654bb30de3c1aaf5fcc0ea4d7324d535194",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/README.md"
+    },
+    {
+      "source": ".agents/design/im-takeover/README.zh.md",
+      "sha256": "2fa5477b86989896efdb25debd3a29912ca8d2a322eeebf6560687d68255d11e",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/README.zh.md"
+    },
+    {
+      "source": ".agents/design/im-takeover/prototype/ARCHIVE-NOTE.md",
+      "sha256": "7a90182904798dcca37ce86862136a274df18d0f4cc992c0996551342d25a096",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/prototype/ARCHIVE-NOTE.md"
+    },
+    {
+      "source": ".agents/design/im-takeover/prototype/HASHES.sha256",
+      "sha256": "3f5736fe80300426dd3d47e41e354fcfc0268b84fa4d58a22adec0e6626f4076",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/prototype/HASHES.sha256"
+    },
+    {
+      "source": ".agents/design/im-takeover/prototype/README.i18n.yaml",
+      "sha256": "572cf82e52a11e059831d2f36081a7f623c1bddfea7ba64948176fe5df4f2dd5",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/prototype/README.i18n.yaml"
+    },
+    {
+      "source": ".agents/design/im-takeover/prototype/README.md",
+      "sha256": "e9a31257e262a5152d539624a7ce086a1a729c797f9d988bf50a94940b5cedcd",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/prototype/README.md"
+    },
+    {
+      "source": ".agents/design/im-takeover/prototype/README.zh.md",
+      "sha256": "bf753c72f8d3a027c1de3143eb65dcd7e4d0729fde8662e67564be4af082eba0",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/prototype/README.zh.md"
+    },
+    {
+      "source": ".agents/design/im-takeover/prototype/drafts/im-takeover/AccountsScreen.jsx",
+      "sha256": "c51c4c57fff6cd6b47828f3faadcc2909ef5e69a3629e6a7e49d226f5b11d84c",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/prototype/drafts/im-takeover/AccountsScreen.jsx"
+    },
+    {
+      "source": ".agents/design/im-takeover/prototype/drafts/im-takeover/SessionScreen.jsx",
+      "sha256": "ed360b96fa92afd016ecaeb8e9027ef95e5eaef7bdee52de840ca0cc802117b4",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/prototype/drafts/im-takeover/SessionScreen.jsx"
+    },
+    {
+      "source": ".agents/design/im-takeover/prototype/drafts/im-takeover/WorkspaceScreen.jsx",
+      "sha256": "77116faf58f4a2791d7fc90bc3a65356e0aeb31db4f346251df05a89fec1eb25",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/prototype/drafts/im-takeover/WorkspaceScreen.jsx"
+    },
+    {
+      "source": ".agents/design/im-takeover/prototype/drafts/im-takeover/index.jsx",
+      "sha256": "52ba6929714dbd614a9d0bf8dc7f891c318f66c5909e53152d9fa4d3a4598041",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/prototype/drafts/im-takeover/index.jsx"
+    },
+    {
+      "source": ".agents/design/im-takeover/prototype/fixtures/imData.js",
+      "sha256": "6ac481d1e3a6f1fd88e5af4f23432669d9ae32479c2b567465efd975632a1c64",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/prototype/fixtures/imData.js"
+    },
+    {
+      "source": ".agents/design/im-takeover/prototype/manifest.json",
+      "sha256": "3d231adc1744eac543abcc3c98fe808ae43aa63aeb6ee433c00d10708fa29f7a",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/prototype/manifest.json"
+    },
+    {
+      "source": ".agents/design/im-takeover/prototype/package.json",
+      "sha256": "c75c5cc32e83c5799aaafe7d3c918ee8654a5d085f7363e6235b9bb67ce213be",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/prototype/package.json"
+    },
+    {
+      "source": ".agents/design/im-takeover/prototype/preview/index.html",
+      "sha256": "628d66a0e506987e928c570ca8527044b7d4e751d3d3d51f54bc20561bd52b8c",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/prototype/preview/index.html"
+    },
+    {
+      "source": ".agents/design/im-takeover/prototype/preview/src/BaselinePage.jsx",
+      "sha256": "6b1bbef279ce781df3b4e336e5a450f95a8e40b97d79baaa4286aa028d645e3e",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/prototype/preview/src/BaselinePage.jsx"
+    },
+    {
+      "source": ".agents/design/im-takeover/prototype/preview/src/SamplePage.jsx",
+      "sha256": "656cf48e63e2614f0d631d199d461b14f5931fd8a0927a0e4545c4bef527e0d5",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/prototype/preview/src/SamplePage.jsx"
+    },
+    {
+      "source": ".agents/design/im-takeover/prototype/preview/src/app.css",
+      "sha256": "4cd34c24940375d785d422fb5437b1b1d882b69a6ca8b8f970a1150a63fd0569",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/prototype/preview/src/app.css"
+    },
+    {
+      "source": ".agents/design/im-takeover/prototype/preview/src/main.jsx",
+      "sha256": "72ec801a614df267571bbd17ef92b390c72255d5e77dc53c56c8607d4ffca8e0",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/prototype/preview/src/main.jsx"
+    },
+    {
+      "source": ".agents/design/im-takeover/prototype/preview/src/sample.css",
+      "sha256": "40971d034f9a24654381d2c6803d832fa0b94dc1f580652e291aaff6b242e694",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/prototype/preview/src/sample.css"
+    },
+    {
+      "source": ".agents/design/im-takeover/prototype/system/chrome/chrome.jsx",
+      "sha256": "f2823f2dcf91aadbd8911cf6c94bf3f2aac60a16303407ce4841f10937c3e529",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/prototype/system/chrome/chrome.jsx"
+    },
+    {
+      "source": ".agents/design/im-takeover/prototype/system/chrome/icons.js",
+      "sha256": "c4e1b9bd6ba1fa73bf9f4ca8c4ac0d4f076cb8ce1154cb7ff81c30745339a228",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/prototype/system/chrome/icons.js"
+    },
+    {
+      "source": ".agents/design/im-takeover/prototype/system/components/primitives.js",
+      "sha256": "00819853948880146696b11956761cdf7f59ce967287d9953680e6b949786d8e",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/prototype/system/components/primitives.js"
+    },
+    {
+      "source": ".agents/design/im-takeover/prototype/system/components/ui.jsx",
+      "sha256": "e433f9858ea66719d5bf0b08f522310f3838edf5215a91feb1558989ee3b22f3",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/prototype/system/components/ui.jsx"
+    },
+    {
+      "source": ".agents/design/im-takeover/prototype/system/store.js",
+      "sha256": "221d342128af7da52a940f52ce4ef482d76c42d080e14baa56953bfda6f82017",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/prototype/system/store.js"
+    },
+    {
+      "source": ".agents/design/im-takeover/prototype/system/tokens/base.css",
+      "sha256": "85f8970d2650108ad47d66da1db3ba00ebbe3f26aaec00551cfa69dd029347a3",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/prototype/system/tokens/base.css"
+    },
+    {
+      "source": ".agents/design/im-takeover/prototype/system/tokens/design-platform.css",
+      "sha256": "c07dee451bc0b0cee5629a0eac64099865ced007b061d516e2c9e706af1ac9bf",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/prototype/system/tokens/design-platform.css"
+    },
+    {
+      "source": ".agents/design/im-takeover/prototype/system/tokens/gradient-shadow-text.css",
+      "sha256": "728d31d7dbab6f5e59f68e3da919d8086d8539be2e794871620c75f068d49f44",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/prototype/system/tokens/gradient-shadow-text.css"
+    },
+    {
+      "source": ".agents/design/im-takeover/prototype/system/tokens/scrollbar.css",
+      "sha256": "1364c2c2ac058427ec820bc3583927924f0119d5fea41088dddff7cd71990235",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/prototype/system/tokens/scrollbar.css"
+    },
+    {
+      "source": ".agents/design/im-takeover/prototype/vite.config.js",
+      "sha256": "21022d84a3d1c0dbcae0fdc4337eced29c77b8913e6ad47a4941cfa95e0d8e28",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/prototype/vite.config.js"
+    },
+    {
+      "source": ".agents/design/im-takeover/review-pack.html",
+      "sha256": "98c35d9ebd56244b25d0c8fd434d8eff9250ea0a2cee3d0bd3355d36102f69cc",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/review-pack.html"
+    },
+    {
+      "source": ".agents/design/im-takeover/scheme-source.md",
+      "sha256": "9ae112f57b7756d0f3e163905f1f20096e7815cf35ab97a50dbd316c334bf896",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/scheme-source.md"
+    },
+    {
+      "source": ".agents/design/im-takeover/screenshots/im-accounts.png",
+      "sha256": "b5b754ae54ca977ec7aff05f3e18bc24c937060e023f68356e48295e39cf647b",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/screenshots/im-accounts.png"
+    },
+    {
+      "source": ".agents/design/im-takeover/screenshots/im-qianniu-confirm.png",
+      "sha256": "baac41ab29b98d5d617d15fde06492e34b15c8df674d3e2d4bb7e2b6b0d757ef",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/screenshots/im-qianniu-confirm.png"
+    },
+    {
+      "source": ".agents/design/im-takeover/screenshots/im-qianniu-form.png",
+      "sha256": "8906c961aeb50fe350b49e06e2d0e23b8d22643c62a4aae32f1cd080e0445c5d",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/screenshots/im-qianniu-form.png"
+    },
+    {
+      "source": ".agents/design/im-takeover/screenshots/im-real-sidebar.png",
+      "sha256": "6f891df003ff2df6b60b7932ae1d04bfdfebb3e4073bd49c929c02509bf45734",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/screenshots/im-real-sidebar.png"
+    },
+    {
+      "source": ".agents/design/im-takeover/screenshots/im-session-panel.png",
+      "sha256": "4163f8463a643694dfc06c3947cb67f5deae766c766404a8e7a1627956567dcc",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/screenshots/im-session-panel.png"
+    },
+    {
+      "source": ".agents/design/im-takeover/screenshots/im-session-rail.png",
+      "sha256": "61914a21d79b93e4651fb257c5e395c8860268e33a4d2d378dd699dac6f6c7ea",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/screenshots/im-session-rail.png"
+    },
+    {
+      "source": ".agents/design/im-takeover/screenshots/im-sim-picker.png",
+      "sha256": "a5ebbe005ace20d101f67acf2ca1fb3ad9bf4d4477059c5ece136c921c630076",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/screenshots/im-sim-picker.png"
+    },
+    {
+      "source": ".agents/design/im-takeover/screenshots/im-sim-simuser.png",
+      "sha256": "883f5550c6e14bfc796dce4b1239f41d595a8e4baca1445fc8a4647e0b386b5f",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/screenshots/im-sim-simuser.png"
+    },
+    {
+      "source": ".agents/design/im-takeover/screenshots/im-sim-tested.png",
+      "sha256": "4f7e93dbe1ff01afca986aa2235c2e1810428d06e30d4e6be1f95da16a0138b4",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/screenshots/im-sim-tested.png"
+    },
+    {
+      "source": ".agents/design/im-takeover/screenshots/im-ws-routes.png",
+      "sha256": "6e589555e40767677705f2bbc639317e9686fbf28af680c5a24ca641b77a0e0d",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/screenshots/im-ws-routes.png"
+    },
+    {
+      "source": ".agents/design/im-takeover/screenshots/im-ws-trigger.png",
+      "sha256": "13d8b8cc5264110e9c0acf0edcc740f78ac87d8402f2687b33ac07b7f26565f3",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/screenshots/im-ws-trigger.png"
+    },
+    {
+      "source": ".agents/design/im-takeover/specification.md",
+      "sha256": "65d93463cde5c2e19527d5d1fcdd02f80a001afda15e8f50614ab4ebc1107797",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/specification.md"
+    },
+    {
+      "source": ".agents/design/im-takeover/tickets.md",
+      "sha256": "bc63d4bffe408dd0a84ad4bbe0bdac1f022547fc90b4e93668cfa5d0574cacef",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/design/im-takeover/tickets.md"
+    },
+    {
+      "source": ".agents/notes/proposed/feature/2026-09-07-im-account-takeover.md",
+      "sha256": "12d19d2f3ebb1ad26fa595df2705ac3d4f02ad8667e3d3faf52b9603774779b4",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/notes/proposed/feature/2026-09-07-im-account-takeover.md"
+    },
+    {
+      "source": ".agents/notes/proposed/feature/2026-09-07-im-account-takeover.zh.md",
+      "sha256": "57ef7d86c141d2ccb13fe679686fe4b3275defc1e112f37ab19a16cc6b8e55b2",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/notes/proposed/feature/2026-09-07-im-account-takeover.zh.md"
+    },
+    {
+      "source": ".agents/notes/proposed/feature/2026-09-07-im-account-takeover.i18n.yaml",
+      "sha256": "e37116f2bad1e0bc9cf7a28e9c8bb06a5a7eaf5147cd9d2edd820436538abe79",
+      "sourceTree": "resume-e49ef3770244b6f1251a7c8f395ba53590ba0c3e",
+      "archivePath": ".agents/notes/proposed/feature/2026-09-07-im-account-takeover.i18n.yaml"
+    },
+    {
+      "source": ".agents/local/ui-checklist.md",
+      "sha256": "3043dc0e7c3dd342dee96f2bdfac3a7deb9a81ab6e54613d04f1c2d36b196107",
+      "sourceTree": "legacy-delivery-accepted-checklist-v2",
+      "archivePath": ".agents/local/ui-checklist.md"
+    }
+  ],
+  "archive": "frozen-inputs.tar.gz",
+  "archiveSha256": "c27aff2356e836f7349b6b21a0c5440cc397d50a9500618f3e1be2e42565ff36",
+  "readableAcceptanceCopy": "acceptance-checklist.md"
+}
