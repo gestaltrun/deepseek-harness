@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const workflow = readFileSync(join(process.cwd(), '.github/workflows/desktop-release.yml'), 'utf8')
+const packageTarget = readFileSync(join(process.cwd(), 'apps/desktop/scripts/package-target.ts'), 'utf8')
 
 describe('Desktop Release workflow', () => {
   it('is manual-only and keeps publication authority out of packaging jobs', () => {
@@ -27,6 +28,21 @@ describe('Desktop Release workflow', () => {
     expect(workflow).toContain('APPLE_API_ISSUER')
     expect(workflow).not.toContain('APPLE_APP_SPECIFIC_PASSWORD')
     expect(workflow).toContain('rm -f "$APPLE_API_KEY"')
+  })
+
+  it('imports the Developer ID certificate before the package command signs native runtime files', () => {
+    const certificateImport = workflow.indexOf('      - name: Import Developer ID certificate')
+    const packageCommand = workflow.indexOf('      - name: Package signed and notarized application')
+    const importStep = workflow.slice(certificateImport, packageCommand)
+    expect(certificateImport).toBeGreaterThan(0)
+    expect(packageCommand).toBeGreaterThan(certificateImport)
+    expect(importStep).toContain(
+      'uses: apple-actions/import-codesign-certs@5142e029c445c10ffc7149d172e540235a065466 # v7.0.0',
+    )
+    expect(importStep).toContain('p12-file-base64: ${{ secrets.CSC_LINK }}')
+    expect(importStep).toContain('p12-password: ${{ secrets.CSC_KEY_PASSWORD }}')
+    expect(packageTarget.indexOf("await runPnpm(['run', 'prepare:dsh'], targetEnv)"))
+      .toBeLessThan(packageTarget.indexOf('desktopElectronBuilderArguments(target, true)'))
   })
 
   it('maps only the reviewed package and OSS network timeouts', () => {
