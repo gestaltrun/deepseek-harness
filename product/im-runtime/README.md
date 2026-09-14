@@ -33,7 +33,7 @@ Choose this package for the product IM configuration authority shared by Host pr
 
 ### Minimal configuration
 
-`admissionBatchSize` limits one model-visible batch and defaults to 1000. Group `everyN` values cannot exceed this limit. StorageDomain selects the durable backend, and the Credentials implementation selects the secret store.
+`admissionBatchSize` limits one model-visible batch and defaults to 1000. Group `everyN` values cannot exceed this limit. `accountSetupTtlMs` limits unconfirmed provider setup material in Host memory and defaults to five minutes. StorageDomain selects the durable backend, and the Credentials implementation selects the secret store.
 
 ```yaml
 - name: '@deepseek-ai/dsh-storage'
@@ -49,9 +49,10 @@ Choose this package for the product IM configuration authority shared by Host pr
 - name: '@gestaltrun/dsh-im-runtime'
   config:
     admissionBatchSize: 1000
+    accountSetupTtlMs: 300000
 ```
 
-`listAccountCandidates` returns installed DingTalk profiles or admitted Wangwang merchants from the registered transport. The UI selects one of these identifiers and does not invent a default profile, merchant id, or endpoint. The transport then validates write-only setup input and returns safe identity facts plus an optional credential record. `inspectAccount` and `refreshAccount` report provider-observed authorization facts without changing the account identity. The runtime stores credentials through `ctx.credentials`. It exposes connection intent, authorization, and listener state as separate facts.
+`listAccountCandidates` returns installed DingTalk profiles or admitted Wangwang merchants from the registered transport. An admitted Wangwang candidate includes its safe endpoint. The UI selects one of these identifiers, and the Host rejects a submitted endpoint that differs from the selected candidate. `previewAccountSetup` asks the transport to verify the write-only input and returns a safe identity, authorization fact, expiration time, and Host-minted setup id without creating an account or writing Credentials. `confirmAccountSetup` fixes that verified identity, stores the credential record and account with one durable operation receipt, and replays the same setup and operation id without creating another account, including after a Host restart. `cancelAccountSetup`, request cancellation, setup expiry, and runtime disposal release unconfirmed in-memory material; JavaScript does not guarantee physical memory erasure. Call `queryAccountOperation` after an uncertain pause, disconnect, reconnect, refresh, or confirmed setup response. `inspectAccount` and `refreshAccount` report provider-observed authorization facts without changing the account identity. Connection intent, authorization, and listener state remain separate facts.
 
 Every route includes platform, account, conversation kind, an `all` or `specific` target, and a Workspace owner. A specific direct target may retain provider peer identifiers separately from its stable platform conversation id. A specific route wins over an `all` route even when the specific route is disabled. Direct routes reject group settings; group routes require at least one of `mention`, positive `everyN`, or positive `fixedIntervalSeconds`.
 

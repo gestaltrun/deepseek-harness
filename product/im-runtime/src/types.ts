@@ -13,6 +13,8 @@ export type ImRouteId = Branded<'ImRouteId'>
 export type ImOperationId = Branded<'ImOperationId'>
 /** Opaque token replaced by every successful aggregate mutation. */
 export type ImRevision = Branded<'ImRevision'>
+/** Host-minted identifier for one short-lived account setup attempt. */
+export type ImAccountSetupId = Branded<'ImAccountSetupId'>
 
 /** Supported product IM platforms. */
 export type ImPlatform = 'dingtalk' | 'wangwang'
@@ -30,6 +32,7 @@ export interface ImDingTalkAccountCandidate {
 export interface ImWangwangAccountCandidate {
   readonly platform: 'wangwang'
   readonly candidateId: string
+  readonly endpoint: string
   readonly displayName: string
   readonly merchantId?: string
 }
@@ -48,6 +51,7 @@ export interface ImDingTalkAccountSetupRequest {
 export interface ImWangwangAccountSetupRequest {
   readonly platform: 'wangwang'
   readonly candidateId: string
+  readonly endpoint: string
   readonly accessKeyId: string
   readonly accessKeySecret: string
   readonly displayName?: string
@@ -55,6 +59,28 @@ export interface ImWangwangAccountSetupRequest {
 
 /** Client-safe account setup union dispatched by platform. */
 export type ImAccountSetupRequest = ImDingTalkAccountSetupRequest | ImWangwangAccountSetupRequest
+
+/** Safe verified facts returned before the caller confirms durable account creation. */
+export interface ImAccountSetupPreview {
+  readonly setupId: ImAccountSetupId
+  readonly displayName: string
+  readonly identity: ImAccountIdentity
+  readonly authorization: ImAccountAuthorization
+  readonly expiresAt: string
+}
+
+/** Idempotent confirmation of one Host-held setup attempt. */
+export interface ImConfirmAccountSetupRequest {
+  readonly setupId: ImAccountSetupId
+  readonly operationId: ImOperationId
+}
+
+/** Result of releasing one unconfirmed setup attempt. */
+export type ImCancelAccountSetupResult =
+  | { readonly state: 'cancelled' }
+  | { readonly state: 'not-found' }
+  | { readonly state: 'confirming' }
+  | { readonly state: 'confirmed'; readonly accountId: ImAccountId }
 
 /** Safe DingTalk employee identity returned by the registered transport. */
 export interface ImDingTalkIdentity {
@@ -223,6 +249,11 @@ export interface ImAccountMutationResult {
   readonly code?: string
   readonly message?: string
 }
+
+/** Query result distinguishing an unknown account operation from its durable receipt. */
+export type ImAccountOperationQuery =
+  | { readonly state: 'not-found' }
+  | { readonly state: 'known'; readonly result: ImAccountMutationResult }
 
 /** Configured route used when a workspace opens a channel simulation. */
 export interface ImSimulationTargetView {

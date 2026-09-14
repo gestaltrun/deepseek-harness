@@ -33,7 +33,7 @@ kind: "package-reference"
 
 ### 最小配置
 
-`admissionBatchSize` 限制一次模型可见批次，默认值为 1000。群聊 `everyN` 不能超过该限制。StorageDomain 选择持久后端，Credentials 实现选择密钥存储。
+`admissionBatchSize` 限制一次模型可见批次，默认值为 1000。群聊 `everyN` 不能超过该限制。`accountSetupTtlMs` 限制未确认提供方接入材料在 Host 内存中的保留时间，默认五分钟。StorageDomain 选择持久后端，Credentials 实现选择密钥存储。
 
 ```yaml
 - name: '@deepseek-ai/dsh-storage'
@@ -49,9 +49,10 @@ kind: "package-reference"
 - name: '@gestaltrun/dsh-im-runtime'
   config:
     admissionBatchSize: 1000
+    accountSetupTtlMs: 300000
 ```
 
-`listAccountCandidates` 从已注册 transport 返回已安装的钉钉 profile 或已准入的旺旺商家。UI 从中选择标识，不虚构默认 profile、商家 ID 或 endpoint。transport 随后校验只写的接入输入，并返回安全身份事实与可选凭据记录。`inspectAccount` 和 `refreshAccount` 报告提供方观察到的授权事实，不改变账号身份。runtime 通过 `ctx.credentials` 保存凭据。连接意图、授权状态和监听状态是三个独立事实。
+`listAccountCandidates` 从已注册 transport 返回已安装的钉钉 profile 或已准入的旺旺商家。已准入旺旺 candidate 包含安全 endpoint。UI 从中选择标识，Host 拒绝与所选 candidate 不一致的 endpoint。`previewAccountSetup` 要求 transport 校验只写输入，并返回安全身份、授权事实、过期时间与 Host 生成的 setup id，不创建账号，也不写入 Credentials。`confirmAccountSetup` 固定已验证身份，在同一持久操作收据中保存凭据记录与账号；相同 setup 与 operation id 会复用结果，即使 Host 重启也不会重复创建账号。`cancelAccountSetup`、请求取消、setup 过期与 runtime dispose 都会释放未确认的内存材料；JavaScript 不保证物理擦除内存。暂停、断开、重连、刷新或确认接入响应不确定时，调用 `queryAccountOperation` 查询。`inspectAccount` 和 `refreshAccount` 报告提供方观察到的授权事实，不改变账号身份。连接意图、授权状态和监听状态仍是三个独立事实。
 
 每条路由包含平台、账号、会话类型、`all` 或 `specific` 目标以及工作区归属。指定私聊目标可在稳定平台会话 ID 之外单独保留提供方对端标识。指定会话路由始终优先于全量路由，包括指定路由被停用时。私聊路由拒绝群触发设置；群聊路由必须至少配置 `mention`、正整数 `everyN` 或正整数 `fixedIntervalSeconds` 之一。
 

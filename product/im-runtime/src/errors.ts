@@ -1,6 +1,8 @@
 /** Stable IM runtime configuration failure codes. */
 export type ImRuntimeErrorCode =
   | 'IM_ACCOUNT_NOT_FOUND'
+  | 'IM_ACCOUNT_SETUP_CONFIRMED'
+  | 'IM_ACCOUNT_SETUP_NOT_FOUND'
   | 'IM_IDENTITY_MISMATCH'
   | 'IM_DELIVERY_OPERATION_REUSED'
   | 'IM_DELIVERY_SCOPE_INVALID'
