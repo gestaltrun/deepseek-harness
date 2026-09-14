@@ -82,7 +82,8 @@
     "release:pack": "pnpm build:engine && pnpm build && pnpm pack --pack-destination ../../dist",
     "build:engine": "node scripts/build-engine.mjs",
     "test:build": "node --test scripts/build-engine.test.mjs",
-    "build:remote": "node scripts/build-remote.mjs"
+    "build:remote": "node scripts/build-remote.mjs",
+    "smoke:package": "node scripts/smoke-package.mjs"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "0.85.1",
