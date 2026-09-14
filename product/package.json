@@ -9,10 +9,12 @@
     "test": "pnpm --filter @gestaltrun/dsh-model-center test",
     "test:build": "node --test scripts/typert-build.test.mjs",
     "smoke:im-loader": "node scripts/smoke-im-loader.mjs",
+    "smoke:im-profile": "node scripts/smoke-im-profile.mjs",
     "typecheck": "pnpm --filter @gestaltrun/dsh-model-center typecheck",
     "generate:im": "node scripts/generate-im-typert.mjs",
     "pack": "pnpm --filter @gestaltrun/dsh-model-center release:pack",
-    "pack:im-api": "pnpm run build:im-api && pnpm --filter @gestaltrun/dsh-im-runtime --fail-if-no-match pack --pack-destination dist && pnpm --filter @gestaltrun/dsh-api-im --fail-if-no-match pack --pack-destination dist"
+    "pack:im-api": "pnpm run build:im-api && pnpm --filter @gestaltrun/dsh-im-runtime --fail-if-no-match pack --pack-destination dist && pnpm --filter @gestaltrun/dsh-api-im --fail-if-no-match pack --pack-destination dist",
+    "pack:im-bundle": "pnpm run pack:im-api && pnpm --filter @gestaltrun/dsh-im-bundle --fail-if-no-match pack --pack-destination dist"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.2",

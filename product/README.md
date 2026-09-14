@@ -18,6 +18,8 @@ The [accepted IM architecture](../.agents/notes/proposed/architecture/2026-09-14
 
 `pnpm --dir product run build:im-api` builds the runtime, API Host, generated Remote artifacts, and API Client in that order. `pnpm --dir product run pack:im-api` performs the same build and writes both npm archives into `product/dist`.
 
+`pnpm --dir product run pack:im-bundle` also packs the [configuration bundle](im-bundle/README.md). Its package owns the installed profile check and current composition limits.
+
 Run `pnpm --dir product run generate:im` after building the IM runtime and API Host. Every referenced member and its installed peers must be present; missing inputs fail the command. It generates the API package's Host reflection and Remote Client artifacts before the API Client and UI builds. `pnpm --dir product run test:build` verifies this build step against real published npm declarations.
 
 After the build, `pnpm --dir product run smoke:im-loader` checks package-name Loader discovery, generated reflection, public RPC input validation, and disposal. `DSH_IM_SMOKE_INSTALL_ROOT` selects a separate installed consumer for the same check. The [API package](api-im/README.md) owns the configuration and Client lifecycle smoke.

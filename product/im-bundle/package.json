@@ -1,0 +1,49 @@
+{
+  "name": "@gestaltrun/dsh-im-bundle",
+  "version": "0.1.0-gestaltrun.0",
+  "description": "Product IM configuration as an installable dsh profile layer",
+  "type": "module",
+  "exports": {
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh.md",
+    "LICENSE",
+    "UPSTREAM.json"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gestaltrun/deepseek-harness.git",
+    "directory": "product/im-bundle"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/",
+    "tag": "candidate"
+  },
+  "dsh": {
+    "engines": {
+      "dsh": ">=0.1.5-rc.2"
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "release:pack": "pnpm pack --pack-destination ../dist"
+  },
+  "dependencies": {
+    "@gestaltrun/dsh-api-im": "workspace:*",
+    "@gestaltrun/dsh-im-runtime": "workspace:*"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "4.0.2"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.2"
+  }
+}
