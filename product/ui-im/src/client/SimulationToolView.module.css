@@ -1,0 +1,83 @@
+/* Isolated simulation Tool disclosure inside the standard Tool call tree. */
+
+.root {
+  border: 1px solid color-mix(in srgb, #7957d5 34%, var(--dsw-alias-border-l2));
+  border-radius: 8px;
+  background: color-mix(in srgb, #7957d5 6%, transparent);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+}
+
+.summary {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 10px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.summary::-webkit-details-marker {
+  display: none;
+}
+
+.badge {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, #7957d5 42%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, #7957d5 13%, transparent);
+  color: #7957d5;
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.title {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status,
+.failed {
+  margin-left: auto;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+}
+
+.failed {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.isolation {
+  margin: 0;
+  padding: 8px 10px;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+  color: #7957d5;
+  line-height: 1.45;
+}
+
+.section {
+  padding: 0 10px 8px;
+}
+
+.label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.section pre {
+  max-height: 180px;
+  margin: 0;
+  padding: 8px;
+  overflow: auto;
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-2);
+  font: 11px/1.45 var(--dsw-font-mono, monospace);
+  overflow-wrap: normal;
+  white-space: pre-wrap;
+}

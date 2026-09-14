@@ -100,7 +100,9 @@
 }
 
 .pickerRow {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   width: 100%;
   padding: 8px 10px;
   border: 1px solid var(--dsw-alias-border-l2);
@@ -111,6 +113,17 @@
   font-size: 13px;
   text-align: left;
   cursor: pointer;
+}
+
+.targetStatus {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.pickerRow:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
 }
 
 .pickerRow[aria-pressed="true"] {

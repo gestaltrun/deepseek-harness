@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { ImAccountId, ImOperationId, ImRevision, ImRouteId, ImRuntimeSnapshot } from '@gestaltrun/dsh-api-im/client'
@@ -47,7 +47,36 @@ describe('Workspace simulation target configuration', () => {
     await waitFor(() => { expect(submit).toHaveBeenCalledOnce() })
     expect(submit.mock.calls[0]?.[0]).toEqual({ kind: 'save', request: { operationId, workspaceId, observedRevision: null, accountId, routeId } })
     expect(await screen.findByText(zh.targetSaved)).toBeTruthy()
-    expect(screen.getByText(zh.simulationEngineUnavailable)).toBeTruthy()
+    expect(screen.queryByText(/尚不支持创建模拟实例/u)).toBeNull()
+  })
+
+  it('shows each selectable target’s independent real-channel facts while keeping disconnected targets simulatable', () => {
+    const account = state.accounts[0]!
+    const disconnected = { ...account, connectionIntent: 'disconnected' as const, authorization: { state: 'required' as const, reason: 'expired' as const }, listener: { state: 'stopped' as const, reason: 'disconnected' as const } }
+    const missingAccountId = brandString<ImAccountId>('missing-account')
+    const missingRouteId = brandString<ImRouteId>('missing-route')
+    const snapshot = { ...state,
+      accounts: [disconnected],
+      routes: [state.routes[0]!, { ...state.routes[0]!, id: missingRouteId, accountId: missingAccountId }],
+    }
+    mount(snapshot, vi.fn())
+    fireEvent.click(screen.getByRole('button', { name: zh.selectTarget }))
+    const selectable = screen.getByRole('button', { name: /Employee.*workspace-b/u })
+    expect(selectable.hasAttribute('disabled')).toBe(false)
+    expect(within(selectable).getByText(zh.realChannelDisconnected)).toBeTruthy()
+    expect(within(selectable).getByText(zh.realChannelExpired)).toBeTruthy()
+    expect(within(selectable).getByText(zh.realHandlingDisabled)).toBeTruthy()
+    expect(within(selectable).getByText(zh.simulatable)).toBeTruthy()
+    const unavailable = screen.getByRole('button', { name: /missing-account.*workspace-b/u })
+    expect(unavailable.hasAttribute('disabled')).toBe(true)
+    expect(within(unavailable).getByText(zh.identityMissing)).toBeTruthy()
+  })
+
+  it('does not present an idle listener as an authorization expiry', () => {
+    mount({ ...state, simulationTargets: [target] }, vi.fn())
+    expect(screen.getByText(zh.simulatable)).toBeTruthy()
+    expect(screen.queryByText(zh.realChannelExpired)).toBeNull()
+    expect(screen.queryByText(zh.realChannelDisconnected)).toBeNull()
   })
 
   it('requires confirmation to clear and retains an unknown command', async () => {

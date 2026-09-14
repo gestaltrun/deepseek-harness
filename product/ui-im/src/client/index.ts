@@ -18,6 +18,7 @@ import { submitTarget } from './target-operation.ts'
 import type { SimulationTargetCommand } from './stores.ts'
 import { ConversationTab } from './ConversationTab.tsx'
 import { simulationHeaderEntry } from './SimulationHeader.tsx'
+import { registerSimulationToolViews } from './SimulationToolView.tsx'
 import { accountFace, conversationFace } from './faces.ts'
 import { createAccountActionStore } from './account-actions.ts'
 import { createConversationUiStore, createRouteUiStore } from './stores.ts'
@@ -45,6 +46,7 @@ export function apply(ctx: Context, config: Config): void {
   const accounts = accountFace(ctx.im, operationId)
   ctx.slots.inject('settings.section', () => ctx.slots.register({ name: 'settings.section', id: 'im-accounts', order: 45, store: createAccountActionStore(), locale: NS, label: () => ctx.locale.bind(NS)('nav'), inject: () => accounts }, AccountsSection))
   registerWorkspaceBrowser(ctx, directoryPicker)
+  registerSimulationToolViews(ctx)
   const routes = createRouteUiStore()
   ctx.slots.inject('sidebar.workspaces.imSettings', () => ctx.slots.register({
     name: 'sidebar.workspaces.imSettings', id: 'takeover', locale: NS, order: 10, store: routes,
