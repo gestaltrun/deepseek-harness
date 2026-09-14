@@ -46,7 +46,7 @@
     "smoke:loader": "node scripts/smoke-loader.mjs"
   },
   "dependencies": {
-    "zod": "4.6.2"
+    "zod": "4.4.3"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.2",
