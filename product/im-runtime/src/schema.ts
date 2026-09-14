@@ -47,7 +47,15 @@ const groupTrigger = z.object({
 
 const routeTarget = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('all') }),
-  z.object({ kind: z.literal('specific'), conversationId: z.string().min(1) }),
+  z.object({
+    kind: z.literal('specific'),
+    conversationId: z.string().min(1),
+    directRecipient: z.object({
+      providerActorId: z.string().min(1),
+      userId: z.string().min(1).optional(),
+      openDingTalkId: z.string().min(1).optional(),
+    }).optional(),
+  }),
 ])
 
 /** Stored account fields; listener status is process state and is derived on read. */

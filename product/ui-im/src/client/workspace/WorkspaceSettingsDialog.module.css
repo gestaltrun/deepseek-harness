@@ -1,0 +1,58 @@
+/* Header remains visible while arbitrarily long settings cards scroll inside the viewport. */
+.dialog[role='dialog'] {
+  width: min(720px, 100%);
+  max-height: calc(100dvh - 48px);
+  min-height: 0;
+  gap: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 22px 14px 12px 24px;
+}
+
+.title {
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.close:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.content {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 8px 24px 8px;
+}
+
+@media (max-width: 480px) {
+  .header { padding: 16px 12px 10px 16px; }
+  .content { padding-inline: 12px; }
+}

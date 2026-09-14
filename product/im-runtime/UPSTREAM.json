@@ -41,6 +41,9 @@
     "client-safe DTO subpath separated from Host service declarations",
     "single-scope delivery aggregates with deduplication, history, submission evidence, and outbox state",
     "provider-owned cursors advanced only from complete conversation-page receipt sets",
-    "stable Session user-message sources and recovery without a cross-log transaction"
+    "stable Session user-message sources and recovery without a cross-log transaction",
+    "route-generation Agent admission through public Agent, preset, Workspace, tool, and Session services",
+    "scope-bound Agent tools with frozen outbound route and direct-recipient facts",
+    "monotonic provider mention-evidence merging for duplicate platform messages"
   ]
 }

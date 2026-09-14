@@ -43,6 +43,13 @@ function imRows(output) {
   return rows.filter(row => ['gestaltrun-im-runtime', 'gestaltrun-im-api', 'gestaltrun-im-ui'].includes(row.id))
 }
 
+function pickerNames(rows) {
+  return rows.filter(row => row.disabled !== true && [
+    '@deepseek-ai/dsh-host-directory-picker-auto', '@deepseek-ai/dsh-host-directory-picker-browse',
+    '@deepseek-ai/dsh-host-directory-picker-native',
+  ].includes(row.name)).map(row => row.name)
+}
+
 try {
   const baseline = await run('baseline', ['--profile', profile, '--from-default-profile', 'web', '--dump-config'])
   assert.deepEqual(imRows(baseline), [])
@@ -79,12 +86,22 @@ try {
   await writeFile(join(root, 'installed-profile.json'), `${JSON.stringify(installed, null, 2)}\n`)
   assert.deepEqual(installed.dsh.profile.bundles, [...baselineManifest.dsh.profile.bundles, '@gestaltrun/dsh-im-bundle'])
   const composed = await run('installed', ['--profile', profile, '--dump-config'])
+  assert.deepEqual(pickerNames(load(composed, { schema: entryListSchema })), ['@deepseek-ai/dsh-host-directory-picker-browse'])
   assert.deepEqual(imRows(composed).map(row => [row.id, row.name]), [
     ['gestaltrun-im-runtime', '@gestaltrun/dsh-im-runtime'],
     ['gestaltrun-im-api', '@gestaltrun/dsh-api-im'],
     ['gestaltrun-im-ui', '@gestaltrun/dsh-ui-im'],
   ])
   const profileRequire = createRequire(manifestPath)
+  const webOverlay = profileRequire.resolve('@gestaltrun/dsh-im-bundle/web.patch.yml')
+  const webComposed = load(await run('web-overlay', ['--profile', profile, '--patch', webOverlay, '--dump-config']), { schema: entryListSchema })
+  assert.deepEqual(pickerNames(webComposed), ['@deepseek-ai/dsh-host-directory-picker-browse'])
+  assert.equal(webComposed.find(row => row.id === 'gestaltrun-im-ui').config.directoryPicker, 'browse')
+  const desktopOverlay = profileRequire.resolve('@gestaltrun/dsh-im-bundle/desktop.patch.yml')
+  const desktopBase = resolve(import.meta.dirname, '../../apps/desktop-host/config/desktop.cordis.patch.yml')
+  const desktopComposed = load(await run('desktop-overlay', ['--profile', profile, '--patch', desktopOverlay, '--patch', desktopBase, '--dump-config']), { schema: entryListSchema })
+  assert.deepEqual(pickerNames(desktopComposed), ['@deepseek-ai/dsh-host-directory-picker-native'])
+  assert.equal(desktopComposed.find(row => row.id === 'gestaltrun-im-ui').config.directoryPicker, 'native')
   const bundleRequire = createRequire(profileRequire.resolve('@gestaltrun/dsh-im-bundle/package.json'))
   const hostCordis = await realpath(require.resolve('@deepseek-ai/cordis/package.json'))
   const installedPackages = []
@@ -107,7 +124,7 @@ try {
   assert.equal(await readFile(retained, 'utf8'), 'profile removal preserves shared state\n')
   console.log(JSON.stringify({ publicCli: true, profile: 'web template with product bundle', installed: true,
     rows: 3, invalidOverlayRejected: true, removed: true, sharedStateRetained: true,
-    candidateTarballBindings: true, sharedCordis: true, providerCalls: 0, modelCalls: 0, appLaunched: false,
+    candidateTarballBindings: true, sharedCordis: true, matchedWebDirectoryPicker: true, matchedDesktopDirectoryPicker: true, providerCalls: 0, modelCalls: 0, appLaunched: false,
     ...(process.env.DSH_IM_SMOKE_KEEP_ROOT === '1' ? { evidenceRoot: root } : {}),
   }))
 } finally {

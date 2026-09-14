@@ -5,6 +5,13 @@ export const NS = 'settings.im'
 
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh = {
+  identityMissing: '不可用 · 缺少身份资料',
+  realChannelIdle: '真实：监听未运行',
+  simulationReadyData: '目标资料完整',
+  targetSaved: '模拟目标已保存。',
+  targetCleared: '模拟目标已清除；现有实例不受影响。',
+  targetChanged: '模拟目标已更改，请重新选择并保存。',
+  simulationEngineUnavailable: '目标配置已支持；此版本尚不支持创建模拟实例。',
   newRouteHint: '新规则默认不启用；可先模拟验证，再打开启用。',
   routeAdded: '规则已添加，默认未启用；可先模拟验证。',
   routeSaved: '规则已保存。',
@@ -190,6 +197,13 @@ export type ImKey = keyof typeof zh
 
 /** English dictionary, checked complete against the zh key set. */
 export const en = {
+  identityMissing: 'Unavailable · identity missing',
+  realChannelIdle: 'Real: listener stopped',
+  simulationReadyData: 'Target identity available',
+  targetSaved: 'Simulation target saved.',
+  targetCleared: 'Simulation target cleared; existing instances are unchanged.',
+  targetChanged: 'The simulation target changed; select it again before saving.',
+  simulationEngineUnavailable: 'Target configuration is available; creating simulation instances is not supported in this version.',
   newRouteHint: 'New rules start disabled; simulate before enabling them.',
   routeAdded: 'Rules added disabled; simulate before enabling.',
   routeSaved: 'Rules saved.',
