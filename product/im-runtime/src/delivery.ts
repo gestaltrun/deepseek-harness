@@ -198,7 +198,7 @@ export class ImDeliveryStore {
     }
   }
 
-  ingestInboundPage(request: ImIngestInboundPageRequest): Promise<ImInboundPageResult> {
+  async ingestInboundPage(request: ImIngestInboundPageRequest): Promise<ImInboundPageResult> {
     this.assertRealScope(request.scope)
     const scopeId = encodeImScopeId(request.scope)
     const fingerprint = pageFingerprint(request)
@@ -284,7 +284,12 @@ export class ImDeliveryStore {
     return { id, owner, cursor: null, updatedAt: timestamp() }
   }
 
-  commitProviderCursor(request: ImCommitProviderCursorRequest): Promise<ImProviderCursorCommitResult> {
+  async commitProviderCursor(request: ImCommitProviderCursorRequest): Promise<ImProviderCursorCommitResult> {
+    const account = this.host.inspectAccount(request.owner.accountId)
+    if (account === undefined) throw new ImRuntimeError('IM_ACCOUNT_NOT_FOUND', `IM account '${request.owner.accountId}' is unknown`)
+    if (account.platform !== request.owner.platform || request.owner.streamId.trim() === '') {
+      throw new ImRuntimeError('IM_DELIVERY_SCOPE_INVALID', 'provider cursor owner must use the configured account platform and a non-empty streamId')
+    }
     const id = encodeImProviderCursorId(request.owner)
     const fingerprint = JSON.stringify(['provider-cursor', request.owner, request.observedCursor, request.nextCursor,
       request.pages.map(page => [page.scope, page.operationId])])
@@ -422,7 +427,7 @@ export class ImDeliveryStore {
     })
   }
 
-  importJsonlHistory(request: ImImportJsonlHistoryRequest): Promise<ImImportJsonlHistoryResult> {
+  async importJsonlHistory(request: ImImportJsonlHistoryRequest): Promise<ImImportJsonlHistoryResult> {
     const parsed: ImInboundMessageInput[] = []
     for (const [index, line] of request.jsonl.split(/\r?\n/u).entries()) {
       if (line.trim() === '') continue

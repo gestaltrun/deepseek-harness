@@ -61,6 +61,8 @@ runtime 没有部署配置字段。StorageDomain 选择持久后端，Credential
 
 `registerOutbound` 在任何平台调用前保存意图。`beginOutboundAttempt` 只授予一次尝试；调度结果未决时重启或重复 begin 会记录 `result-unknown`，调用者随后查询或确认，不盲目重试。自动意图冻结路由与账号 generation。账号或路由暂停时，DSH 人工发送和模拟发送仍可用；暂停或路由变更前的自动意图不能在恢复后继续发送。
 
+提供方把参与者和回显事实传给 `classifyInboundSender`。匹配已发送自动 outbox 时返回 `ai`，匹配已发送人工 outbox 时返回 `human-dsh`，明确的平台原生操作证据返回 `human-native`。无法匹配的已配置账号观察仍为 `unknown`；文本相等不会改变发送者归因。
+
 -----
 
 <a id="understand-the-implementation"></a>

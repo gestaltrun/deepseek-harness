@@ -156,6 +156,23 @@ describe('inbound delivery', () => {
     })).resolves.toMatchObject({ status: 'conflict', cursor: { cursor: 'merchant-cursor-1' } })
   })
 
+  it('retains provider cursor CAS receipts across restart', async () => {
+    const first = await boot()
+    const { account, scope } = await configured(first.ctx)
+    const pageOperation = deliveryOperation('restart-cursor-page')
+    await first.ctx.imRuntime.ingestInboundPage({ operationId: pageOperation, scope, observedCursor: null, nextCursor: null, messages: [] })
+    const owner = { platform: 'wangwang' as const, accountId: account.id, streamId: 'merchant-inbox' }
+    const result = await first.ctx.imRuntime.commitProviderCursor({
+      operationId: deliveryOperation('restart-cursor'), owner, observedCursor: null, nextCursor: 'merchant-cursor-1',
+      pages: [{ scope, operationId: pageOperation }],
+    })
+    await first.ctx.fiber.dispose()
+    roots.splice(roots.indexOf(first.ctx), 1)
+    const second = await boot(first.root)
+    expect(second.ctx.imRuntime.getProviderCursor(owner)).toEqual(result.cursor)
+    expect(second.ctx.imRuntime.queryProviderCursorOperation(owner, deliveryOperation('restart-cursor'))).toEqual({ state: 'known', result })
+  })
+
   it('imports JSONL for query only and paginates without admitting imported rows', async () => {
     const { ctx } = await boot()
     const { scope } = await configured(ctx)
@@ -172,6 +189,23 @@ describe('inbound delivery', () => {
     expect(latest.items.map(item => item.externalMessageId)).toEqual(['import-1', 'import-2'])
     expect(latest.hasMore).toBe(true)
     expect(ctx.imRuntime.queryHistory({ scope, limit: 10, origins: ['jsonl-import'] }).items).toHaveLength(2)
+    await expect(ctx.imRuntime.importJsonlHistory({ operationId: deliveryOperation('bad-import'), scope, jsonl: '{"externalMessageId":' }))
+      .rejects.toMatchObject({ code: 'IM_JSONL_INVALID' })
+    expect(ctx.imRuntime.queryHistory({ scope, limit: 10 }).items).toHaveLength(3)
+  })
+
+  it('rejects reuse of inbound and provider-cursor operation identities', async () => {
+    const { ctx } = await boot()
+    const { account, scope } = await configured(ctx)
+    const pageOperation = deliveryOperation('reused-page')
+    await ctx.imRuntime.ingestInboundPage({ operationId: pageOperation, scope, observedCursor: null, nextCursor: null, messages: [] })
+    await expect(ctx.imRuntime.ingestInboundPage({ operationId: pageOperation, scope, observedCursor: null, nextCursor: null, messages: [external('other', '2026-09-14T01:00:00.000Z')] }))
+      .rejects.toMatchObject({ code: 'IM_DELIVERY_OPERATION_REUSED' })
+    const owner = { platform: 'wangwang' as const, accountId: account.id, streamId: 'merchant-inbox' }
+    const cursorOperation = deliveryOperation('reused-cursor')
+    await ctx.imRuntime.commitProviderCursor({ operationId: cursorOperation, owner, observedCursor: null, nextCursor: 'one', pages: [{ scope, operationId: pageOperation }] })
+    await expect(ctx.imRuntime.commitProviderCursor({ operationId: cursorOperation, owner, observedCursor: 'one', nextCursor: 'two', pages: [] }))
+      .rejects.toMatchObject({ code: 'IM_DELIVERY_OPERATION_REUSED' })
   })
 
   it('marks only stored live messages and exposes a stable Session source for crash reconciliation', async () => {
@@ -246,6 +280,24 @@ describe('outbound delivery', () => {
     const confirmed = await ctx.imRuntime.settleOutboundAttempt({ scope, requestId, attemptId: begun.attemptId, status: 'sent', externalMessageId: 'platform-message', receipt: { providerReceiptId: 'receipt-1', observedAt: '2026-09-14T04:01:00.000Z' } })
     expect(confirmed.status).toBe('sent')
     expect(ctx.imRuntime.findSentOutbound(scope, 'platform-message')?.requestId).toBe(requestId)
+    expect(ctx.imRuntime.classifyInboundSender(scope, { kind: 'configured-echo', externalMessageId: 'platform-message' }))
+      .toEqual({ kind: 'ai', outboundRequestId: requestId })
+    expect(ctx.imRuntime.classifyInboundSender(scope, { kind: 'configured-self', observedSenderId: 'merchant-1' }))
+      .toEqual({ kind: 'unknown', reason: 'unmatched-self', observedSenderId: 'merchant-1' })
+    expect(ctx.imRuntime.classifyInboundSender(scope, { kind: 'configured-native', providerActorId: 'native-operator' }))
+      .toEqual({ kind: 'human-native', accountId: scope.accountId, providerActorId: 'native-operator' })
+    expect(ctx.imRuntime.classifyInboundSender(scope, { kind: 'external-actor', senderId: 'buyer', senderDisplayName: 'Buyer' }))
+      .toEqual({ kind: 'external', senderId: 'buyer', senderDisplayName: 'Buyer' })
+    expect(ctx.imRuntime.classifyInboundSender(scope, { kind: 'provider-unknown' }))
+      .toEqual({ kind: 'unknown', reason: 'provider-unknown' })
+
+    const manualId = outboundRequest('manual-evidence')
+    await ctx.imRuntime.registerOutbound({ requestId: manualId, scope, intent: 'human-manual', content: { text: 'manual', format: 'text' } })
+    const manualAttempt = await ctx.imRuntime.beginOutboundAttempt({ scope, requestId: manualId })
+    if (manualAttempt.state !== 'ready') throw new Error('fixture did not begin a manual attempt')
+    await ctx.imRuntime.settleOutboundAttempt({ scope, requestId: manualId, attemptId: manualAttempt.attemptId, status: 'sent', externalMessageId: 'manual-echo' })
+    expect(ctx.imRuntime.classifyInboundSender(scope, { kind: 'configured-echo', externalMessageId: 'manual-echo' }))
+      .toEqual({ kind: 'human-dsh', outboundRequestId: manualId })
   })
 
   it('turns an interrupted dispatch into result-unknown on restart', async () => {
@@ -311,5 +363,63 @@ describe('outbound delivery', () => {
     expect(cancelled.map(item => item.requestId)).toEqual([ai])
     expect(ctx.imRuntime.getOutbound({ scope, requestId: ai })?.status).toBe('pre-send-failed')
     expect(ctx.imRuntime.getOutbound({ scope, requestId: manual })?.status).toBe('pending')
+  })
+
+  it('serializes outbound idempotency and paginates by admission sequence', async () => {
+    const { ctx } = await boot()
+    const { scope } = await configured(ctx)
+    const firstId = outboundRequest('outbox-first')
+    const firstRequest = { requestId: firstId, scope, intent: 'human-manual' as const, content: { text: 'first', format: 'text' as const } }
+    const repeated = await Promise.all([ctx.imRuntime.registerOutbound(firstRequest), ctx.imRuntime.registerOutbound(firstRequest)])
+    expect(repeated[0]).toEqual(repeated[1])
+    const secondId = outboundRequest('outbox-second')
+    await ctx.imRuntime.registerOutbound({ requestId: secondId, scope, intent: 'human-manual', content: { text: 'second', format: 'text' } })
+    const latest = ctx.imRuntime.queryOutbound({ scope, limit: 1 })
+    expect(latest.items.map(item => item.requestId)).toEqual([secondId])
+    expect(ctx.imRuntime.queryOutbound({ scope, limit: 1, beforeSequenceNumber: latest.nextBeforeSequenceNumber }).items.map(item => item.requestId)).toEqual([firstId])
+    await expect(ctx.imRuntime.registerOutbound({ ...firstRequest, content: { text: 'different', format: 'text' } }))
+      .rejects.toMatchObject({ code: 'IM_OUTBOUND_REQUEST_REUSED' })
+  })
+
+  it('records Session source, sender, submission, and send-result terms', async () => {
+    const { ctx } = await boot()
+    const { scope } = await configured(ctx)
+    const requestId = outboundRequest('recorded-ai')
+    await ctx.imRuntime.registerOutbound({ requestId, scope, intent: 'ai', content: { text: 'agent reply', format: 'text' } })
+    const begun = await ctx.imRuntime.beginOutboundAttempt({ scope, requestId })
+    if (begun.state !== 'ready') throw new Error('fixture did not begin the recorded send')
+    await ctx.imRuntime.settleOutboundAttempt({
+      scope, requestId, attemptId: begun.attemptId, status: 'sent', externalMessageId: 'recorded-echo',
+      receipt: { providerStatus: 'accepted', observedAt: '2026-09-14T04:00:00.000Z' },
+    })
+    const sender = ctx.imRuntime.classifyInboundSender(scope, { kind: 'configured-echo', externalMessageId: 'recorded-echo' })
+    const page = await ctx.imRuntime.ingestInboundPage({
+      operationId: deliveryOperation('recorded-echo-page'), scope, observedCursor: null, nextCursor: null,
+      messages: [{ ...external('recorded-echo', '2026-09-14T04:00:01.000Z'), sender }],
+    })
+    const inbound = page.messages[0]!
+    const session = Session.create(SessionId('recorded-im-session'))
+    session.append('user/message', ctx.imRuntime.sessionUserMessage(scope, inbound.messageId), { surfaceOp: 'append' })
+    await ctx.imRuntime.markSubmitted({ scope, messageIds: [inbound.messageId], sessionId: session.id })
+    const sessionEvent = session.snapshotEvents()[0]!
+    const history = ctx.imRuntime.queryHistory({ scope, limit: 1 }).items[0]!
+    const outbound = ctx.imRuntime.queryOutbound({ scope, limit: 1 }).items[0]!
+    expect({
+      sessionEvent: sessionEvent.type,
+      sessionSource: sessionEvent.type === 'user/message' ? sessionEvent.data.source.kind : 'unexpected',
+      sender: history.sender.kind,
+      inboundResult: history.stage,
+      outboundAuthor: outbound.intent,
+      outboundResult: outbound.status,
+    }).toMatchInlineSnapshot(`
+      {
+        "inboundResult": "submitted",
+        "outboundAuthor": "ai",
+        "outboundResult": "sent",
+        "sender": "ai",
+        "sessionEvent": "user/message",
+        "sessionSource": "im",
+      }
+    `)
   })
 })
