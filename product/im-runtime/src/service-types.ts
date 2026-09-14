@@ -1,5 +1,43 @@
 /** Host service and event declarations kept out of the client-safe DTO entry. */
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace'
+import type { UserMessage } from '@deepseek-ai/dsh-llm'
+import type { SessionId } from '@deepseek-ai/dsh-session'
+import type {
+  ImBeginOutboundAttemptRequest,
+  ImBeginOutboundAttemptResult,
+  ImCancelPendingAiRequest,
+  ImCommitProviderCursorRequest,
+  ImConversationCursor,
+  ImDeliveryChange,
+  ImDeliveryOperationId,
+  ImDeliveryScope,
+  ImGetOutboundRequest,
+  ImHistoryPage,
+  ImHistoryQueryRequest,
+  ImImportJsonlHistoryRequest,
+  ImImportJsonlHistoryResult,
+  ImInboundMessageView,
+  ImInboundOperationQuery,
+  ImInboundPageResult,
+  ImIngestInboundPageRequest,
+  ImMarkSubmittedRequest,
+  ImMarkSubmittedResult,
+  ImMessageId,
+  ImMessageSource,
+  ImOutboundPage,
+  ImOutboundQueryRequest,
+  ImOutboundView,
+  ImPendingInboundRequest,
+  ImProviderCursorCommitResult,
+  ImProviderCursorOperationQuery,
+  ImProviderCursorOwner,
+  ImProviderCursorView,
+  ImRealDeliveryScope,
+  ImRegisterOutboundRequest,
+  ImSettleOutboundAttemptRequest,
+  ImSettleSimulationOutboundRequest,
+  ImSessionReconciliationResult,
+} from './delivery-types.ts'
 import type {
   ImAccountId,
   ImAccountCandidate,
@@ -34,6 +72,19 @@ declare module '@deepseek-ai/cordis' {
      * @mode emit
      */
     'imRuntime/changed'(change: ImRuntimeChange): void
+    /**
+     * Durable inbound, submission, or outbox state changed.
+     * @param change - committed scope and affected message or request identities.
+     * @mode emit
+     */
+    'imRuntime/delivery-changed'(change: ImDeliveryChange): void
+  }
+}
+
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    /** Stable IM identity used to reconcile a Session append with the delivery domain. */
+    im: ImMessageSource
   }
 }
 
@@ -67,4 +118,48 @@ export interface ImRuntimeService {
   removeSimulationTarget(request: ImRemoveSimulationTargetRequest): Promise<ImSimulationTargetMutationResult>
   /** @param workspaceId - target-owning workspace. @param operationId - idempotency identifier. @returns stored result or an explicit miss. */
   querySimulationTargetOperation(workspaceId: WorkspaceId, operationId: ImOperationId): ImSimulationTargetOperationQuery
+  /** @param listener - post-commit delivery observer. @returns disposer for this subscription. */
+  subscribeDelivery(listener: (change: ImDeliveryChange) => void): () => void
+  /** @param request - complete real scope, cursor CAS, and provider page. @returns durable page receipt. */
+  ingestInboundPage(request: ImIngestInboundPageRequest): Promise<ImInboundPageResult>
+  /** @param scope - complete conversation identity. @param operationId - page or import operation. @returns durable receipt or explicit miss. */
+  queryInboundOperation(scope: ImDeliveryScope, operationId: ImDeliveryOperationId): ImInboundOperationQuery
+  /** @param scope - complete conversation identity. @returns current live-delivery cursor. */
+  getConversationCursor(scope: ImDeliveryScope): ImConversationCursor
+  /** @param owner - platform account and provider feed identity. @returns current feed cursor without claiming conversation ownership. */
+  getProviderCursor(owner: ImProviderCursorOwner): ImProviderCursorView
+  /** @param request - feed cursor CAS and every durable conversation-page receipt. @returns stored cursor outcome. */
+  commitProviderCursor(request: ImCommitProviderCursorRequest): Promise<ImProviderCursorCommitResult>
+  /** @param owner - provider feed identity. @param operationId - uncertain cursor operation. @returns durable receipt or explicit miss. */
+  queryProviderCursorOperation(owner: ImProviderCursorOwner, operationId: ImDeliveryOperationId): ImProviderCursorOperationQuery
+  /** @param request - bounded history cursor and origin filter. @returns ascending message page. */
+  queryHistory(request: ImHistoryQueryRequest): ImHistoryPage
+  /** @param request - scope and maximum pending live messages. @returns oldest received rows. */
+  pendingInbound(request: ImPendingInboundRequest): readonly ImInboundMessageView[]
+  /** @param scope - complete conversation identity. @param messageId - stored inbound identity. @returns source for an existing Session user/message event. */
+  messageSource(scope: ImDeliveryScope, messageId: ImMessageId): ImMessageSource
+  /** @param scope - complete conversation identity. @param messageId - stored inbound identity. @returns identified Session user message with durable IM source. */
+  sessionUserMessage(scope: ImDeliveryScope, messageId: ImMessageId): UserMessage
+  /** @param sessionId - durable Session log to compare with pending delivery rows. @returns matched submissions and ignored stale evidence. */
+  reconcileSession(sessionId: SessionId): Promise<ImSessionReconciliationResult>
+  /** @param request - Session evidence for atomically submitted inbound rows. @returns committed rows and cursor. */
+  markSubmitted(request: ImMarkSubmittedRequest): Promise<ImMarkSubmittedResult>
+  /** @param request - query-only JSONL history and idempotency identity. @returns durable import receipt. */
+  importJsonlHistory(request: ImImportJsonlHistoryRequest): Promise<ImImportJsonlHistoryResult>
+  /** @param request - outbound intent persisted before any send. @returns durable safe outbox row. */
+  registerOutbound(request: ImRegisterOutboundRequest): Promise<ImOutboundView>
+  /** @param request - real scope and pending request. @returns sole attempt or durable block. */
+  beginOutboundAttempt(request: ImBeginOutboundAttemptRequest): Promise<ImBeginOutboundAttemptResult>
+  /** @param request - provider attempt and observed outcome. @returns settled outbox row. */
+  settleOutboundAttempt(request: ImSettleOutboundAttemptRequest): Promise<ImOutboundView>
+  /** @param request - simulation scope and local request. @returns locally sent outbox row. */
+  settleSimulationOutbound(request: ImSettleSimulationOutboundRequest): Promise<ImOutboundView>
+  /** @param request - complete scope and request identity. @returns outbox row or absence. */
+  getOutbound(request: ImGetOutboundRequest): ImOutboundView | undefined
+  /** @param request - bounded outbox history cursor. @returns ascending outbox page. */
+  queryOutbound(request: ImOutboundQueryRequest): ImOutboundPage
+  /** @param request - scope and terminal reason. @returns discarded automated rows. */
+  cancelPendingAi(request: ImCancelPendingAiRequest): Promise<readonly ImOutboundView[]>
+  /** @param scope - complete real scope. @param externalMessageId - provider message identity. @returns matching sent outbox evidence. */
+  findSentOutbound(scope: ImRealDeliveryScope, externalMessageId: string): ImOutboundView | undefined
 }

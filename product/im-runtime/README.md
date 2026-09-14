@@ -1,5 +1,5 @@
 ---
-description: "Configure durable IM accounts, takeover routes, and workspace simulation targets while keeping credentials out of client projections."
+description: "Configure durable IM accounts and routes, then retain scoped message history, provider cursors, Session submission evidence, and outbound outcomes."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to store safe DingTalk or Wangwang account facts, bind complete conversation routes to Workspaces, and select a route for channel simulation. Route changes use durable idempotency receipts and compare-and-swap tokens, so a client can query an uncertain result without blindly repeating ownership changes. Credentials remain in the Credentials service. Platform login, message delivery, and simulation Sessions require their provider and orchestration packages.
+Use this package to store safe DingTalk or Wangwang account facts, bind complete conversation routes to Workspaces, and retain message delivery state. Inbound pages, history imports, provider cursors, Session submission evidence, and outbound outcomes have durable query receipts. Credentials remain in the Credentials service. Platform login, actual sends, and Agent orchestration require their provider and orchestration packages.
 
 ## Table of Contents
 
@@ -55,6 +55,12 @@ Every route includes platform, account, conversation kind, an `all` or `specific
 
 `createRoute`, `saveRoute`, `rebindRoute`, and `deleteRoute` store their result with the owning account aggregate. `saveRoute` cannot change the Workspace owner. `rebindRoute` and `deleteRoute` compare both the observed route revision and Workspace. Call `queryRouteOperation` after a transport-level timeout before deciding whether to submit another operation id. Simulation-target save and removal use the same explicit query pattern per Workspace.
 
+`ingestInboundPage` durably stores one complete conversation page, deduplicated by full scope plus platform message identity. JSONL imports enter query history and never enter pending Agent delivery. Use `sessionUserMessage` to create a stable identified `user/message`; after that Session log is durable, call `markSubmitted`. `reconcileSession` scans `SessionPersistence` after a crash and confirms any matching stable sources. These are separate durable writes and do not claim a transaction across the delivery domain and Session log.
+
+Provider polling cursors have explicit account-and-stream ownership. A provider first commits every conversation page, then passes all page operation receipts to `commitProviderCursor`. If the process stops between those steps, it re-reads the old provider cursor and safely replays the pages through durable deduplication. This permits a Wangwang merchant page to cover several conversations without assigning the merchant cursor to one conversation.
+
+`registerOutbound` stores an intent before any platform call. `beginOutboundAttempt` grants one attempt; a restart or repeated begin while dispatch is unresolved records `result-unknown`, which callers query or confirm without a blind retry. Route and account generations are frozen for automated intents. Manual DSH sends and simulation sends remain available while an account or route is paused, while old automated intents cannot flush after a pause or route-change cycle.
+
 -----
 
 <a id="understand-the-implementation"></a>
@@ -63,16 +69,19 @@ Every route includes platform, account, conversation kind, an `all` or `specific
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The `gestaltrun_im_runtime` StorageDomain has one record per account aggregate and one record per Workspace simulation target. An account record contains its safe metadata, route map, and operation receipts; `KvTable.update` commits route uniqueness, CAS checks, the route change, and its receipt in one durable write. Simulation-target operations are serialized in this process and write one Workspace record. No operation claims atomicity across credentials, accounts, or simulation-target records.
+The `gestaltrun_im_runtime` StorageDomain has one record per account aggregate and one record per Workspace simulation target. The separate `gestaltrun_im_delivery` domain has one aggregate per complete conversation scope plus provider-owned cursor records. A conversation aggregate stores inbound messages, deduplication keys, operation receipts, submission evidence, and outbox rows in one durable write. Provider cursor commits happen only after referenced page receipts exist. No operation claims atomicity across credentials, configuration, delivery, provider cursor, or Session records.
 
 `ImTransports` reserves one live provider per platform and releases it with the registering Cordis fiber. `ctx.imRuntime.subscribe` and the typed `imRuntime/changed` event run after the matching durable write. Snapshot revisions order events within one process generation; durable operation ids and record revisions survive restart.
 
 | Source | Purpose |
 |---|---|
 | `src/types.ts` | Client-safe identifiers, views, requests, and receipts |
+| `src/delivery-types.ts` | Client-safe history, cursor, Session-source, and outbox DTOs |
 | `src/service-types.ts` | Host Context service and typed event declarations |
-| `src/runtime.ts` | Account, route, resolution, CAS, and simulation-target behavior |
+| `src/runtime.ts` | Configuration behavior and Host-facing Session integration |
+| `src/delivery.ts` | Scoped receive, query, submission, cursor, and outbox behavior |
 | `src/schema.ts` | Durable StorageDomain records and validation |
+| `src/delivery-schema.ts` | Durable conversation and provider-cursor aggregates |
 | `src/transports.ts` | Reversible platform-provider registry |
 
 </details>
@@ -92,7 +101,7 @@ The `gestaltrun_im_runtime` StorageDomain has one record per account aggregate a
 <a id="model-experience"></a>
 ## Model Experience
 
-None, as this configuration package registers no prompt, tool, or session event.
+`sessionUserMessage` returns the stored inbound text as an identified user message. Its source carries the stable scope id, message id, and delivery sequence used for crash reconciliation. The package does not register a prompt or tool and does not start an Agent by itself.
 
 #### KV Cache effect
 
@@ -102,7 +111,7 @@ None; account and route configuration alone does not assemble or send a model re
 ## Known Limitations and Deferred Work
 
 - Provider packages own live identity checks, conversation discovery, listeners, outbound sends, and receipt confirmation.
-- Message cursors, outbox records, Agent admission, and the two-Session simulation lifecycle are separate runtime slices.
+- Agent admission, automatic reply pumping, provider connection controls, and the two-Session simulation lifecycle are later product slices.
 - Operation receipts remain durable without automatic pruning because pruning would make an old operation indistinguishable from one never received.
 - Credentials and configuration use separate durable services. A failed account write attempts credential rollback and reports both failures if rollback also fails; it does not claim a cross-service transaction.
 

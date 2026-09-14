@@ -3,13 +3,58 @@ import { randomUUID } from 'node:crypto'
 import { Context, Service } from '@deepseek-ai/cordis'
 import { credentialKey } from '@deepseek-ai/dsh-credentials'
 import type { CredentialKey } from '@deepseek-ai/dsh-credentials'
+import { MessageId, freezeMessage } from '@deepseek-ai/dsh-llm'
+import type { UserMessage } from '@deepseek-ai/dsh-llm'
+import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
+import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
 import type { KvTable } from '@deepseek-ai/dsh-storage-domain'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import { brandString } from '@deepseek-ai/dsh-brand'
+import { ImDeliveryStore } from './delivery.ts'
+import { imDeliveryDomainSpec } from './delivery-schema.ts'
+import type { ImDeliveryAggregate, ImProviderCursorAggregate } from './delivery-schema.ts'
 import { ImRuntimeError } from './errors.ts'
 import { imRuntimeDomainSpec } from './schema.ts'
 import type { ImAccountAggregate, ImAccountRecord, ImSimulationTargetAggregate } from './schema.ts'
 import { ImTransports } from './transports.ts'
+import type {
+  ImBeginOutboundAttemptRequest,
+  ImBeginOutboundAttemptResult,
+  ImCancelPendingAiRequest,
+  ImCommitProviderCursorRequest,
+  ImConversationCursor,
+  ImDeliveryChange,
+  ImDeliveryOperationId,
+  ImDeliveryScope,
+  ImGetOutboundRequest,
+  ImHistoryPage,
+  ImHistoryQueryRequest,
+  ImImportJsonlHistoryRequest,
+  ImImportJsonlHistoryResult,
+  ImInboundMessageView,
+  ImInboundOperationQuery,
+  ImInboundPageResult,
+  ImIngestInboundPageRequest,
+  ImMarkSubmittedRequest,
+  ImMarkSubmittedResult,
+  ImMessageId,
+  ImMessageSource,
+  ImOutboundPage,
+  ImOutboundQueryRequest,
+  ImOutboundRequestId,
+  ImOutboundView,
+  ImPendingInboundRequest,
+  ImProviderCursorCommitResult,
+  ImProviderCursorId,
+  ImProviderCursorOperationQuery,
+  ImProviderCursorOwner,
+  ImProviderCursorView,
+  ImRealDeliveryScope,
+  ImRegisterOutboundRequest,
+  ImSessionReconciliationResult,
+  ImSettleOutboundAttemptRequest,
+  ImSettleSimulationOutboundRequest,
+} from './delivery-types.ts'
 import type {
   ImAccountId,
   ImAccountCandidate,
@@ -101,7 +146,11 @@ export class ImRuntime extends Service implements ImRuntimeService {
 
   private accounts?: KvTable<ImAccountId, ImAccountAggregate>
   private simulationTargets?: KvTable<WorkspaceId, ImSimulationTargetAggregate>
+  private deliveryScopes?: KvTable<import('./delivery-types.ts').ImScopeId, ImDeliveryAggregate>
+  private providerCursors?: KvTable<ImProviderCursorId, ImProviderCursorAggregate>
+  private delivery?: ImDeliveryStore
   private generation = 0
+  private deliveryGeneration = 0
   private simulationTail: Promise<void> = Promise.resolve()
   readonly transports: ImTransports
 
@@ -117,6 +166,24 @@ export class ImRuntime extends Service implements ImRuntimeService {
     this.ctx.effect(() => () => domain.close(), 'imRuntime.domainClose')
     this.accounts = domain.table('accounts')
     this.simulationTargets = domain.table('simulation_targets')
+    const deliveryDomain = await this.ctx.storageDomain.open(imDeliveryDomainSpec)
+    this.ctx.effect(() => () => deliveryDomain.close(), 'imRuntime.deliveryDomainClose')
+    this.deliveryScopes = deliveryDomain.table('scopes')
+    this.providerCursors = deliveryDomain.table('provider_cursors')
+    this.delivery = new ImDeliveryStore(this.deliveryScopes, this.providerCursors, {
+      inspectAccount: id => {
+        const account = this.accountTable().get(id)?.account
+        return account === undefined ? undefined : { platform: account.platform, paused: account.paused, revision: account.revision }
+      },
+      resolveRoute: scope => {
+        try { return this.resolveRoute(scope.accountId, scope.conversationKind, scope.conversationId) } catch (error) {
+          if (error instanceof ImRuntimeError && error.code === 'IM_ACCOUNT_NOT_FOUND') return undefined
+          throw error
+        }
+      },
+      publish: change => { this.publishDelivery(change) },
+    })
+    await this.delivery.recoverInterruptedAttempts()
   }
 
   snapshot(): ImRuntimeSnapshot {
@@ -389,6 +456,121 @@ export class ImRuntime extends Service implements ImRuntimeService {
     return result === undefined ? { state: 'not-found' } : { state: 'known', result }
   }
 
+  subscribeDelivery(listener: (change: ImDeliveryChange) => void): () => void {
+    return this.ctx.on('imRuntime/delivery-changed', listener)
+  }
+
+  ingestInboundPage(request: ImIngestInboundPageRequest): Promise<ImInboundPageResult> {
+    return this.deliveryStore().ingestInboundPage(request)
+  }
+
+  queryInboundOperation(scope: ImDeliveryScope, operationId: ImDeliveryOperationId): ImInboundOperationQuery {
+    return this.deliveryStore().queryInboundOperation(scope, operationId)
+  }
+
+  getConversationCursor(scope: ImDeliveryScope): ImConversationCursor {
+    return this.deliveryStore().getConversationCursor(scope)
+  }
+
+  getProviderCursor(owner: ImProviderCursorOwner): ImProviderCursorView {
+    return this.deliveryStore().getProviderCursor(owner)
+  }
+
+  commitProviderCursor(request: ImCommitProviderCursorRequest): Promise<ImProviderCursorCommitResult> {
+    return this.deliveryStore().commitProviderCursor(request)
+  }
+
+  queryProviderCursorOperation(owner: ImProviderCursorOwner, operationId: ImDeliveryOperationId): ImProviderCursorOperationQuery {
+    return this.deliveryStore().queryProviderCursorOperation(owner, operationId)
+  }
+
+  queryHistory(request: ImHistoryQueryRequest): ImHistoryPage {
+    return this.deliveryStore().queryHistory(request)
+  }
+
+  pendingInbound(request: ImPendingInboundRequest): readonly ImInboundMessageView[] {
+    return this.deliveryStore().pendingInbound(request)
+  }
+
+  messageSource(scope: ImDeliveryScope, messageId: ImMessageId): ImMessageSource {
+    return this.deliveryStore().messageSource(scope, messageId)
+  }
+
+  markSubmitted(request: ImMarkSubmittedRequest): Promise<ImMarkSubmittedResult> {
+    return this.deliveryStore().markSubmitted(request)
+  }
+
+  sessionUserMessage(scope: ImDeliveryScope, messageId: ImMessageId): UserMessage {
+    const inbound = this.deliveryStore().getInbound(scope, messageId)
+    return freezeMessage({
+      id: MessageId(`im:${inbound.messageId}`),
+      role: 'user',
+      content: [{ type: 'text', text: inbound.content.text }],
+      source: this.deliveryStore().messageSource(scope, messageId),
+    })
+  }
+
+  async reconcileSession(sessionId: SessionId): Promise<ImSessionReconciliationResult> {
+    const persistence = this.ctx.get('sessionPersistence') as SessionPersistence | undefined
+    if (persistence === undefined) throw new ImRuntimeError('IM_SESSION_PERSISTENCE_UNAVAILABLE', 'SessionPersistence is required to reconcile IM submission evidence')
+    const handle = await persistence.open(sessionId, 'read')
+    let events: readonly SessionEvent[]
+    try { events = (await handle.read()).events } finally { await handle.close() }
+    const groups = new Map<import('./delivery-types.ts').ImScopeId, { readonly scope: ImDeliveryScope; readonly messageIds: Set<ImMessageId> }>()
+    let ignoredEvidenceCount = 0
+    for (const event of events) {
+      if (event.type !== 'user/message' || event.data.source.kind !== 'im') continue
+      const matched = this.deliveryStore().matchMessageSource(event.data.source)
+      if (matched === undefined) { ignoredEvidenceCount++; continue }
+      const scopeId = event.data.source.scopeId
+      const group = groups.get(scopeId) ?? { scope: matched.scope, messageIds: new Set<ImMessageId>() }
+      group.messageIds.add(matched.messageId)
+      groups.set(scopeId, group)
+    }
+    const submittedMessageIds: ImMessageId[] = []
+    for (const group of groups.values()) {
+      const result = await this.deliveryStore().markSubmitted({ scope: group.scope, messageIds: [...group.messageIds], sessionId })
+      submittedMessageIds.push(...result.messages.map(message => message.messageId))
+    }
+    return { sessionId, submittedMessageIds, ignoredEvidenceCount }
+  }
+
+  importJsonlHistory(request: ImImportJsonlHistoryRequest): Promise<ImImportJsonlHistoryResult> {
+    return this.deliveryStore().importJsonlHistory(request)
+  }
+
+  registerOutbound(request: ImRegisterOutboundRequest): Promise<ImOutboundView> {
+    return this.deliveryStore().registerOutbound(request)
+  }
+
+  beginOutboundAttempt(request: ImBeginOutboundAttemptRequest): Promise<ImBeginOutboundAttemptResult> {
+    return this.deliveryStore().beginOutboundAttempt(request)
+  }
+
+  settleOutboundAttempt(request: ImSettleOutboundAttemptRequest): Promise<ImOutboundView> {
+    return this.deliveryStore().settleOutboundAttempt(request)
+  }
+
+  settleSimulationOutbound(request: ImSettleSimulationOutboundRequest): Promise<ImOutboundView> {
+    return this.deliveryStore().settleSimulationOutbound(request)
+  }
+
+  getOutbound(request: ImGetOutboundRequest): ImOutboundView | undefined {
+    return this.deliveryStore().getOutbound(request)
+  }
+
+  queryOutbound(request: ImOutboundQueryRequest): ImOutboundPage {
+    return this.deliveryStore().queryOutbound(request)
+  }
+
+  cancelPendingAi(request: ImCancelPendingAiRequest): Promise<readonly ImOutboundView[]> {
+    return this.deliveryStore().cancelPendingAi(request)
+  }
+
+  findSentOutbound(scope: ImRealDeliveryScope, externalMessageId: string): ImOutboundView | undefined {
+    return this.deliveryStore().findSentOutbound(scope, externalMessageId)
+  }
+
   private accountTable(): KvTable<ImAccountId, ImAccountAggregate> {
     if (this.accounts === undefined) throw new Error('IM runtime domain is not ready')
     return this.accounts
@@ -397,6 +579,11 @@ export class ImRuntime extends Service implements ImRuntimeService {
   private simulationTargetTable(): KvTable<WorkspaceId, ImSimulationTargetAggregate> {
     if (this.simulationTargets === undefined) throw new Error('IM runtime domain is not ready')
     return this.simulationTargets
+  }
+
+  private deliveryStore(): ImDeliveryStore {
+    if (this.delivery === undefined || this.deliveryScopes === undefined || this.providerCursors === undefined) throw new Error('IM delivery domain is not ready')
+    return this.delivery
   }
 
   private requireAccount(id: ImAccountId): ImAccountAggregate {
@@ -436,6 +623,13 @@ export class ImRuntime extends Service implements ImRuntimeService {
     const event: ImRuntimeChange = { revision: ++this.generation, ...change }
     try { this.ctx.emit('imRuntime/changed', event) } catch (error) {
       this.ctx.logger.warn(`IM runtime change listener failed after commit: ${String(error)}`)
+    }
+  }
+
+  private publishDelivery(change: Omit<ImDeliveryChange, 'sequence'>): void {
+    const event: ImDeliveryChange = { sequence: ++this.deliveryGeneration, ...change }
+    try { this.ctx.emit('imRuntime/delivery-changed', event) } catch (error) {
+      this.ctx.logger.warn(`IM delivery change listener failed after commit: ${String(error)}`)
     }
   }
 }
