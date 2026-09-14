@@ -65,7 +65,8 @@ async function main() {
       toggle.addEventListener('click', () => void run(
         () => api.plugins.toggle(plugin.name, !plugin.enabled), messages.changingActivation,
       ))
-      actions.append(toggle, update, remove)
+      actions.append(toggle)
+      if (!plugin.bundled) actions.append(update, remove)
       item.append(identity, actions)
       return item
     }))

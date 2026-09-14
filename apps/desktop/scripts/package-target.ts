@@ -288,6 +288,7 @@ async function main(): Promise<void> {
     if (!invocation.unsigned && process.env[name] !== undefined) electronBuilderEnv[name] = process.env[name]
   }
   await runPnpm(['run', 'build:official'], buildEnv, REPOSITORY_ROOT)
+  await runPnpm(['run', 'community:pack'], buildEnv, REPOSITORY_ROOT)
   await runPnpm(['run', 'release:pack', '--family', 'dsh', '--out', buildPaths.packedDsh], buildEnv, REPOSITORY_ROOT)
   await runPnpm([
     '--dir',
@@ -308,6 +309,8 @@ async function main(): Promise<void> {
     buildPaths.packedLandlock,
   ], buildEnv, REPOSITORY_ROOT)
   await runPnpm(['run', 'prepare:runtime'], targetEnv)
+  await runPnpm(['--dir', 'product', 'install', '--frozen-lockfile', '--ignore-scripts'], buildEnv, REPOSITORY_ROOT)
+  await runPnpm(['--dir', 'product', 'run', 'pack'], buildEnv, REPOSITORY_ROOT)
   await runPnpm(['run', 'prepare:packages'], targetEnv)
   await runPnpm(['run', 'prepare:dsh'], targetEnv)
   if (invocation.prepareOnly) return

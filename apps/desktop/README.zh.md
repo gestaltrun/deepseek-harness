@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-桌面应用是包裹 dsh Web UI 的 Electron 壳。它不打开监听端口：内置的上游 Node.js 子进程启动已安装的 dsh 项目，带版本的分帧字节管道在没有外层 Base64 信封的情况下承载 Fetch 请求与流式响应，Node IPC 承载生命周期控制，`dsh-app://` 则提供与后端版本匹配的客户端资源。
+桌面应用是包裹 dsh Web UI 的 Electron 壳。内置的上游 Node.js 子进程启动已安装的 dsh 项目，带版本的分帧字节管道在没有外层 Base64 信封的情况下承载 Fetch 请求与流式响应，Node IPC 承载生命周期控制，`dsh-app://` 则提供与后端版本匹配的客户端资源。
 
 ## 关键技术决策
 
@@ -13,13 +13,21 @@
 | 包来源 | 即使离线，启动时安装核心依赖也会增加开销。 | `extraResources/dsh` 携带完整生产依赖树；profile 只安装外部插件。 |
 | 共享模块 | 宿主 API 可能依赖模块实例身份。 | Desktop 用目录软链接或 Windows junction 把每个内置第一方包连接到 profile；普通插件依赖保留在本地。 |
 | 状态归属 | 共享可执行依赖图会让 CLI（命令行界面）与 Desktop 相互改变 dsh、Cordis、插件或原生模块版本，而两个桌面进程还可能争用同一个 profile。 | Electron 在访问任何 profile 前获取进程生命周期单实例锁，并独占 `$DSH_HOME/profiles/desktop` 及其包管理器状态。CLI 与 Desktop 共享 `$DSH_HOME` 下受支持的产品数据，但绝不共享可执行包、插件激活、锁文件或 `node_modules`。 |
-| 通信 | 监听 Web 服务会引入端口归属、认证、CORS 与暴露风险；Electron 与上游 Node.js 之间也需要明确的跨进程协议。 | 应用不打开 Web 端口。`dsh-app://` 承载 Web 资源和 Fetch 流量；分帧字节管道以背压传输有界请求与响应分块，Node IPC 只承载子进程生命周期控制。 |
+| 通信 | 监听 Web 服务会引入端口归属、认证、CORS 与暴露风险；Electron 与上游 Node.js 之间也需要明确的跨进程协议。 | 原生界面不使用 Web 端口。`dsh-app://` 承载 Web 资源和 Fetch 流量；分帧字节管道以背压传输有界请求与响应分块，Node IPC 只承载子进程生命周期控制。 |
 | 插件变更 | 包安装和 Host 启动可能失败。 | Desktop 停止 Host 后直接修改当前 profile。失败保留部分修改供用户修复，不自动回滚 profile。 |
 | 更新 | 桌面壳与 dsh 独立更新会重新产生版本分裂，而桌面壳未变化的数据块不应强制完整传输。 | Electron 壳、匹配的 dsh 运行时、Node.js 与 pnpm 组成一个已签名更新单元。平台更新产物可以复用未变化的数据块，但运行时版本选择绝不脱离 Desktop 发布。 |
 
 [Electron 打包与更新 Agent Note](../../.agents/notes/implemented/architecture/2026-08-25-electron-desktop-packaging-and-updates.zh.md) 记录了这些决策背后的理由、替代方案、安全约束和发布验证要求。
 
 ## 安装归属
+
+Desktop 同时内置[模型中心产品 bundle](../../product/model-center/README.zh.md)，沿用社区包的内置插件启停和升级规则，并使用模型行内控件替换旧模型能力面板。
+
+内置远程访问插件提供独立的回环 HTTP 监听器。可在设置中开启局域网绑定；其他设备必须配对才能访问会话。停止或撤销设备时，其活动 HTTP 与 WebSocket 连接会关闭。原生 Desktop 请求继续使用私有载体。
+
+Gestaltrun 构建包含[产品组合](../../product/community.json)选定的固定版本社区包，由聚合包启用一份 Better Sidebar。内置插件在插件管理中提供启停操作，其文件和版本随 Desktop 发行更新。已有 profile 升级时会首次启用新增的内置 bundle；之后保留用户的启停选择和自定义覆盖层。
+
+Desktop 默认以无头模式启动 Ego 的独立浏览器（`egoCliArgs: '--headless'`）。如需在下一次冷启动时显示浏览器窗口，在插件设置中将 Ego 的 `egoCliArgs` 显式设为空字符串。已有启动参数与配置表达式会保留；共享 Web profile 使用自身默认值。
 
 Electron 拥有 `$DSH_HOME/profiles/desktop`。其 `dependencies` 只包含已安装外部插件的精确版本；`dsh.profile.bundles` 包含内置 bundle，后接已启用插件。签名应用从 `resources/dsh` 提供 dsh、私有 Desktop Host 及其生产依赖。共享包链接解析到这些实际目录。宿主与插件在同一个内置上游 Node 进程中执行，使用正常的 realpath 解析；Desktop 不启用 `--preserve-symlinks`。CLI 不能启动或修改此 profile。
 

@@ -25,6 +25,12 @@ import type {} from '@deepseek-ai/dsh-api-gateway'
 import type { ConnectionFetchHandler } from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-client-modules'
 import { renderIndexInjections, type IndexInjection } from '@deepseek-ai/dsh-host-webserver'
+import * as FrontendStatic from '@deepseek-ai/dsh-host-frontend-static'
+import { installDesktopCommunityTransport, type DesktopCommunityTransport } from './community-transport.ts'
+import { DESKTOP_COMMUNITY_WEBSOCKET_SCRIPT } from './community-websocket-client.ts'
+import { DESKTOP_STREAM_PATH, dispatchDesktopFetch } from './fetch-dispatcher.ts'
+import { DesktopRemoteAccess } from './remote-access.ts'
+import { desktopCommunityDefaults } from './community-defaults.ts'
 import {
   DESKTOP_HOST_PROTOCOL_VERSION,
   DESKTOP_PIPE_CHUNK_BYTES,
@@ -94,7 +100,6 @@ interface PackageManifest {
 const DESKTOP_PATCH = fileURLToPath(new URL('../config/desktop.cordis.patch.yml', import.meta.url))
 const ROOT_CONFIG = '# Electron desktop composition root; package transactions own this file.\n[]\n'
 const ROOT_CONFIG_FILENAME = 'desktop.cordis.yml'
-const DESKTOP_STREAM_PATH = '/.dsh/remote-stream'
 
 const DESKTOP_TRANSPORT_SCRIPT = `globalThis.__DSH_TRANSPORT__={
   ownsHost:true,
@@ -163,6 +168,7 @@ function desktopPatches(runtimeDir: string, projectDir: string, allowLinkedPacka
     loadOverlayPatches('dsh desktop', DESKTOP_PATCH),
   ]
   const rows = new Map(composeEntries(layers).flatMap(row => typeof row.id === 'string' ? [[row.id, row] as const] : []))
+  layers.push(desktopCommunityDefaults([...rows.values()]))
   const agentPresets = rows.get('agent-presets')
   if (agentPresets !== undefined) {
     layers.push([{
@@ -182,14 +188,13 @@ function dshVersion(runtimeDir: string): string {
   return manifest.version
 }
 
-function assetHandler(ctx: Context, runtimeDir: string): ConnectionFetchHandler {
+function assetHandler(ctx: Context, runtimeDir: string, community: DesktopCommunityTransport): ConnectionFetchHandler {
   const require = createRequire(join(runtimeDir, 'package.json'))
   const distIndex = require.resolve('@deepseek-ai/dsh-web-frontend/dist/index.html')
   const distRoot = realpathSync(dirname(distIndex))
   const renderIndex = async (): Promise<Response> => {
-    const rows: IndexInjection[] = [{ kind: 'script', placement: 'head', text: DESKTOP_TRANSPORT_SCRIPT }]
-    ctx.emit('webserver/index-inject', rows)
-    const body = renderIndexInjections(await readFile(distIndex, 'utf8'), rows)
+    const rows: IndexInjection[] = [{ kind: 'script', placement: 'head', text: `${DESKTOP_TRANSPORT_SCRIPT};${DESKTOP_COMMUNITY_WEBSOCKET_SCRIPT}` }, ...community.collectIndexInjections()]
+    const body = community.applyIndexTaps(renderIndexInjections(await readFile(distIndex, 'utf8'), rows))
     return new Response(body, { headers: { 'content-type': MIME['.html'] ?? 'text/html; charset=utf-8' } })
   }
   return {
@@ -197,7 +202,7 @@ function assetHandler(ctx: Context, runtimeDir: string): ConnectionFetchHandler 
     async fetch(request): Promise<Response> {
       if (request.method !== 'GET' && request.method !== 'HEAD') return new Response(null, { status: 405 })
       const url = new URL(request.url)
-      if (url.pathname.startsWith('/plugins/')) return ctx.clientModules.fetchBundle(request)
+      if (url.pathname === '/plugins' || url.pathname.startsWith('/plugins/')) return ctx.clientModules.fetchBundle(request)
       let pathname: string
       try {
         pathname = decodeURIComponent(url.pathname)
@@ -288,12 +293,19 @@ export async function runDesktopHost(
   writeFileSync(rootConfig, ROOT_CONFIG)
   const environment = loadLayeredEnv('dsh desktop')
   let current: Context | undefined
+  let community: DesktopCommunityTransport | undefined
+  let remoteAccess: DesktopRemoteAccess | undefined
   const ctx = await boot('dsh desktop', rootConfig, structuredClone(desktopPatches(
     resolve(runtimeDir),
     absoluteProject,
     options.allowLinkedPackages === true,
   )), (hostCtx) => {
     current = hostCtx
+    const remote = new DesktopRemoteAccess((error) => { hostCtx.logger.warn(error) })
+    remoteAccess = remote
+    hostCtx.effect(() => () => remote.dispose(), 'Desktop optional remote listener')
+    hostCtx.effect(() => hostCtx.reflect.provide('desktopRemoteAccess', remote), 'Desktop remote access control')
+    community = installDesktopCommunityTransport(hostCtx, transport => remote.webServer(transport))
     hostCtx.provide(DSH_LAUNCH_ENVIRONMENT_KEY, environment)
     provideCmdline(hostCtx, { args: [], exit: () => {} })
   })
@@ -306,7 +318,20 @@ export async function runDesktopHost(
     throw new Error('dsh desktop: composition did not provide connection, typertGateway, and clientModules')
   }
   const api = connection.createSharedFetchHandler('/api')
-  const assets = assetHandler(ctx, resolve(runtimeDir))
+  if (community === undefined) {
+    await ctx.fiber.dispose()
+    throw new Error('dsh desktop: community transport was not initialized')
+  }
+  const pluginTransport = community
+  const runtimeRequire = createRequire(join(resolve(runtimeDir), 'package.json'))
+  try {
+    await ctx.plugin(FrontendStatic, { distIndex: runtimeRequire.resolve('@deepseek-ai/dsh-web-frontend/dist/index.html') })
+    remoteAccess?.markReady()
+  } catch (error) {
+    await ctx.fiber.dispose()
+    throw error
+  }
+  const assets = assetHandler(ctx, resolve(runtimeDir), pluginTransport)
   const streams = remoteStreamHandler(ctx)
   const requests = new Map<number, AbortController>()
   let disposing: Promise<void> | undefined
@@ -339,11 +364,7 @@ export async function runDesktopHost(
           signal: controller.signal,
         }
         const request = new Request(url, init)
-        const response = url.pathname === DESKTOP_STREAM_PATH
-          ? await streams.fetch(request)
-          : url.pathname.startsWith('/api/')
-            ? await api.fetch(request)
-            : await assets.fetch(request)
+        const response = await dispatchDesktopFetch(request, { api, streams, community: pluginTransport, assets })
         await writeResponse(encodeDesktopResponseStart(command.streamId, {
           status: response.status,
           headers: [...response.headers.entries()],

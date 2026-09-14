@@ -1,6 +1,7 @@
 # Agent Note: Measured GitHub-hosted PR preview sizing
 
 Status: implemented
+Archived: 2026-09-12
 
 English | [中文](2026-09-06-preview-hosted-runner-sizing.zh.md)
 

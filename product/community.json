@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "plugins": [
+    {
+      "path": "community/better-sidebar",
+      "repository": "gestaltrun/better-sidebar",
+      "package": "@gestaltrun/dsh-better-sidebar",
+      "version": "0.19.1-gestaltrun.0",
+      "defaultBundle": false,
+      "publishedArtifact": {
+        "commit": "e656717672d83f9c21879d4ba8439799d9acf9ba",
+        "tarball": "https://registry.npmjs.org/@gestaltrun/dsh-better-sidebar/-/dsh-better-sidebar-0.19.1-gestaltrun.0.tgz",
+        "integrity": "sha512-asZIt+2XZqq9dKqhSjIMPoAuPyT7Hg13EHoQBV9ICRI9X4tut3tQQBfv/gcuRBSDUFAgXCDSstEgHbvBn18zHg=="
+      }
+    },
+    {
+      "path": "community/dsh-web",
+      "repository": "gestaltrun/dsh-web",
+      "package": "@gestaltrun/dsh-web-all",
+      "version": "0.3.21-gestaltrun.1",
+      "defaultBundle": true
+    },
+    {
+      "path": "community/ego-browser",
+      "repository": "gestaltrun/ego-browser",
+      "package": "@gestaltrun/dsh-ego-browser",
+      "version": "0.8.3-gestaltrun.0",
+      "defaultBundle": true
+    },
+    {
+      "path": "community/github-workbench",
+      "repository": "gestaltrun/dsh-github-workbench",
+      "package": "@gestaltrun/dsh-github-workbench",
+      "version": "0.3.0-gestaltrun.0",
+      "defaultBundle": true
+    },
+    {
+      "path": "community/git-remotes",
+      "repository": "gestaltrun/dsh-git-remotes",
+      "package": "@gestaltrun/dsh-git-remotes",
+      "version": "0.1.0-gestaltrun.0",
+      "defaultBundle": true
+    },
+    {
+      "path": "community/sidebar-office",
+      "repository": "gestaltrun/dsh-plugin-better-sidebar-plugin-office",
+      "package": "@gestaltrun/dsh-sidebar-office",
+      "version": "0.1.3-gestaltrun.0",
+      "defaultBundle": true
+    },
+    {
+      "path": "community/video-preview",
+      "repository": "gestaltrun/dsh-video-preview",
+      "package": "@gestaltrun/dsh-video-preview",
+      "version": "0.1.5-gestaltrun.0",
+      "defaultBundle": true
+    }
+  ]
+}

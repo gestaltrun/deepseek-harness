@@ -1,0 +1,358 @@
+name: Fork CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      base:
+        description: Explicit comparison base commit
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DSH_TELEMETRY_DISABLED: '1'
+  DSH_SNAPSHOT: replay
+
+jobs:
+  plan:
+    name: Plan affected checks
+    runs-on: ubuntu-24.04
+    outputs:
+      jobs: ${{ steps.plan.outputs.jobs }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Use runner-owned temporary storage
+        shell: bash
+        run: |
+          echo "NODE_COMPILE_CACHE=$RUNNER_TEMP/node-compile-cache" >> "$GITHUB_ENV"
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: pnpm/action-setup@v4
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Install immutable workspace
+        run: pnpm install --frozen-lockfile
+      - id: plan
+        name: Compare explicit base and head
+        env:
+          CI_BASE: ${{ github.event.pull_request.base.sha || inputs.base }}
+          CI_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: pnpm run ci:plan --base "$CI_BASE" --head "$CI_HEAD" --output "${{ runner.temp }}/fork-ci-plan.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fork-ci-plan
+          path: ${{ runner.temp }}/fork-ci-plan.json
+          if-no-files-found: error
+
+  quality:
+    needs: plan
+    if: ${{ fromJSON(needs.plan.outputs.jobs).quality }}
+    runs-on: ${{ vars.DSH_CI_FAILOVER_LINUX == 'blacksmith' && 'blacksmith-16vcpu-ubuntu-2404' || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "linux", "x64", "vm-backup"]') || 'dsh-ubuntu-24-04-16core' }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Use runner-owned temporary storage
+        shell: bash
+        run: |
+          echo "NODE_COMPILE_CACHE=$RUNNER_TEMP/node-compile-cache" >> "$GITHUB_ENV"
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: pnpm/action-setup@v4
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Install immutable workspace
+        run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v5
+        with:
+          name: fork-ci-plan
+          path: ${{ runner.temp }}/fork-ci-plan
+      - name: Run selected quality checks
+        run: pnpm run ci:run --plan "${{ runner.temp }}/fork-ci-plan/fork-ci-plan.json" --lane quality
+
+  affected:
+    needs: plan
+    if: ${{ fromJSON(needs.plan.outputs.jobs).affected }}
+    runs-on: ${{ vars.DSH_CI_FAILOVER_LINUX == 'blacksmith' && 'blacksmith-16vcpu-ubuntu-2404' || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "linux", "x64", "vm-backup"]') || 'dsh-ubuntu-24-04-16core' }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Use runner-owned temporary storage
+        shell: bash
+        run: |
+          echo "NODE_COMPILE_CACHE=$RUNNER_TEMP/node-compile-cache" >> "$GITHUB_ENV"
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: pnpm/action-setup@v4
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Install immutable workspace
+        run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v5
+        with:
+          name: fork-ci-plan
+          path: ${{ runner.temp }}/fork-ci-plan
+      - name: Prepare sandbox dependency when affected
+        if: ${{ fromJSON(needs.plan.outputs.jobs).sandbox }}
+        run: bash scripts/prepare-ci-bubblewrap.sh
+      - name: Run selected affected checks
+        run: pnpm run ci:run --plan "${{ runner.temp }}/fork-ci-plan/fork-ci-plan.json" --lane affected
+
+  benchmark:
+    needs: plan
+    if: ${{ fromJSON(needs.plan.outputs.jobs).benchmark }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Use runner-owned temporary storage
+        shell: bash
+        run: |
+          echo "NODE_COMPILE_CACHE=$RUNNER_TEMP/node-compile-cache" >> "$GITHUB_ENV"
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: pnpm/action-setup@v4
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Install immutable workspace
+        run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v5
+        with:
+          name: fork-ci-plan
+          path: ${{ runner.temp }}/fork-ci-plan
+      - name: Run selected benchmark checks
+        run: pnpm run ci:run --plan "${{ runner.temp }}/fork-ci-plan/fork-ci-plan.json" --lane benchmark
+
+  windows:
+    needs: plan
+    if: ${{ fromJSON(needs.plan.outputs.jobs).windows }}
+    runs-on: ${{ vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "windows", "x64", "dsh-win-ci"]') || 'windows-latest' }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Trust the checked-out Windows workspace
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: git config --global --add safe.directory "$($env:GITHUB_WORKSPACE.Replace('\', '/'))"
+      - name: Use runner-owned temporary storage
+        shell: bash
+        run: |
+          echo "NODE_COMPILE_CACHE=$RUNNER_TEMP/node-compile-cache" >> "$GITHUB_ENV"
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: pnpm/action-setup@v4
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Install immutable workspace
+        run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v5
+        with:
+          name: fork-ci-plan
+          path: ${{ runner.temp }}/fork-ci-plan
+      - name: Run selected windows checks
+        run: pnpm run ci:run --plan "${{ runner.temp }}/fork-ci-plan/fork-ci-plan.json" --lane windows
+
+  desktop:
+    needs: plan
+    if: ${{ fromJSON(needs.plan.outputs.jobs).desktop }}
+    name: Desktop / ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [macos, windows]
+    runs-on: ${{ matrix.platform == 'macos' && 'macos-15' || (vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "windows", "x64", "dsh-win-ci"]') || 'windows-latest') }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Trust the checked-out Windows workspace
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: git config --global --add safe.directory "$($env:GITHUB_WORKSPACE.Replace('\', '/'))"
+      - name: Use runner-owned temporary storage
+        shell: bash
+        run: |
+          echo "NODE_COMPILE_CACHE=$RUNNER_TEMP/node-compile-cache" >> "$GITHUB_ENV"
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: pnpm/action-setup@v4
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Install immutable workspace
+        run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v5
+        with:
+          name: fork-ci-plan
+          path: ${{ runner.temp }}/fork-ci-plan
+      - name: Run selected desktop checks
+        run: pnpm run ci:run --plan "${{ runner.temp }}/fork-ci-plan/fork-ci-plan.json" --lane desktop
+
+  product:
+    needs: plan
+    if: ${{ fromJSON(needs.plan.outputs.jobs).product }}
+    runs-on: ${{ vars.DSH_CI_FAILOVER_LINUX == 'blacksmith' && 'blacksmith-16vcpu-ubuntu-2404' || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "linux", "x64", "vm-backup"]') || 'dsh-ubuntu-24-04-16core' }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          submodules: recursive
+          persist-credentials: false
+      - name: Use runner-owned temporary storage
+        shell: bash
+        run: |
+          echo "NODE_COMPILE_CACHE=$RUNNER_TEMP/node-compile-cache" >> "$GITHUB_ENV"
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: pnpm/action-setup@v4
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Install immutable workspace
+        run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v5
+        with:
+          name: fork-ci-plan
+          path: ${{ runner.temp }}/fork-ci-plan
+      - run: pnpm run community:check
+      - run: pnpm run community:pack
+      - run: pnpm run build:official
+      - name: Build and verify product-owned plugins
+        run: |
+          pnpm --dir product install --frozen-lockfile --ignore-scripts --config.enable-global-virtual-store=false
+          pnpm --dir product run typecheck
+          pnpm --dir product run test
+          pnpm --dir product run pack
+      - run: pnpm run ci:run --plan "${{ runner.temp }}/fork-ci-plan/fork-ci-plan.json" --lane product
+      - run: pnpm run community:smoke
+
+  provider:
+    needs: plan
+    if: ${{ fromJSON(needs.plan.outputs.jobs).provider && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && github.event.pull_request.user.login != 'dependabot[bot]' }}
+    runs-on: ${{ vars.DSH_CI_FAILOVER_LINUX == 'blacksmith' && 'blacksmith-16vcpu-ubuntu-2404' || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "linux", "x64", "vm-backup"]') || 'dsh-ubuntu-24-04-16core' }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Use runner-owned temporary storage
+        shell: bash
+        run: |
+          echo "NODE_COMPILE_CACHE=$RUNNER_TEMP/node-compile-cache" >> "$GITHUB_ENV"
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: pnpm/action-setup@v4
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Install immutable workspace
+        run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v5
+        with:
+          name: fork-ci-plan
+          path: ${{ runner.temp }}/fork-ci-plan
+      - name: Run selected provider checks
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}
+        run: pnpm run ci:run --plan "${{ runner.temp }}/fork-ci-plan/fork-ci-plan.json" --lane provider
+
+  native:
+    needs: plan
+    if: ${{ fromJSON(needs.plan.outputs.jobs).native }}
+    uses: ./.github/workflows/node-addon-system.yml
+
+  sandbox:
+    needs: plan
+    if: ${{ fromJSON(needs.plan.outputs.jobs).sandbox }}
+    uses: ./.github/workflows/sandbox.yml
+
+  pythonSdk:
+    name: Python SDK / affected contracts
+    needs: plan
+    if: ${{ fromJSON(needs.plan.outputs.jobs).pythonSdk }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6.3.0
+        with:
+          python-version: '3.10'
+      - run: python -m pip install uv==0.11.23
+      - run: uv run --python 3.10 --group test --project python/sdk pytest
+
+  python:
+    needs: plan
+    if: ${{ fromJSON(needs.plan.outputs.jobs).python }}
+    uses: ./.github/workflows/build-exe-for-python-sdk.yml
+    with:
+      ci: true
+      targets: node24-linux-x64,node24-win-x64
+    secrets:
+      DEEPSEEK_API_KEY_EXTERNAL: ${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}
+
+  all-checks-passed:
+    name: all checks passed
+    needs: [plan, quality, affected, product, desktop, windows, native, python, pythonSdk, provider, sandbox, benchmark]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Require every planned result
+        env:
+          SELECTED_JOBS: ${{ needs.plan.outputs.jobs }}
+          JOB_RESULTS: ${{ toJSON(needs) }}
+        run: node scripts/fork-ci-run.ts --summary

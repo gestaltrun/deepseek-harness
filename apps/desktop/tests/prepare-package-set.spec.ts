@@ -10,6 +10,19 @@ function packed(name: string, manifest: Record<string, unknown> = {}): PackedDes
 }
 
 describe('desktop package-set selection', () => {
+  it('includes a product bundle and its internal peers only when selected', () => {
+    const available = new Map<string, PackedDesktopPackage>([
+      ['@deepseek-ai/dsh', packed('@deepseek-ai/dsh')],
+      ['@deepseek-ai/dsh-desktop-host', packed('@deepseek-ai/dsh-desktop-host')],
+      ['@gestaltrun/dsh-model-center', packed('@gestaltrun/dsh-model-center', { peerDependencies: { '@deepseek-ai/dsh-llm': '1.0.0' } })],
+      ['@deepseek-ai/dsh-llm', packed('@deepseek-ai/dsh-llm')],
+    ])
+    expect(selectDesktopPackageClosure(available, ['@gestaltrun/dsh-model-center']).map(item => item.manifest.name))
+      .toEqual(['@deepseek-ai/dsh', '@deepseek-ai/dsh-desktop-host', '@deepseek-ai/dsh-llm', '@gestaltrun/dsh-model-center'])
+    available.delete('@deepseek-ai/dsh-llm')
+    expect(() => selectDesktopPackageClosure(available, ['@gestaltrun/dsh-model-center'])).toThrow('requires unpacked internal package')
+  })
+
   afterEach(() => {
     vi.unstubAllEnvs()
   })
@@ -75,5 +88,23 @@ describe('desktop package-set selection', () => {
     expect(() => {
       assertDesktopHostPackageFiles(files.slice(1))
     }).toThrow(/lib\/index\.js/u)
+  })
+
+  it('includes the community aggregate and refuses registry fallback for a missing fork archive', () => {
+    const aggregate = '@gestaltrun/dsh-web-all'
+    const sidebar = '@gestaltrun/dsh-better-sidebar'
+    const available = new Map<string, PackedDesktopPackage>([
+      ['@deepseek-ai/dsh', packed('@deepseek-ai/dsh')],
+      ['@deepseek-ai/dsh-desktop-host', packed('@deepseek-ai/dsh-desktop-host')],
+      [aggregate, packed(aggregate, { dependencies: { [sidebar]: '0.19.1-gestaltrun.0' } })],
+      [sidebar, packed(sidebar)],
+    ])
+    expect(selectDesktopPackageClosure(available, [aggregate]).map(entry => entry.manifest.name)).toEqual([
+      '@deepseek-ai/dsh', '@deepseek-ai/dsh-desktop-host', sidebar, aggregate,
+    ])
+    available.delete(sidebar)
+    expect(() => selectDesktopPackageClosure(available, [aggregate])).toThrow(`unpacked internal package ${sidebar}`)
+    available.delete(aggregate)
+    expect(() => selectDesktopPackageClosure(available, [aggregate])).toThrow(`omit ${aggregate}`)
   })
 })

@@ -8,11 +8,15 @@
 name: Sandbox
 
 on:
-  push:
-    branches: [master]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      scoped:
+        type: boolean
+        default: true
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: sandbox-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -101,7 +105,7 @@ jobs:
       # expectations (Seatbelt path canonicalization: /tmp IS /private/tmp)
       # take their darwin branch only on this runner.
       - name: Unit tests (darwin parity)
-        if: matrix.runner == 'seatbelt'
+        if: matrix.runner == 'seatbelt' && !inputs.scoped
         run: pnpm run test
 
       - name: Sandbox e2e (real kernel confinement, world-verified)

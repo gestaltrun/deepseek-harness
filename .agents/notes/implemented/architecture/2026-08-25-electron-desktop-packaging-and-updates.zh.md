@@ -16,7 +16,9 @@ DeepSeek Harness 需要一个复用 Web UI 的 Electron 桌面应用。该应用
 
 ## 决策
 
-交付一个小型 Electron 壳，其中内置上游 Node.js 可执行文件和固定版本的 pnpm。Electron 把私有 Desktop Host 包作为隔离子进程启动；该包组合已安装的 dsh 后端与匹配的客户端图。Fetch 元数据及有界的原始请求与响应分块通过两条带版本的分帧字节管道传递，Node IPC 只承载就绪、致命失败和关闭，Electron 通过 `dsh-app://` 提供经过验证的资源；它不会打开监听端口。每个帧都包含固定标记、类型、单调 stream id、负载长度和经过验证的负载。串行 writer 遵守 pipe drain，请求或响应 stream 施加背压时 reader 会全局暂停，取消会关闭匹配的 stream，已退役 stream 的迟到响应帧保持无效。Connection 插件无需 `webServer` 即可提供与载体无关的 RPC 与 Fetch 注册表，Client Modules 则向 shell-owned carrier 提供与广告内容完全一致的组合 bundle 响应；Web 组合为两者挂载可选 HTTP route。渲染进程保留相同的 Fetch、RPC 与 Remote-stream 格式，子进程载体则避免 Base64 膨胀，也不依赖 Electron 与内置上游 Node.js 之间的 V8 序列化兼容性。发送 shutdown 后，Electron 会关闭自己持有的请求管道写端，以便在等待子进程退出前释放 Windows 上仍在进行的管道读取。该设计沿用 [GUI 分层与 RPC 协议 Agent Note](../../archived/architecture/2026-07-19-gui-layering-and-rpc-protocol.md)中的 Electron 预留。
+交付一个小型 Electron 壳，其中内置上游 Node.js 可执行文件和固定版本的 pnpm。Electron 把私有 Desktop Host 包作为隔离子进程启动；该包组合已安装的 dsh 后端与匹配的客户端图。Fetch 元数据及有界的原始请求与响应分块通过两条带版本的分帧字节管道传递，Node IPC 只承载就绪、致命失败和关闭，Electron 通过 `dsh-app://` 提供经过验证的资源；原生载体不会打开监听端口。每个帧都包含固定标记、类型、单调 stream id、负载长度和经过验证的负载。串行 writer 遵守 pipe drain，请求或响应 stream 施加背压时 reader 会全局暂停，取消会关闭匹配的 stream，已退役 stream 的迟到响应帧保持无效。Connection 插件无需 `webServer` 即可提供与载体无关的 RPC 与 Fetch 注册表，Client Modules 则向 shell-owned carrier 提供与广告内容完全一致的组合 bundle 响应；Web 组合为两者挂载可选 HTTP route。渲染进程保留相同的 Fetch、RPC 与 Remote-stream 格式，子进程载体则避免 Base64 膨胀，也不依赖 Electron 与内置上游 Node.js 之间的 V8 序列化兼容性。发送 shutdown 后，Electron 会关闭自己持有的请求管道写端，以便在等待子进程退出前释放 Windows 上仍在进行的管道读取。该设计沿用 [GUI 分层与 RPC 协议 Agent Note](../../archived/architecture/2026-07-19-gui-layering-and-rpc-protocol.md)中的 Electron 预留。
+
+远程访问插件在原生载体之外拥有可选的 HTTP 监听器。它从回环地址启动，仅通过其设置绑定局域网接口。网络请求保留实际对端身份；配对路由授权其他设备，撤销会关闭已有流。这既保留原生通信的归属，也允许浏览器客户端共享已安装的 Host。
 
 Electron 拥有 `.dsh/profiles/desktop` 保留 profile。[内置运行时决策](2026-09-08-desktop-bundled-runtime-and-external-plugins.zh.md)负责核心资源存储、外部插件依赖、共享包链接和 profile 协调。私有 Desktop Host 保持独立于公共 CLI 包，且不会发布到 npm。
 
@@ -147,7 +149,7 @@ NSIS 先解压到私有的 `7z-out` 目录，再把文件复制到应用目录�
 - 包操作或 Host 失败后保留部分 profile 修改，并提供恢复控件；不承诺自动回滚 profile。
 - 一个 Desktop 版本绑定 Electron 与 dsh；每次 dsh 更新都通过一个 Electron 更新弹窗交付，并产生一次用户可见的重启。
 - 共享 `.dsh` 数据在迁移或修改前拒绝不兼容的读取方。
-- 不打开回环监听端口，沙箱渲染进程不能访问任意文件系统或 Electron API。
+- 原生载体不打开监听器；远程访问使用独立且经过认证的监听器，沙箱渲染进程不能访问任意文件系统或 Electron API。
 - Workspace 开发无需下载发布资源即可运行当前已构建代码，未封装安装器的应用验证仍保留生产安装路径。
 - Windows 发布打包要求已验证的 SignTool、EV Token、匹配的公开叶证书、Token Password 和明确的密钥容器，绝不会回退到未签名产物或可导出的密钥文件。
 - 目标更新只有在已完成签名的构建及其引用的每个产物通过发布校验后才能暴露新频道元数据；保留的历史产物继续供差分更新使用。

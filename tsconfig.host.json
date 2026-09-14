@@ -8,6 +8,7 @@
     "rewriteRelativeImportExtensions": false
   },
   "include": [
+    "apps/desktop-host/tests/**/*.ts",
     "apps/web/tests/scaffold.ts",
     "apps/web/tests/scaffold-generation.spec.ts",
     "apps/web/tests/default-model.e2e.ts",

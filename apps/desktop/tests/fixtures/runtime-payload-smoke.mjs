@@ -64,19 +64,37 @@ async function checkPty() {
   }
 }
 
-/** fs-ext implements seek on Windows through SetFilePointerEx and on POSIX through lseek. */
-function checkFsExt() {
-  const fsExt = requireRuntime('fs-ext')
+/** Exercise the packaged POSIX locking addon and ordinary file reads. */
+async function checkSystemFlock() {
+  const { tryLockExclusive } = requireRuntime('@deepseek-ai/node-addon-system/flock')
   const file = join(scratch, 'seek.txt')
   writeFileSync(file, 'abcdef', { flag: 'wx', mode: 0o600 })
   const fd = openSync(file, 'r')
   try {
-    assert.equal(fsExt.seekSync(fd, 2, fsExt.constants.SEEK_SET), 2)
     const bytes = Buffer.alloc(4)
-    assert.equal(readSync(fd, bytes, 0, bytes.length, null), 4)
+    assert.equal(readSync(fd, bytes, 0, bytes.length, 2), 4)
     assert.equal(bytes.toString(), 'cdef')
+    if (process.platform === 'win32') {
+      await assert.rejects(tryLockExclusive(fd), { code: 'ERR_FLOCK_UNSUPPORTED_PLATFORM' })
+    } else {
+      await tryLockExclusive(fd)
+      const contender = openSync(file, 'r')
+      try {
+        await assert.rejects(tryLockExclusive(contender), error => ['EAGAIN', 'EWOULDBLOCK'].includes(error.code))
+      } finally {
+        closeSync(contender)
+      }
+    }
   } finally {
     closeSync(fd)
+  }
+  if (process.platform !== 'win32') {
+    const successor = openSync(file, 'r')
+    try {
+      await tryLockExclusive(successor)
+    } finally {
+      closeSync(successor)
+    }
   }
 }
 
@@ -121,7 +139,7 @@ function checkHtml() {
 }
 
 try {
-  checkFsExt()
+  await checkSystemFlock()
   checkKoffi()
   await checkSharp()
   checkHtml()
@@ -134,5 +152,5 @@ try {
 // Natural event-loop drain includes node-pty's worker and console-list helper teardown.
 process.once('beforeExit', () => {
   console.log(JSON.stringify({ node: process.versions.node, platform: process.platform, arch: process.arch,
-    fsExt: true, koffi: true, sharp: true, html: true, pty: true }))
+    systemFlock: process.platform === 'win32' ? 'unsupported-platform' : true, koffi: true, sharp: true, html: true, pty: true }))
 })

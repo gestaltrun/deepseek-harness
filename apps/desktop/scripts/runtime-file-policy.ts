@@ -1,4 +1,33 @@
-/** Desktop-only omissions from already installed production npm packages. */
+/** File selection and native helper permissions for immutable Desktop runtimes. */
+
+import { chmodSync, existsSync, lstatSync, readdirSync } from 'node:fs'
+import { basename, join } from 'node:path'
+
+/**
+ * Set node-pty helper permissions before signing and inventorying the runtime.
+ * @param root - Copied production runtime, containing its node_modules directory.
+ * @param target - Platform and architecture of the bundled Node executable.
+ */
+export function prepareDesktopNativeHelpers(root: string, target: { platform: NodeJS.Platform; arch: string }): void {
+  if (target.platform === 'win32') return
+  const visit = (directory: string): void => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue
+      const path = join(directory, entry.name)
+      if (entry.name === 'node-pty' && basename(directory) === 'node_modules') {
+        for (const helper of [join(path, 'prebuilds', `${target.platform}-${target.arch}`, 'spawn-helper'),
+          join(path, 'build', 'Release', 'spawn-helper')]) {
+          if (!existsSync(helper)) continue
+          const file = lstatSync(helper)
+          if (!file.isFile()) throw new Error(`desktop runtime: node-pty helper is not a regular file: ${helper}`)
+          if ((file.mode & 0o777) !== 0o755) chmodSync(helper, 0o755)
+        }
+      }
+      visit(path)
+    }
+  }
+  visit(join(root, 'node_modules'))
+}
 
 /**
  * Identify build and diagnostic files omitted from the immutable Desktop runtime.

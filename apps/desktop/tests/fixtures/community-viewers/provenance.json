@@ -1,0 +1,25 @@
+{
+  "origin": "Generated for Gestaltrun acceptance; no external documents, images, audio or video sources.",
+  "files": [
+    {
+      "name": "office-preview.docx",
+      "generator": "python-docx: title, paragraph and two-column table",
+      "sha256": "a6d182962be74acd63895e657076a75a5acf3b3002120e902e7cebc064e5d1fe"
+    },
+    {
+      "name": "office-preview.xlsx",
+      "generator": "openpyxl: Destination/Demand/Supply rows and SUM formula",
+      "sha256": "d9d45ded27859f225ec0a8a792d6b7579b40360b4ea18fc0b1583cbf4d6f2fbd"
+    },
+    {
+      "name": "office-preview.pptx",
+      "generator": "python-pptx: two text-only slides",
+      "sha256": "61ddcbfc01babb4a7a04c85fbb77f0b3cba5387bdadf1a80da29cb02f1e4bce0"
+    },
+    {
+      "name": "video-preview.mp4",
+      "generator": "ffmpeg lavfi: two seconds of synthetic 320x180 video and audio, H.264/AAC",
+      "sha256": "f6bfb851d3024e1d768b257d72654771e7df5ebbe7cf83d9285bba118e28079e"
+    }
+  ]
+}

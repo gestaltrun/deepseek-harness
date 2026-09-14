@@ -568,6 +568,9 @@ importers:
       '@deepseek-ai/dsh-host-directory-picker-native':
         specifier: workspace:^
         version: link:../../packages/host/directory-picker-native
+      '@deepseek-ai/dsh-host-frontend-static':
+        specifier: workspace:^
+        version: link:../../packages/host/frontend-static
       '@deepseek-ai/dsh-host-webserver':
         specifier: workspace:^
         version: link:../../packages/host/webserver
@@ -577,6 +580,13 @@ importers:
       '@deepseek-ai/dsh-web-frontend':
         specifier: workspace:^
         version: link:../web
+      ws:
+        specifier: ^8.21.0
+        version: 8.21.0
+    devDependencies:
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
 
   apps/web:
     devDependencies:

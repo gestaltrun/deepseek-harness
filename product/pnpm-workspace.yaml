@@ -1,0 +1,6 @@
+packages:
+  - model-center
+autoInstallPeers: false
+nodeLinker: hoisted
+allowBuilds:
+  esbuild: true

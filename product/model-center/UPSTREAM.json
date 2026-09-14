@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "uiBase": {
+    "repository": "deepseek-ai/deepseek-harness",
+    "checkoutCommit": "eb15c5e4af92d956f0ada483a73e6c8fd9e06acc",
+    "path": "packages/client/ui-settings-models",
+    "license": "MIT"
+  },
+  "adoptedFeatures": {
+    "repository": "gestaltrun/deepseek-harness-gestalt",
+    "commit": "0f11d3e411de41b1eeff69dbb08f8c65d803b4be",
+    "commits": [
+      "d5002349586bc0e7fef1315dde367cdd19ceb5b2",
+      "cc43443a9070f5ffe0b880295a92eae3b5f4339c",
+      "73429b4b0aa50dee4f5888c17c84c0ac5637a428",
+      "1e275f289edee3745a54e98c9447b69a110217bb"
+    ],
+    "features": [
+      "provider and model text/image declarations",
+      "model reasoning effort controls",
+      "per-model default reasoning priority"
+    ],
+    "license": "MIT"
+  },
+  "runtime": "Uses the unchanged public pi-ai plugin through isolated registration views; no copied adapter implementation."
+}

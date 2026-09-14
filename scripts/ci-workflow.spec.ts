@@ -174,7 +174,7 @@ describe('CI workflow', () => {
       expect(job['runs-on']).toContain('dsh-win-ci')
       expect(job['runs-on']).toContain('dsh-windows-2025-16core')
       expect(job['runs-on']).toContain('blacksmith-16vcpu-windows-2025')
-      expect(job.if).toBe("github.event_name == 'pull_request'")
+      expect(job.if).toBe("github.event_name == 'workflow_dispatch'")
     }
 
     // windows-build runs the blocking build/site pair.
@@ -248,7 +248,7 @@ describe('CI workflow', () => {
     expect(windowsObservational['continue-on-error']).toBe(true)
 
     // serial-windows: master-only standby, self-hosted, non-blocking, lives in ci-master.
-    expect(serialWindows.if).toBe("github.event_name == 'push' && github.ref == 'refs/heads/master'")
+    expect(serialWindows.if).toBe("github.event_name == 'workflow_dispatch' && inputs.suite == 'platform-diagnostics'")
     expect(serialWindows['runs-on']).toEqual(['self-hosted', 'dsh-win-ci', 'windows'])
     expect(serialWindows.name).toBe('serial / windows (self-hosted standby)')
     // Its store must share the ReFS workspace volume for clone; the install
@@ -406,7 +406,7 @@ describe('CI workflow', () => {
     const aggregate = workflowJob(workflow, 'all-checks-passed')
 
     expect(benchmark['runs-on']).toBe('ubuntu-24.04')
-    expect(benchmark.if).toBe("github.event_name == 'pull_request'")
+    expect(benchmark.if).toBe("github.event_name == 'workflow_dispatch'")
     expect(benchmark.needs).toBeUndefined()
     expect(benchmark['continue-on-error']).toBeUndefined()
     expect(benchmark.env).toBeUndefined()
@@ -470,8 +470,8 @@ describe('CI workflow', () => {
     if (!isRecord(workflow.on) || !isRecord(prWorkflow.on)) {
       throw new TypeError('both CI workflows must define on')
     }
-    expect(Object.keys(workflow.on).sort()).toEqual(['push', 'workflow_dispatch'])
-    expect(Object.keys(prWorkflow.on)).toEqual(['pull_request'])
+    expect(Object.keys(workflow.on).sort()).toEqual(['workflow_dispatch'])
+    expect(Object.keys(prWorkflow.on)).toEqual(['workflow_dispatch'])
 
     // Drills share the parent run’s supersession policy.
     for (const name of ['serial-linux-selfhosted', 'serial-windows']) {
@@ -479,7 +479,7 @@ describe('CI workflow', () => {
       if (!isRecord(job)) throw new TypeError(`${name} must be defined`)
       expect(job.concurrency).toBeUndefined()
       // Standby drills remain post-merge work, but share run cancellation.
-      expect(job.if).toBe("github.event_name == 'push' && github.ref == 'refs/heads/master'")
+      expect(job.if).toBe("github.event_name == 'workflow_dispatch' && inputs.suite == 'platform-diagnostics'")
     }
 
     // Pin the post-merge runtime, Wine, and standby inventory.
@@ -557,7 +557,7 @@ describe('CI workflow', () => {
     }
 
     expect(pythonRuntime).toMatchObject({
-      if: "github.event_name == 'pull_request'",
+      if: "github.event_name == 'workflow_dispatch'",
       name: 'python runtime / release-shaped matrix',
       uses: './.github/workflows/build-exe-for-python-sdk.yml',
       with: {
@@ -1032,7 +1032,7 @@ describe('npm release workflows', () => {
     const commands = dependencies.steps.flatMap(step =>
       isRecord(step) && typeof step.run === 'string' ? [step.run] : [])
 
-    expect(Object.keys(workflow.on).sort()).toEqual(['pull_request', 'push', 'workflow_dispatch'])
+    expect(Object.keys(workflow.on).sort()).toEqual(['workflow_dispatch'])
     expect(commands).toContain('pnpm run verify-package-dependencies')
     expect(commands).toContain('pnpm run verify-npm-install-layout')
   })
