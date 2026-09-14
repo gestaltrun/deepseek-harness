@@ -18,6 +18,9 @@ import type {
   ImCreateSimulationInstanceRequest, ImInjectSimulationMemberRequest, ImInjectSimulationManagedHumanRequest,
   ImInboundMessageView,
   ImSessionId,
+  ImRealSessionBinding, ImRealSessionFrame, ImSendManualMessageRequest, ImManualMessageResult,
+  ImManualMessageQueryRequest, ImManualMessageQuery, ImRetryManualMessageRequest,
+  ImImportSimulationHistoryRequest, ImImportSimulationHistoryResult,
 } from './types.ts'
 import { SnapshotFeed } from './snapshot-feed.ts'
 import { applyRouteBatch } from './route-batch.ts'
@@ -247,6 +250,59 @@ export class ImApi extends TypertRemoteService {
       subscribe: listener => this.ctx.imRuntime.subscribe(change => { if (change.kind === 'simulation-instance') listener() }),
     })
     return feed.follow(signal)
+  }
+
+  /** @param sessionId - real IM Session. @returns durable execution binding and safe sender/target facts, or absence. */
+  @Remote('realScopeForSession')
+  realScopeForSession(sessionId: ImSessionId): ImRealSessionBinding | undefined {
+    return this.ctx.imRuntime.realScopeForSession(sessionId)
+  }
+
+  /** @param sessionId - selected Session. @param signal - connection generation. @returns ordered binding replacements. */
+  @Remote({ mode: 'stream' })
+  followRealSession(sessionId: ImSessionId, signal: AbortSignal): AsyncIterable<ImRealSessionFrame> {
+    const feed = new SnapshotFeed({
+      snapshot: () => configurationResult(() => {
+        const binding = this.ctx.imRuntime.realScopeForSession(sessionId)
+        return { sessionId, ...(binding === undefined ? {} : { binding }) }
+      }),
+      subscribe: listener => {
+        const configuration = this.ctx.imRuntime.subscribe(listener)
+        const delivery = this.ctx.imRuntime.subscribeDelivery(listener)
+        return () => { configuration(); delivery() }
+      },
+    })
+    return feed.follow(signal)
+  }
+
+  /** @param request - Session-bound idempotent manual message. @param signal - caller cancellation. @returns durable send result. */
+  @Remote('sendManualMessage')
+  sendManualMessage(request: ImSendManualMessageRequest, signal: AbortSignal): Promise<ImManualMessageResult> {
+    return configurationResult(() => this.ctx.imRuntime.sendManualMessage(request, signal))
+  }
+
+  /** @param request - retained Session and message identity. @returns durable result or explicit absence. */
+  @Remote('queryManualMessage')
+  queryManualMessage(request: ImManualMessageQueryRequest): Promise<ImManualMessageQuery> {
+    return configurationResult(() => this.ctx.imRuntime.queryManualMessage(request))
+  }
+
+  /** @param request - uncertain Session-bound message. @param signal - caller cancellation. @returns provider-confirmed or still-unknown result. */
+  @Remote('confirmManualMessage')
+  confirmManualMessage(request: ImManualMessageQueryRequest, signal: AbortSignal): Promise<ImManualMessageResult> {
+    return configurationResult(() => this.ctx.imRuntime.confirmManualMessage(request, signal))
+  }
+
+  /** @param request - new identity linked to one uncertain message. @param signal - caller cancellation. @returns distinct durable retry result. */
+  @Remote('retryManualMessage')
+  retryManualMessage(request: ImRetryManualMessageRequest, signal: AbortSignal): Promise<ImManualMessageResult> {
+    return configurationResult(() => this.ctx.imRuntime.retryManualMessage(request, signal))
+  }
+
+  /** @param request - local JSONL background file and operation identity. @returns durable import receipt and instance. */
+  @Remote('importSimulationHistory')
+  importSimulationHistory(request: ImImportSimulationHistoryRequest): Promise<ImImportSimulationHistoryResult> {
+    return configurationResult(() => this.ctx.imRuntime.importSimulationHistory(request))
   }
 
   /** @param request - live simulated-user Session and its bounded participant inputs. @returns durable pair after tested Session creation. */

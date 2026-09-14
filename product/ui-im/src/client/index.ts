@@ -58,7 +58,7 @@ export function apply(ctx: Context, config: Config): void {
   }, SimulationSection))
   const definition = '@gestaltrun/dsh-ui-im/conversation'
   ctx.effect(() => ctx.sidebarRightTabs.register({ id: definition, kind: 'im-conversation', priority: 'extension', title: () => ctx.locale.bind(NS)('tab'), guide: [{ order: 56, title: () => ctx.locale.bind(NS)('tab'), description: () => ctx.locale.bind(NS)('tabGuide') }] }), 'im-ui: conversation tab')
-  const conversation = conversationFace(ctx.im, sessionId => { ctx.sessions.open(sessionId) })
+  const conversation = conversationFace(ctx.im, operationId, sessionId => { ctx.sessions.open(sessionId) })
   ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
     name: 'conversation.session.header.actions', id: 'im-simulation-role', order: 55, locale: NS,
   }, simulationHeaderEntry(conversation.watchSession)))

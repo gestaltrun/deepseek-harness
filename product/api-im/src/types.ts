@@ -3,7 +3,7 @@ import type {
   ImAccountId, ImCreateRouteRequest, ImDeleteRouteRequest, ImOperationId,
   ImRebindRouteRequest, ImRouteMutationResult, ImRuntimeSnapshot, ImSaveRouteRequest,
   ImDeliveryScope, ImConversationCursor, ImHistoryPage, ImOutboundPage,
-  ImSimulationInstanceView, ImSimulationSessionScope,
+  ImSimulationInstanceView, ImSimulationSessionScope, ImRealSessionBinding,
 } from '@gestaltrun/dsh-im-runtime/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 
@@ -73,6 +73,17 @@ export interface ImSimulationSessionSnapshot {
 export type ImSimulationSessionFrame =
   | { readonly type: 'baseline'; readonly sequence: number; readonly value: ImSimulationSessionSnapshot }
   | { readonly type: 'replace'; readonly sequence: number; readonly value: ImSimulationSessionSnapshot }
+
+/** Authoritative real-IM assignment for one selected Session, or explicit absence. */
+export interface ImRealSessionSnapshot {
+  readonly sessionId: ImSessionId
+  readonly binding?: ImRealSessionBinding
+}
+
+/** Ordered full-binding frames after account, route, or delivery changes. */
+export type ImRealSessionFrame =
+  | { readonly type: 'baseline'; readonly sequence: number; readonly value: ImRealSessionSnapshot }
+  | { readonly type: 'replace'; readonly sequence: number; readonly value: ImRealSessionSnapshot }
 
 /** Ordered full-list frames used by Session browsing surfaces. */
 export type ImSimulationInstancesFrame =

@@ -1,7 +1,7 @@
 /** Remount-surviving route drafts and operation outcomes; no authoritative business rows. */
 import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-store'
 import type { RouteEditorState, ImRouteDraft } from './route-editor.ts'
-import type { ImRemoveSimulationTargetRequest, ImSaveSimulationTargetRequest } from '@gestaltrun/dsh-api-im/client'
+import type { ImDeliveryOperationId, ImOutboundRequestId, ImRemoveSimulationTargetRequest, ImSaveSimulationTargetRequest } from '@gestaltrun/dsh-api-im/client'
 
 /** Pending target command keeps its identity when the response is unknown. */
 export type SimulationTargetCommand = { readonly kind: 'save'; readonly request: ImSaveSimulationTargetRequest } | { readonly kind: 'remove'; readonly request: ImRemoveSimulationTargetRequest }
@@ -47,6 +47,10 @@ export interface ConversationUiState {
   readonly memberId: string
   readonly memberText: string
   readonly managedText: string
+  readonly manualText: string
+  readonly manualUnknown: { readonly requestId: ImOutboundRequestId; readonly text: string } | undefined
+  readonly importUnknown: { readonly operationId: ImDeliveryOperationId; readonly fileName: string } | undefined
+  readonly importing: boolean
   readonly creating: boolean
   readonly createUnknown: boolean
   readonly sending: boolean
@@ -65,7 +69,8 @@ type ConversationUiActions = {
 export function createConversationUiStore(): EngineStoreHandle<ConversationUiState, ConversationUiActions> {
   return defineStore({
     init: (): ConversationUiState => ({
-      conversationId: '', participants: '', memberId: '', memberText: '', managedText: '',
+      conversationId: '', participants: '', memberId: '', memberText: '', managedText: '', manualText: '', importing: false,
+      manualUnknown: undefined, importUnknown: undefined,
       creating: false, createUnknown: false, sending: false, sendUnknown: false,
       stopConfirmation: false, stopping: false,
       feedback: undefined, error: undefined,
