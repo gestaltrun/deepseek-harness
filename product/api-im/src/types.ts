@@ -2,10 +2,10 @@
 import type {
   ImAccountId, ImCreateRouteRequest, ImDeleteRouteRequest, ImOperationId,
   ImRebindRouteRequest, ImRouteMutationResult, ImRuntimeSnapshot, ImSaveRouteRequest,
-} from '@gestaltrun/dsh-im-runtime'
-import type { WorkspaceId } from '@deepseek-ai/dsh-workspace'
+} from '@gestaltrun/dsh-im-runtime/types'
+import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 
-export type * from '@gestaltrun/dsh-im-runtime'
+export type * from '@gestaltrun/dsh-im-runtime/types'
 
 /** Complete configuration at the beginning of one follow generation. */
 export interface ImConfigurationBaseline {
