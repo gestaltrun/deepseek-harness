@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "@gestaltrun/dsh-im-runtime": ["../im-runtime/src/index.ts"],
+      "@gestaltrun/dsh-im-runtime/types": ["../im-runtime/src/types.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts"]
+}
