@@ -101,6 +101,67 @@ describe('fork CI scope', () => {
     expect(planForkCi(input).affectedPackages).toEqual(['packages/core/consumer', 'packages/util/value'])
   })
 
+  it('keeps another version of a transitive dependency outside the affected set', () => {
+    const input = fixture(['pnpm-lock.yaml'])
+    input.after['apps/desktop/package.json'] = JSON.stringify({ name: '@test/desktop', devDependencies: { 'ali-oss': '1' } })
+    input.after['packages/core/other/package.json'] = JSON.stringify({ name: '@test/other', dependencies: { express: '2' } })
+    input.before = { ...input.after }
+    input.before['pnpm-lock.yaml'] = [
+      'importers:',
+      '  apps/desktop: {}',
+      '  packages/core/other:',
+      '    dependencies:',
+      '      express: {specifier: "2", version: "2"}',
+      'snapshots:',
+      '  express@2:',
+      '    dependencies: {statuses: "2"}',
+      '  statuses@2: {}',
+    ].join('\n')
+    input.after['pnpm-lock.yaml'] = [
+      'importers:',
+      '  apps/desktop:',
+      '    devDependencies:',
+      '      ali-oss: {specifier: "1", version: "1"}',
+      '  packages/core/other:',
+      '    dependencies:',
+      '      express: {specifier: "2", version: "2"}',
+      'snapshots:',
+      '  ali-oss@1:',
+      '    dependencies: {statuses: "1"}',
+      '  express@2:',
+      '    dependencies: {statuses: "2"}',
+      '  statuses@1: {}',
+      '  statuses@2: {}',
+    ].join('\n')
+    expect(planForkCi(input).affectedPackages).toEqual(['apps/desktop'])
+  })
+
+  it('follows an aliased changed snapshot through a peer-qualified parent', () => {
+    const input = fixture(['pnpm-lock.yaml'])
+    input.after['apps/desktop/package.json'] = JSON.stringify({ name: '@test/desktop', dependencies: { parent: '1' } })
+    input.after['packages/core/consumer/package.json'] = JSON.stringify({
+      name: '@test/consumer', dependencies: { '@test/desktop': '*' },
+    })
+    input.before = { ...input.after }
+    input.before['pnpm-lock.yaml'] = [
+      'snapshots:',
+      '  actual@1: {dependencies: {leaf: "1"}}',
+      '  leaf@1: {}',
+      '  parent@1(peer@2):',
+      '    dependencies: {alias: "npm:actual@1"}',
+      '  peer@2: {}',
+    ].join('\n')
+    input.after['pnpm-lock.yaml'] = [
+      'snapshots:',
+      '  actual@1: {dependencies: {leaf: "2"}}',
+      '  leaf@2: {}',
+      '  parent@1(peer@2):',
+      '    dependencies: {alias: "npm:actual@1"}',
+      '  peer@2: {}',
+    ].join('\n')
+    expect(planForkCi(input).affectedPackages).toEqual(['apps/desktop', 'packages/core/consumer'])
+  })
+
   it('selects consumer tests for a shared script through local import edges', () => {
     const input = fixture(['scripts/helper.ts'])
     Object.assign(input.after, { 'scripts/helper.ts': '', 'scripts/consumer.ts': "import { value } from './helper.ts'", 'scripts/consumer.spec.ts': "import './consumer.ts'" })

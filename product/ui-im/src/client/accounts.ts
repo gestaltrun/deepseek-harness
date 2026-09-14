@@ -5,7 +5,7 @@ import type { ImKey } from './locales.ts'
 /** @param account - authoritative account facts. @returns whether its identity can configure routes. */
 export function accountUsable(account: ImAccountView): boolean {
   return account.authorization.state === 'ready'
-    && !(account.listener.state === 'stopped' && account.listener.reason === 'disconnected')
+    && account.connectionIntent === 'connected'
 }
 
 /** @param account - authoritative account. @returns locale key for its authorization fact. */
@@ -28,6 +28,7 @@ export function listenerKey(account: ImAccountView): ImKey {
     case 'stopped': {
       switch (account.listener.reason) {
         case 'account-paused': return 'paused'
+        case 'authorization-required': return 'authorizationRequired'
         case 'no-enabled-route': return 'listenerNoRoutes'
         case 'disconnected': return 'disconnected'
         case 'manual': return 'listenerStopped'

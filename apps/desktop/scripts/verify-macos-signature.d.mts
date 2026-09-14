@@ -8,6 +8,13 @@ import type { MacOSSigningEnvironment } from './desktop-release-environment.mjs'
 export function assertMacOSSignatureDetails(details: string, expected: MacOSSigningEnvironment): void
 
 /**
+ * Expand the electron-builder certificate qualifier to an unambiguous codesign identity.
+ * @param expected - Public release identity.
+ * @returns Complete Developer ID Application certificate name.
+ */
+export function developerIdApplicationIdentity(expected: MacOSSigningEnvironment): string
+
+/**
  * Require the signature properties Apple validates for executable runtime content.
  * @param details - Output from `codesign --display --verbose=4`.
  * @param expected - Public release identity.

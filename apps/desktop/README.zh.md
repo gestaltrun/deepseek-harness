@@ -1,4 +1,4 @@
-# DeepSeek Harness 桌面端
+# DeepSeek Gestalt 桌面端
 
 [English](README.md) | 中文
 
@@ -98,7 +98,9 @@ pnpm run package:desktop:win:x64
 
 macOS arm64 命令要求 Apple Silicon。macOS x64 命令可以在 Intel macOS 或带 Rosetta 的 Apple Silicon 上运行。Windows x64 命令要求 Windows x64。Linux 不是受支持的 Desktop 发布目标。
 
-每个目标都在 `apps/desktop/.desktop-build/targets/<target>/` 下持有自己的打包输入、已准备运行时、包集合、dsh 依赖树、pnpm 准备状态、未打包应用、更新元数据和最终产物。Node.js 归档缓存继续由 `.desktop-build/downloads` 共享，因为每个归档文件名都包含版本、平台和架构，并且在解包前经过验证。目标构建绝不读取其他目标的可变准备状态。
+每个目标都在 `apps/desktop/.desktop-build/targets/<target>/` 下持有自己的打包输入、已准备运行时、包集合、dsh 依赖树、pnpm 准备状态、未打包应用、更新元数据和最终产物。打包使用 DeepSeek Gestalt 产品名称，并根据 `DSH_DESKTOP_APP_ID` 生成内部应用名称，使 Electron updater cache 与工作区 npm 包使用不同身份。Node.js 归档缓存继续由 `.desktop-build/downloads` 共享，因为每个归档文件名都包含版本、平台和架构，并且在解包前经过验证。目标构建绝不读取其他目标的可变准备状态。
+
+运行时物化使用下文所述的隔离 npmjs registry 和包管理器状态。发布自动化可以将 `PNPM_CONFIG_NETWORK_CONCURRENCY` 和 `PNPM_CONFIG_FETCH_TIMEOUT` 设置为正整数，用于该内置 pnpm 安装；其他环境中的 npm、pnpm、Corepack、registry、身份验证和 hook 设置仍会被排除。未设置时保留 pnpm 默认值。
 
 ### 运行时文件筛选
 
@@ -112,30 +114,22 @@ Windows 发布验收还需在 Desktop 构建后手动运行[原生清理和替�
 pwsh -NoProfile -File apps/desktop/scripts/smoke-windows.ps1 -Electron $Electron -Makensis $Makensis -SevenZip $SevenZip -PluginDir $PluginDir
 ```
 
-### 上传更新
+### 发布更新
 
-`DSH_DESKTOP_AUTO_UPDATE_ENV` 同时选择打包时写入的更新 URL 与后续 COS 上传目标，可取 `test` 或 `production`；未设置时使用 `test`。测试打包必须通过 `DOWNLOAD_TEST_ORIGIN` 提供 HTTPS origin，生产 origin 仍为 `https://download.deepseek.com`。上传还必须通过 `DOWNLOAD_TEST_COS_BUCKET` 或 `DOWNLOAD_PROD_COS_BUCKET` 提供所选环境的 COS bucket。目标路径为 `_/harness/desktop/stable/<target>/`，其中 `target` 为 `mac-arm64`、`mac-x64` 或 `win-x64`。
+手动触发的 [Desktop Release 工作流](../../.github/workflows/desktop-release.yml)接受准确的提交、dsh 与 Desktop 共享的版本、`test` 或 `production`，以及三种操作之一。`validate` 执行无凭据的请求检查。`candidate` 接受已包含在 `master` 中的提交，并创建经过签名和公证的产物，但不会将其加入更新频道。`publish` 使用相同的源码限制，上传所选目标，并为生产部署创建 GitHub Release。macOS arm64 和 x64 是必选目标；Windows x64 仍可明确选择，但缺少已配置的硬件签名输入时会失败。
 
-更新目标与上传凭据都与所选环境对应：
+`DSH_DESKTOP_AUTO_UPDATE_ENV` 选择打包时写入的公开 generic feed。每个部署都提供一个公开 feed 根地址及其对应的 OSS 对象前缀：
 
-| 环境 | 公开 origin | COS bucket | COS 凭据 |
-|---|---|---|---|
-| `test` 或未设置 | `DOWNLOAD_TEST_ORIGIN` | `DOWNLOAD_TEST_COS_BUCKET` | `DOWNLOAD_TEST_COS_SECRET_ID`、`DOWNLOAD_TEST_COS_SECRET_KEY` |
-| `production` | `https://download.deepseek.com` | `DOWNLOAD_PROD_COS_BUCKET` | `DOWNLOAD_PROD_COS_SECRET_ID`、`DOWNLOAD_PROD_COS_SECRET_KEY` |
+| 环境 | 公开 feed 根地址 | OSS 对象前缀 |
+|---|---|---|
+| `test` 或未设置 | `DESKTOP_RELEASE_TEST_FEED_URL` | `DESKTOP_RELEASE_TEST_OSS_PREFIX` |
+| `production` | `DESKTOP_RELEASE_PRODUCTION_FEED_URL` | `DESKTOP_RELEASE_PRODUCTION_OSS_PREFIX` |
 
-同一目标必须在同一环境下完成打包与上传。例如，默认测试环境使用：
+上传还要求设置 `DESKTOP_RELEASE_OSS_BUCKET`、`DESKTOP_RELEASE_OSS_ENDPOINT` 和 `DESKTOP_RELEASE_ALIYUN_REGION`。`DESKTOP_RELEASE_OSS_TIMEOUT_MS` 接受以毫秒为单位的正整数请求超时，大型安装包默认使用 600000。仓库范围的阿里云 OIDC action 只向发布任务提供 `ALIBABA_CLOUD_ACCESS_KEY_ID`、`ALIBABA_CLOUD_ACCESS_KEY_SECRET` 和 `ALIBABA_CLOUD_SECURITY_TOKEN`。打包流程会从每个子进程中移除这些临时凭据，只需要所选 feed URL。打包钩子会在初始的 macOS 未压缩应用签名前，使用 electron-builder 的发布解析器把标准 `app-update.yml` 写入 Resources 目录；后续使用预打包应用生成 ZIP 和 DMG 时会保留这份已经封入签名的 updater 配置。
 
-```sh
-export DOWNLOAD_TEST_ORIGIN='https://desktop-updates.example.com'
-pnpm run package:desktop:mac:arm64
+每个目标都会写入 `<所选前缀>/<target>/`，其中 `target` 为 `mac-arm64`、`mac-x64` 或 `win-x64`。上传会在发送数据前验证发布完成记录、绑定的 dsh 与 Desktop 版本、频道元数据、产物名称、大小和 SHA-512。所有所选的不可变安装包和 blockmap 均完成上传和验证后，流程才会替换任何所选频道的元数据。重试只会复用大小和已存 SHA-512 均匹配的不可变对象；同一个带版本 key 上的其他载荷会导致失败。频道元数据使用 `no-cache`，也是唯一可以替换的对象。稳定版本使用 `latest-mac.yml` 或 `latest.yml`；预发布版本使用 electron-builder 生成的频道名称。
 
-export DOWNLOAD_TEST_COS_BUCKET='<test COS bucket>'
-export DOWNLOAD_TEST_COS_SECRET_ID='<test COS SecretId>'
-export DOWNLOAD_TEST_COS_SECRET_KEY='<test COS SecretKey>'
-pnpm run upload:mac:arm64
-```
-
-生产发布需在打包前设置 `DSH_DESKTOP_AUTO_UPDATE_ENV=production`，再在执行 `upload:mac:arm64`、`upload:mac:x64` 或 `upload:win:x64` 前提供 `DOWNLOAD_PROD_COS_BUCKET` 与生产凭据对。打包不要求 COS bucket 或凭据。它会明确禁止 electron-builder 发布，从其子进程中删除全部四个 COS 凭据字段，并且只有在 electron-builder 以及全部签名或公证钩子成功后才写入目标完成记录。上传会先要求该记录与所选环境、目标、公开 URL 和当前 dsh 版本一致，再要求根 dsh 版本、Desktop 版本、频道元数据版本、产物名称、大小与 SHA-512 全部一致，之后才读取所选 COS 凭据对。它只上传该目标不可变且带版本的产物，最后以 `no-cache` 上传根据版本得出的频道元数据，并且不会删除历史对象。稳定版本使用 `latest-mac.yml` 或 `latest.yml`；`alpha` 等预发布版本则使用 `alpha-mac.yml` 或 `alpha.yml`，与 electron-builder 生成的文件名一致。
+生产发布会创建一个草稿状态的 `gestalt-v<version>` GitHub Release，其中包含所选 OSS 安装包链接；随后替换所选目标的元数据并发布该 Release。工作流会拒绝复用属于其他提交的 tag 或草稿。GitHub Releases 提供版本列表；应用继续使用标准 generic feed 和现有更新交互。
 
 macOS 配置使用必填发布环境，不会接受钥匙串中最先发现的证书。空值、格式错误的 Team ID、包含 electron-builder 不支持的 `Developer ID Application:` 前缀的签名身份，以及不完整的公证凭据都会被拒绝。macOS 打包要求已配置的身份及其私钥可用。运行时准备会把该身份、安全时间戳与 hardened runtime 应用到每个内嵌 Mach-O 文件；应用签名完成后，深度严格检查会拒绝其他叶证书 Authority 或 Team ID，验证通过才生成发布产物。macOS 固定目标安装包命令为已签名应用创建独立副本，并发执行两条产物流。一路先公证 App 并钉票，再生成 ZIP 及其更新元数据。另一路把已签名 App 副本封装进签名 DMG，再公证 DMG、钉票并验证；其中的 App 不单独附加票据。只有两路均成功结束，产物才会移入最终目录并写入发布完成记录。仅生成目录的命令同样需要公证凭据，并等待 Apple 公证和 App 钉票完成。[并行公证决策](../../.agents/notes/implemented/process/2026-09-09-parallel-macos-notarization.zh.md)负责副本隔离与容器票据语义。私钥可以来自登录钥匙串或 electron-builder 的标准 `CSC_LINK` 输入；环境中的 `CSC_NAME` 与证书发现顺序都不能选择发布所有者。公证凭据也可以使用 electron-builder 支持的完整 Apple ID 或钥匙串 profile 方式。手动执行 `pnpm --dir apps/desktop run verify:mac-signature -- <path-to-app>` 重复应用检查时，也必须提供两个 macOS 身份变量。
 

@@ -5,7 +5,7 @@ import type {} from '@deepseek-ai/dsh-api-gateway/client'
 import imRemote from '@gestaltrun/dsh-api-im/remote'
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 import type {
-  ImAccountSetupRequest, ImConfigurationBaseline, ImConfigurationFrame, ImPlatform,
+  ImAccountLifecycleRequest, ImAccountSetupRequest, ImConfigurationBaseline, ImConfigurationFrame, ImPlatform,
   ImConfigurationReplacement, ImRemoveSimulationTargetRequest, ImRouteBatchRequest,
   ImRouteOperationQueryRequest, ImSaveSimulationTargetRequest, ImSetAccountPausedRequest,
   ImTargetOperationQueryRequest,
@@ -47,6 +47,12 @@ export interface IImClient {
   connectAccount(request: ImAccountSetupRequest, signal?: AbortSignal): ReturnType<ImRemote['connectAccount']>
   /** @param request - account revision and desired pause state. @returns Host mutation receipt. */
   setAccountPaused(request: ImSetAccountPausedRequest): ReturnType<ImRemote['setAccountPaused']>
+  /** @param request - account and revision observed when disconnection was confirmed. @returns durable acknowledgement without merging it over the follow projection. */
+  disconnectAccount(request: ImAccountLifecycleRequest): ReturnType<ImRemote['disconnectAccount']>
+  /** @param request - account and observed revision. @returns durable connection intent acknowledgement. */
+  reconnectAccount(request: ImAccountLifecycleRequest): ReturnType<ImRemote['reconnectAccount']>
+  /** @param request - account and observed revision. @param signal - caller cancellation. @returns safe authorization refresh acknowledgement. */
+  refreshAccount(request: ImAccountLifecycleRequest, signal?: AbortSignal): ReturnType<ImRemote['refreshAccount']>
   /** @param request - independent route operations. @param signal - caller cancellation. @returns per-item outcomes. */
   applyRoutes(request: ImRouteBatchRequest, signal?: AbortSignal): ReturnType<ImRemote['applyRoutes']>
   /** @param request - owning account and operation identity. @returns durable receipt or absence. */
@@ -126,6 +132,18 @@ class ImClient extends Service implements IImClient {
 
   setAccountPaused(request: ImSetAccountPausedRequest): ReturnType<ImRemote['setAccountPaused']> {
     return this.remote.setAccountPaused(request)
+  }
+
+  disconnectAccount(request: ImAccountLifecycleRequest): ReturnType<ImRemote['disconnectAccount']> {
+    return this.remote.disconnectAccount(request)
+  }
+
+  reconnectAccount(request: ImAccountLifecycleRequest): ReturnType<ImRemote['reconnectAccount']> {
+    return this.remote.reconnectAccount(request)
+  }
+
+  refreshAccount(request: ImAccountLifecycleRequest, signal?: AbortSignal): ReturnType<ImRemote['refreshAccount']> {
+    return this.remote.refreshAccount(request, signal)
   }
 
   applyRoutes(request: ImRouteBatchRequest, signal?: AbortSignal): ReturnType<ImRemote['applyRoutes']> {

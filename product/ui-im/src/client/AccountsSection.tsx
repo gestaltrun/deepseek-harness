@@ -1,17 +1,18 @@
 /** Accepted account settings consume authoritative configuration and provider choices. */
 import { useEffect, useRef, useState, type ReactElement } from 'react'
-import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { InjectFace, PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
-import type { ImAccountCandidate, ImAccountCandidatesState, ImAccountView, ImPlatform } from '@gestaltrun/dsh-api-im/client'
+import type { ImAccountCandidate, ImAccountCandidatesState, ImAccountLifecycleRequest, ImAccountView, ImPlatform } from '@gestaltrun/dsh-api-im/client'
 import { Button, Input, Switch, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { AccountsFace, UiOutcome } from './faces.ts'
+import type { AccountsFace } from './faces.ts'
+import type { AccountAction, AccountActionOutcome, AccountActionState, createAccountActionStore } from './account-actions.ts'
 import type {} from './locale-types.ts'
 import { accountUsable, authorizationKey, listenerKey } from './accounts.ts'
 import { InlineConfirm } from './InlineConfirm.tsx'
 import css from './AccountsSection.module.css'
 
 /** Derived props for the Accounts settings section. */
-export type AccountsSectionProps = PropsRuntime<'settings.section'> & PropsLocale<'settings.im'> & InjectFace<AccountsFace>
+export type AccountsSectionProps = PropsRuntime<'settings.section'> & PropsLocale<'settings.im'> & PropsStore<ReturnType<typeof createAccountActionStore>> & InjectFace<AccountsFace>
 
 /** @param props - safe account data, choices, localized copy, and commands. @returns the Accounts settings page. */
 export function AccountsSection(props: AccountsSectionProps): ReactElement {
@@ -20,6 +21,23 @@ export function AccountsSection(props: AccountsSectionProps): ReactElement {
   const [adding, setAdding] = useState(false)
   const [feedback, setFeedback] = useState<string>()
   const accounts = configuration.value?.accounts ?? []
+  const operations = props.useStore(state => state.operations)
+  const dispatch = async (action: AccountAction): Promise<AccountActionOutcome> => {
+    props.actions.begin(action)
+    let outcome: AccountActionOutcome
+    try {
+      switch (action.kind) {
+        case 'pause': outcome = await props.setPaused(action.request); break
+        case 'disconnect': outcome = await props.disconnect(action.request); break
+        case 'reconnect': outcome = await props.reconnect(action.request); break
+        case 'refresh': outcome = await props.refresh(action.request); break
+      }
+    } catch (reason) {
+      outcome = { status: 'unknown', message: reason instanceof Error ? reason.message : String(reason) }
+    }
+    props.actions.finish(action.request.accountId, action.request.operationId, outcome)
+    return outcome
+  }
   return <section className={css.section} data-im-accounts>
     <h2 className={css.heading}>{props.t('accountsTitle')}</h2>
     <p className={css.intro}>{props.t('accountsIntro')}</p>
@@ -31,7 +49,7 @@ export function AccountsSection(props: AccountsSectionProps): ReactElement {
     </div>}
     {accounts.map(account => <AccountRow key={account.id} account={account}
       routeCount={configuration.value?.routes.filter(route => route.accountId === account.id).length ?? 0}
-      t={props.t} setPaused={props.setPaused} disconnect={props.disconnect} reconnect={props.reconnect}
+      t={props.t} operation={operations[account.id]} dispatch={dispatch} operationId={props.operationId}
       onFeedback={setFeedback} />)}
     {adding ? <AddAccountForm t={props.t} candidates={candidates} loadCandidates={props.loadCandidates}
       connect={props.connect} onCancel={() => { setAdding(false) }} onConnected={() => { setAdding(false); setFeedback(props.t('accountSaved')) }} />
@@ -45,28 +63,27 @@ type AccountRowProps = {
   readonly account: ImAccountView
   readonly routeCount: number
   readonly t: AccountsSectionProps['t']
-  readonly setPaused: AccountsFace['setPaused']
-  readonly disconnect: AccountsFace['disconnect']
-  readonly reconnect: AccountsFace['reconnect']
+  readonly operation: AccountActionState | undefined
+  readonly dispatch: (action: AccountAction) => Promise<AccountActionOutcome>
+  readonly operationId: AccountsFace['operationId']
   readonly onFeedback: (message: string) => void
 }
 
 function AccountRow(props: AccountRowProps): ReactElement {
   const { account, t } = props
-  const [confirm, setConfirm] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string>()
-  const run = async (action: () => Promise<UiOutcome>, success: string): Promise<void> => {
-    setBusy(true); setError(undefined)
-    try {
-      const result = await action()
-      if (result.ok) { setConfirm(false); props.onFeedback(success) }
-      else setError(result.message)
-    } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) }
-    finally { setBusy(false) }
+  const [confirmation, setConfirmation] = useState<{ request: ImAccountLifecycleRequest; routeCount: number; displayName: string }>()
+  const busy = props.operation?.status === 'pending'
+  const unknown = props.operation?.status === 'unknown'
+  const blocked = busy || unknown
+  const request = (): ImAccountLifecycleRequest => ({ operationId: props.operationId(), accountId: account.id, observedRevision: account.revision })
+  const run = async (action: AccountAction, success: string): Promise<void> => {
+    if (blocked) return
+    const outcome = await props.dispatch(action)
+    setConfirmation(undefined)
+    if (outcome.status === 'applied') props.onFeedback(success)
   }
-  const disconnected = account.listener.state === 'stopped' && account.listener.reason === 'disconnected'
-  const lifecycle = disconnected ? props.reconnect : props.disconnect
+  const disconnected = account.connectionIntent === 'disconnected'
+  const failed = props.operation?.status === 'conflict' || props.operation?.status === 'rejected'
   return <div className={css.row} data-account={account.id}>
     <div className={css.rowMain}>
       <div className={css.name}>{t(account.platform)} · {account.displayName}</div>
@@ -74,24 +91,25 @@ function AccountRow(props: AccountRowProps): ReactElement {
       {account.credentialKey !== undefined && <div className={css.sub}>{t('credentialRef')}: {account.credentialKey}</div>}
       {account.authorization.state === 'required' && <p className={css.sub}>{t('expiredHint')}</p>}
       {disconnected && <p className={css.sub}>{t('disconnectedKeepHint')}</p>}
-      {error !== undefined && <p role="alert" className={css.error}>{error}</p>}
-      {confirm && props.disconnect !== undefined && <InlineConfirm disabled={busy} cancelLabel={t('cancel')} confirmLabel={t('confirmDisconnect')}
-        onCancel={() => { setConfirm(false) }} onConfirm={() => { if (!busy && props.disconnect !== undefined) void run(() => props.disconnect!(account.id), t('disconnectedKeepHint')) }}>
-        {t('disconnectKeepRules').replace('{count}', String(props.routeCount))}
+      {failed && <p role="alert" className={css.error}>{props.operation?.message ?? t('accountChanged')}</p>}
+      {unknown && <p role="alert" className={css.error}>{t('accountOperationUnknown')}</p>}
+      {confirmation !== undefined && <InlineConfirm disabled={blocked} cancelLabel={t('cancel')} confirmLabel={t('confirmDisconnect')}
+        onCancel={() => { setConfirmation(undefined) }} onConfirm={() => { void run({ kind: 'disconnect', request: confirmation.request }, t('disconnectedKeepHint')) }}>
+        {confirmation.displayName} · {t('disconnectKeepRules').replace('{count}', String(confirmation.routeCount))}
       </InlineConfirm>}
-      {lifecycle === undefined && <p className={css.hint}>{t('accountLifecycleUnavailable')}</p>}
     </div>
     <div className={css.statuses}>
       <Tag tone={account.authorization.state === 'ready' ? 'success' : account.authorization.state === 'unchecked' ? 'neutral' : 'danger'}>{t(authorizationKey(account))}</Tag>
       <Tag tone={account.listener.state === 'running' ? 'success' : account.paused ? 'warning' : 'neutral'}>{t(listenerKey(account))}</Tag>
     </div>
     <div className={css.acts}>
-      <Switch checked={!account.paused} disabled={busy || !accountUsable(account)} label={`${account.displayName} ${t('autoHandling')}`}
-        onChange={enabled => { void run(() => props.setPaused(account, !enabled), t(enabled ? 'accountResumed' : 'accountPaused')) }} />
-      <Button variant="outline" size="sm" disabled={busy || lifecycle === undefined} onClick={() => {
-        if (disconnected && props.reconnect !== undefined) void run(() => props.reconnect!(account.id), t('accountSaved'))
-        else setConfirm(true)
+      <Switch checked={!account.paused} disabled={blocked || !accountUsable(account)} label={`${account.displayName} ${t('autoHandling')}`}
+        onChange={enabled => { void run({ kind: 'pause', request: { ...request(), paused: !enabled } }, t(enabled ? 'accountResumed' : 'accountPaused')) }} />
+      <Button variant="outline" size="sm" disabled={blocked} onClick={() => {
+        if (disconnected) void run({ kind: 'reconnect', request: request() }, t('accountReconnectRequested'))
+        else setConfirmation({ request: request(), displayName: account.displayName, routeCount: props.routeCount })
       }}>{t(disconnected ? 'reconnect' : 'disconnect')}</Button>
+      <Button variant="outline" size="sm" disabled={blocked} onClick={() => { void run({ kind: 'refresh', request: request() }, t('accountAuthorizationRefreshed')) }}>{t('refreshAuthorization')}</Button>
     </div>
   </div>
 }

@@ -17,6 +17,7 @@ import { submitTarget } from './target-operation.ts'
 import type { SimulationTargetCommand } from './stores.ts'
 import { ConversationTab } from './ConversationTab.tsx'
 import { accountFace } from './faces.ts'
+import { createAccountActionStore } from './account-actions.ts'
 import { createRouteUiStore } from './stores.ts'
 import { submitRouteDraft } from './route-editor.ts'
 import { registerWorkspaceBrowser } from './workspace/apply.ts'
@@ -40,7 +41,7 @@ export function apply(ctx: Context, config: Config): void {
   ctx.effect(() => ctx.locale.register(NS, { en, zh }), 'im-ui: copy')
   const operationId = (): ImOperationId => brandString<ImOperationId>(crypto.randomUUID())
   const accounts = accountFace(ctx.im, operationId)
-  ctx.slots.inject('settings.section', () => ctx.slots.register({ name: 'settings.section', id: 'im-accounts', order: 45, locale: NS, label: () => ctx.locale.bind(NS)('nav'), inject: () => accounts }, AccountsSection))
+  ctx.slots.inject('settings.section', () => ctx.slots.register({ name: 'settings.section', id: 'im-accounts', order: 45, store: createAccountActionStore(), locale: NS, label: () => ctx.locale.bind(NS)('nav'), inject: () => accounts }, AccountsSection))
   registerWorkspaceBrowser(ctx, directoryPicker)
   const routes = createRouteUiStore()
   ctx.slots.inject('sidebar.workspaces.imSettings', () => ctx.slots.register({

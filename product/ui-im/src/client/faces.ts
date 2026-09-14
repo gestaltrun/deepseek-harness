@@ -1,8 +1,9 @@
 /** Plain callback and observable inputs assembled by the IM UI plugin. */
 import type {
-  IImClient, ImAccountId, ImAccountSetupRequest, ImAccountView,
+  IImClient, ImAccountLifecycleRequest, ImAccountSetupRequest, ImOperationId, ImSetAccountPausedRequest,
   ImAccountCandidatesSource, ImConfigurationSource, ImPlatform,
 } from '@gestaltrun/dsh-api-im/client'
+import { accountOutcome, type AccountActionOutcome } from './account-actions.ts'
 
 /** User operation acknowledgement; business state remains on its Client object. */
 export type UiOutcome = { readonly ok: true } | { readonly ok: false; readonly message: string }
@@ -17,28 +18,31 @@ export interface AccountsFace {
   readonly loadCandidates: (platform: ImPlatform, signal: AbortSignal) => Promise<void>
   /** Persist write-only account setup after provider validation. */
   readonly connect: (request: ImAccountSetupRequest, signal: AbortSignal) => Promise<UiOutcome>
+  /** Mint an operation identity once when the operator initiates an account command. */
+  readonly operationId: () => ImOperationId
   /** Submit a pause change using the displayed account revision. */
-  readonly setPaused: (account: ImAccountView, paused: boolean) => Promise<UiOutcome>
-  /** Real lifecycle callbacks are absent while the provider exposes no corresponding operation. */
-  readonly disconnect?: (accountId: ImAccountId) => Promise<UiOutcome>
-  readonly reconnect?: (accountId: ImAccountId) => Promise<UiOutcome>
+  readonly setPaused: (request: ImSetAccountPausedRequest) => Promise<AccountActionOutcome>
+  /** Persist disconnection using the revision captured before confirmation. */
+  readonly disconnect: (request: ImAccountLifecycleRequest) => Promise<AccountActionOutcome>
+  /** Persist reconnection independently of pause and listener state. */
+  readonly reconnect: (request: ImAccountLifecycleRequest) => Promise<AccountActionOutcome>
+  /** Ask the provider to refresh authorization without exposing credentials. */
+  readonly refresh: (request: ImAccountLifecycleRequest) => Promise<AccountActionOutcome>
 }
 
 /** @param im - authoritative Client object. @param operationId - mutation id factory. @returns account settings inputs. */
 export function accountFace(im: IImClient, operationId: () => Parameters<IImClient['setAccountPaused']>[0]['operationId']): AccountsFace {
   return {
     hooks: { configuration: im.configuration, candidates: im.accountCandidates },
+    operationId,
     loadCandidates: async (platform, signal) => { await im.listAccountCandidates(platform, signal) },
     connect: async (request, signal) => {
       const result = await im.connectAccount(request, signal)
       return result.ok ? { ok: true } : { ok: false, message: result.error.message }
     },
-    setPaused: async (account, paused) => {
-      const result = await im.setAccountPaused({ operationId: operationId(), accountId: account.id, observedRevision: account.revision, paused })
-      if (!result.ok) return { ok: false, message: result.error.message }
-      return result.value.status === 'applied' || result.value.status === 'unchanged'
-        ? { ok: true }
-        : { ok: false, message: result.value.message ?? 'IM_ACCOUNT_CHANGED' }
-    },
+    setPaused: async request => accountOutcome(await im.setAccountPaused(request)),
+    disconnect: async request => accountOutcome(await im.disconnectAccount(request)),
+    reconnect: async request => accountOutcome(await im.reconnectAccount(request)),
+    refresh: async request => accountOutcome(await im.refreshAccount(request)),
   }
 }

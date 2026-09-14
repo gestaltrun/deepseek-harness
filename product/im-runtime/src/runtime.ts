@@ -19,7 +19,7 @@ import { ImRuntimeError } from './errors.ts'
 import { imRuntimeDomainSpec } from './schema.ts'
 import type { ImAccountAggregate, ImAccountRecord, ImSimulationTargetAggregate } from './schema.ts'
 import { ImTransports } from './transports.ts'
-import type { ImTransportInboundPage, ImTransportInboundPageReceipt, ImTransportListener, ImTransportSink } from './transport.ts'
+import type { ImPreparedAccount, ImTransportInboundPage, ImTransportInboundPageReceipt, ImTransportListener, ImTransportSink } from './transport.ts'
 import type {
   ImBeginOutboundAttemptRequest,
   ImBeginOutboundAttemptResult,
@@ -66,9 +66,14 @@ import type {
 import type {
   ImAccountId,
   ImAccountCandidate,
+  ImAccountSetupId,
+  ImAccountSetupPreview,
+  ImCancelAccountSetupResult,
+  ImConfirmAccountSetupRequest,
   ImAccountLifecycleRequest,
   ImAccountSetupRequest,
   ImAccountMutationResult,
+  ImAccountOperationQuery,
   ImAccountView,
   ImConversationKind,
   ImCreateRouteRequest,
@@ -97,18 +102,22 @@ import type { ImRuntimeService } from './service-types.ts'
 const settled = (promise: Promise<unknown>): Promise<void> => promise.then(() => {}, () => {})
 const now = (): string => new Date().toISOString()
 const accountId = (): ImAccountId => brandString<ImAccountId>(`account-${randomUUID()}`)
+const accountSetupId = (): ImAccountSetupId => brandString<ImAccountSetupId>(`account-setup-${randomUUID()}`)
 const routeId = (): ImRouteId => brandString<ImRouteId>(`route-${randomUUID()}`)
 const revision = (): ImRevision => brandString<ImRevision>(randomUUID())
 const assertNever = (value: never): never => { throw new Error(`unhandled IM value: ${String(value)}`) }
 const DEFAULT_ADMISSION_BATCH_SIZE = 1000
+const DEFAULT_ACCOUNT_SETUP_TTL_MS = 5 * 60 * 1000
 
 /** Runtime limits applied to one durable Agent admission. */
 export interface Config {
   /** Maximum inbound messages copied into one Agent input. */
   readonly admissionBatchSize?: number
+  /** Time that unconfirmed provider setup material remains in Host memory. */
+  readonly accountSetupTtlMs?: number
 }
 
-interface ResolvedConfig { readonly admissionBatchSize: number }
+interface ResolvedConfig { readonly admissionBatchSize: number; readonly accountSetupTtlMs: number }
 
 const targetFingerprint = (target: ImRouteTarget): readonly unknown[] =>
   [target.kind, target.kind === 'specific' ? target.conversationId : null, target.kind === 'specific' ? target.directRecipient ?? null : null]
@@ -157,6 +166,16 @@ interface ActiveListener {
   stopping: boolean
 }
 
+interface PendingAccountSetup {
+  readonly setupId: ImAccountSetupId
+  readonly accountId: ImAccountId
+  readonly prepared: ImPreparedAccount
+  readonly expiresAt: number
+  readonly timer: ReturnType<typeof setTimeout>
+  operationId?: ImOperationId
+  confirming?: Promise<ImAccountMutationResult>
+}
+
 function routeResult(operationId: ImOperationId, status: ImRouteMutationResult['status'], options: Omit<ImRouteMutationResult, 'operationId' | 'status'> = {}): ImRouteMutationResult {
   return { operationId, status, ...options }
 }
@@ -176,7 +195,8 @@ export class ImRuntime extends Service implements ImRuntimeService {
   static inject = ['storageDomain', 'credentials']
   static Config: ZodType<Config> = z.object({
     admissionBatchSize: z.number().int().positive().max(1000).default(DEFAULT_ADMISSION_BATCH_SIZE),
-  }).default({ admissionBatchSize: DEFAULT_ADMISSION_BATCH_SIZE })
+    accountSetupTtlMs: z.number().int().positive().max(60 * 60 * 1000).default(DEFAULT_ACCOUNT_SETUP_TTL_MS),
+  }).default({ admissionBatchSize: DEFAULT_ADMISSION_BATCH_SIZE, accountSetupTtlMs: DEFAULT_ACCOUNT_SETUP_TTL_MS })
 
   private accounts?: KvTable<ImAccountId, ImAccountAggregate>
   private simulationTargets?: KvTable<WorkspaceId, ImSimulationTargetAggregate>
@@ -191,6 +211,7 @@ export class ImRuntime extends Service implements ImRuntimeService {
   private readonly activeListeners = new Map<ImAccountId, ActiveListener>()
   private readonly listenerStates = new Map<ImAccountId, ImAccountView['listener']>()
   private readonly listenerTails = new Map<ImAccountId, Promise<void>>()
+  private readonly pendingAccountSetups = new Map<ImAccountSetupId, PendingAccountSetup>()
   readonly transports: ImTransports
   readonly config: ResolvedConfig
 
@@ -198,10 +219,14 @@ export class ImRuntime extends Service implements ImRuntimeService {
   constructor(ctx: Context, config: Config = {}) {
     super(ctx, 'imRuntime')
     const admissionBatchSize = config.admissionBatchSize ?? DEFAULT_ADMISSION_BATCH_SIZE
+    const accountSetupTtlMs = config.accountSetupTtlMs ?? DEFAULT_ACCOUNT_SETUP_TTL_MS
     if (!Number.isSafeInteger(admissionBatchSize) || admissionBatchSize < 1 || admissionBatchSize > 1000) {
       throw new TypeError('im-runtime: admissionBatchSize must be an integer from 1 through 1000')
     }
-    this.config = { admissionBatchSize }
+    if (!Number.isSafeInteger(accountSetupTtlMs) || accountSetupTtlMs < 1 || accountSetupTtlMs > 60 * 60 * 1000) {
+      throw new TypeError('im-runtime: accountSetupTtlMs must be an integer from 1 through 3600000')
+    }
+    this.config = { admissionBatchSize, accountSetupTtlMs }
     this.transports = new ImTransports(ctx)
   }
 
@@ -253,6 +278,7 @@ export class ImRuntime extends Service implements ImRuntimeService {
       }
     })
     this.ctx.effect(() => async () => { await this.stopAllListeners() }, 'imRuntime.listeners()')
+    this.ctx.effect(() => () => { this.clearAccountSetups() }, 'imRuntime.accountSetups()')
   }
 
   snapshot(): ImRuntimeSnapshot {
@@ -282,12 +308,71 @@ export class ImRuntime extends Service implements ImRuntimeService {
     return candidates
   }
 
-  async addAccount(request: ImAccountSetupRequest, signal = new AbortController().signal): Promise<ImAccountView> {
-    const transport = this.transports.require(request.platform)
-    const prepared = await transport.prepareAccount(request, signal)
-    if (prepared.identity.platform !== request.platform) {
-      throw new ImRuntimeError('IM_IDENTITY_MISMATCH', `IM transport '${request.platform}' returned '${prepared.identity.platform}' identity`)
+  async previewAccountSetup(request: ImAccountSetupRequest, signal = new AbortController().signal): Promise<ImAccountSetupPreview> {
+    const prepared = await this.prepareVerifiedAccount(request, signal)
+    signal.throwIfAborted()
+    const setupId = accountSetupId()
+    const suffix = setupId.slice('account-setup-'.length)
+    const id = brandString<ImAccountId>(`account-${suffix}`)
+    const expiresAt = Date.now() + this.config.accountSetupTtlMs
+    const timer = setTimeout(() => { this.expireAccountSetup(setupId) }, this.config.accountSetupTtlMs)
+    if (typeof timer === 'object') timer.unref()
+    this.pendingAccountSetups.set(setupId, { setupId, accountId: id, prepared, expiresAt, timer })
+    return {
+      setupId,
+      displayName: prepared.displayName,
+      identity: prepared.identity,
+      authorization: prepared.authorization,
+      expiresAt: new Date(expiresAt).toISOString(),
     }
+  }
+
+  async confirmAccountSetup(request: ImConfirmAccountSetupRequest): Promise<ImAccountMutationResult> {
+    const id = this.accountIdForSetup(request.setupId)
+    if (id === undefined) throw new ImRuntimeError('IM_ACCOUNT_SETUP_NOT_FOUND', `IM account setup '${request.setupId}' is unknown or expired`)
+    const fingerprint = JSON.stringify(['confirm-account-setup', request.setupId])
+    const confirmed = this.accountTable().get(id)
+    if (confirmed !== undefined) {
+      const operation = confirmed.accountOperations[request.operationId]
+      if (operation === undefined) throw new ImRuntimeError('IM_ACCOUNT_SETUP_CONFIRMED', `IM account setup '${request.setupId}' was already confirmed`)
+      assertOperation(operation, fingerprint, request.operationId)
+      return { ...operation.result, account: accountView(operation.result.account, confirmed.routes, this.listenerStates.get(id)) }
+    }
+    const pending = this.pendingAccountSetups.get(request.setupId)
+    if (pending === undefined || pending.expiresAt <= Date.now()) {
+      this.releaseAccountSetup(request.setupId)
+      throw new ImRuntimeError('IM_ACCOUNT_SETUP_NOT_FOUND', `IM account setup '${request.setupId}' is unknown or expired`)
+    }
+    if (pending.operationId !== undefined && pending.operationId !== request.operationId) {
+      throw new ImRuntimeError('IM_OPERATION_REUSED', `IM account setup '${request.setupId}' is already being confirmed by another operation`)
+    }
+    pending.operationId = request.operationId
+    const confirming = pending.confirming ?? this.persistPreparedAccount(pending, request.operationId, fingerprint)
+    pending.confirming = confirming
+    try {
+      return await confirming
+    } catch (error) {
+      if (pending.confirming === confirming) delete pending.confirming
+      if (pending.expiresAt <= Date.now()) this.releaseAccountSetup(request.setupId)
+      throw error
+    }
+  }
+
+  cancelAccountSetup(setupId: ImAccountSetupId): ImCancelAccountSetupResult {
+    const id = this.accountIdForSetup(setupId)
+    if (id !== undefined && this.accountTable().get(id) !== undefined) return { state: 'confirmed', accountId: id }
+    const pending = this.pendingAccountSetups.get(setupId)
+    if (pending === undefined || pending.expiresAt <= Date.now()) {
+      this.releaseAccountSetup(setupId)
+      return { state: 'not-found' }
+    }
+    if (pending.confirming !== undefined) return { state: 'confirming' }
+    this.releaseAccountSetup(setupId)
+    return { state: 'cancelled' }
+  }
+
+  async addAccount(request: ImAccountSetupRequest, signal = new AbortController().signal): Promise<ImAccountView> {
+    const prepared = await this.prepareVerifiedAccount(request, signal)
     const id = accountId()
     const createdAt = now()
     let storedKey: CredentialKey | undefined
@@ -372,6 +457,14 @@ export class ImRuntime extends Service implements ImRuntimeService {
     const inspected = await this.transports.require(before.account.platform)
       .refreshAccount(accountView(before.account, before.routes, this.listenerStates.get(request.accountId)), signal)
     return await this.storeRefreshResult(request, fingerprint, inspected.authorization, undefined)
+  }
+
+  queryAccountOperation(accountId: ImAccountId, operationId: ImOperationId): ImAccountOperationQuery {
+    const aggregate = this.accountTable().get(accountId)
+    const result = aggregate?.accountOperations[operationId]?.result
+    return result === undefined || aggregate === undefined
+      ? { state: 'not-found' }
+      : { state: 'known', result: { ...result, account: accountView(result.account, aggregate.routes, this.listenerStates.get(accountId)) } }
   }
 
   async createRoute(request: ImCreateRouteRequest): Promise<ImRouteMutationResult> {
@@ -729,6 +822,96 @@ export class ImRuntime extends Service implements ImRuntimeService {
       default:
         return assertNever(evidence)
     }
+  }
+
+  private async prepareVerifiedAccount(request: ImAccountSetupRequest, signal: AbortSignal): Promise<ImPreparedAccount> {
+    signal.throwIfAborted()
+    const candidates = await this.listAccountCandidates(request.platform, signal)
+    signal.throwIfAborted()
+    const candidate = request.platform === 'dingtalk'
+      ? candidates.find(value => value.platform === 'dingtalk' && value.profile === request.profile)
+      : candidates.find(value => value.platform === 'wangwang' && value.candidateId === request.candidateId)
+    if (candidate === undefined) {
+      throw new ImRuntimeError('IM_IDENTITY_MISMATCH', `IM account setup does not name an admitted '${request.platform}' candidate`)
+    }
+    if (request.platform === 'wangwang' && (candidate.platform !== 'wangwang' || candidate.endpoint !== request.endpoint)) {
+      throw new ImRuntimeError('IM_IDENTITY_MISMATCH', 'IM Wangwang setup endpoint does not match the admitted candidate')
+    }
+    const prepared = await this.transports.require(request.platform).prepareAccount(request, signal)
+    signal.throwIfAborted()
+    if (prepared.identity.platform !== request.platform) {
+      throw new ImRuntimeError('IM_IDENTITY_MISMATCH', `IM transport '${request.platform}' returned '${prepared.identity.platform}' identity`)
+    }
+    if (request.platform === 'dingtalk' && prepared.identity.platform === 'dingtalk' && prepared.identity.profile !== request.profile) {
+      throw new ImRuntimeError('IM_IDENTITY_MISMATCH', 'IM DingTalk setup identity does not match the selected profile')
+    }
+    if (request.platform === 'wangwang' && candidate.platform === 'wangwang' && prepared.identity.platform === 'wangwang'
+      && candidate.merchantId !== undefined && prepared.identity.merchantId !== candidate.merchantId) {
+      throw new ImRuntimeError('IM_IDENTITY_MISMATCH', 'IM Wangwang setup identity does not match the admitted merchant')
+    }
+    return prepared
+  }
+
+  private async persistPreparedAccount(pending: PendingAccountSetup, operationId: ImOperationId, fingerprint: string): Promise<ImAccountMutationResult> {
+    const createdAt = now()
+    let storedKey: CredentialKey | undefined
+    if (pending.prepared.credentialRecord !== undefined) {
+      storedKey = credentialKey('gestaltrun-im', pending.accountId)
+      await this.ctx.credentials.modifyRecord(storedKey, () => Promise.resolve(pending.prepared.credentialRecord))
+    }
+    const record: ImAccountRecord = {
+      id: pending.accountId,
+      platform: pending.prepared.identity.platform,
+      displayName: pending.prepared.displayName,
+      identity: pending.prepared.identity,
+      ...(storedKey === undefined ? {} : { credentialKey: storedKey }),
+      authorization: pending.prepared.authorization,
+      connectionIntent: 'connected',
+      paused: false,
+      revision: revision(),
+      createdAt,
+      updatedAt: createdAt,
+    }
+    const storedResult = { operationId, status: 'applied' as const, account: record }
+    try {
+      await this.accountTable().put(record.id, {
+        account: record,
+        routes: {},
+        routeOperations: {},
+        accountOperations: { [operationId]: { fingerprint, result: storedResult } },
+      })
+    } catch (error) {
+      if (storedKey !== undefined) {
+        try { await this.ctx.credentials.deleteRecord(storedKey) } catch (rollbackError) {
+          throw new AggregateError([error, rollbackError], `IM account '${record.id}' persistence and credential rollback both failed`)
+        }
+      }
+      throw error
+    }
+    this.releaseAccountSetup(pending.setupId)
+    this.publish({ kind: 'account', accountId: record.id, operationId })
+    return { ...storedResult, account: accountView(record, {}, this.listenerStates.get(record.id)) }
+  }
+
+  private accountIdForSetup(setupId: ImAccountSetupId): ImAccountId | undefined {
+    const match = /^account-setup-([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/u.exec(setupId)
+    return match?.[1] === undefined ? undefined : brandString<ImAccountId>(`account-${match[1]}`)
+  }
+
+  private expireAccountSetup(setupId: ImAccountSetupId): void {
+    const pending = this.pendingAccountSetups.get(setupId)
+    if (pending?.confirming === undefined) this.releaseAccountSetup(setupId)
+  }
+
+  private releaseAccountSetup(setupId: ImAccountSetupId): void {
+    const pending = this.pendingAccountSetups.get(setupId)
+    if (pending === undefined) return
+    clearTimeout(pending.timer)
+    this.pendingAccountSetups.delete(setupId)
+  }
+
+  private clearAccountSetups(): void {
+    for (const setupId of this.pendingAccountSetups.keys()) this.releaseAccountSetup(setupId)
   }
 
   private accountTable(): KvTable<ImAccountId, ImAccountAggregate> {
