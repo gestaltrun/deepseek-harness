@@ -79,7 +79,7 @@ kind: "package-reference"
 
 `gestaltrun_im_runtime` StorageDomain 为每个账号聚合保存一条记录，并为每个工作区模拟目标保存一条记录。独立的 `gestaltrun_im_delivery` 领域为每个完整会话 scope 保存一个聚合，并另存提供方拥有的游标记录与按路由绑定的 Agent 任务代次。会话聚合在一次持久写入中保存入站消息、去重键、操作收据、提交证据和 outbox。提供方游标只在引用的页面收据都存在后提交。任何操作都不声称在凭据、配置、投递、提供方游标、Agent 任务或 Session 记录之间提供原子事务。
 
-`ImTransports` 为每个平台保留一个存活的提供方，并随注册方 Cordis fiber 释放。当账号连接意图为连接、未暂停、存在启用路由且授权状态为 `ready` 或 `unchecked` 时，runtime 启动监听器；明确的 `required` 或 `failed` 授权状态使其保持停止。`unchecked` 允许没有独立身份探针的提供方通过首次真实 listen 或 poll 完成验证，其本身不投影已就绪身份。提供方 `listen` 只在监听器已建立并验证可用后返回。启用路由计划变化会重启监听器。`ctx.imRuntime.subscribe` 和类型化 `imRuntime/changed` 事件发布持久变更及后续进程监听状态变化。snapshot revision 只在当前进程 generation 内排序；持久 operation id 与记录 revision 跨重启保留。
+`ImTransports` 为每个平台保留一个存活的提供方，并随注册方 Cordis fiber 释放。当账号连接意图为连接、未暂停、存在启用路由且授权状态为 `ready` 或 `unchecked` 时，runtime 启动监听器；明确的 `required` 或 `failed` 授权状态使其保持停止。`unchecked` 允许没有独立身份探针的提供方通过首次真实 listen 或 poll 完成验证，其本身不投影已就绪身份。提供方 `listen` 只在监听器已建立并验证可用后返回，其返回的 `done` promise 报告后续正常结束或失败。主动停止会中止 signal、调用 `dispose` 并等待 `done`；启用路由计划变化时也按此顺序停止旧监听器，再启动替代实例。监听器终止失败不会触发无界重试。`ctx.imRuntime.subscribe` 和类型化 `imRuntime/changed` 事件发布持久变更及后续进程监听状态变化。snapshot revision 只在当前进程 generation 内排序；持久 operation id 与记录 revision 跨重启保留。
 
 | 源文件 | 用途 |
 |---|---|

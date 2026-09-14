@@ -45,7 +45,11 @@ function fixtureTransport(onListen?: (sink: ImTransportSink) => void, onDispose?
     inspectAccount: async () => ({ authorization: { state: 'unchecked' } }),
     refreshAccount: async () => ({ authorization: { state: 'unchecked' } }),
     discoverConversations: async () => ({ items: [] }),
-    listen: async (_account, _plan, sink) => { onListen?.(sink); return async () => { onDispose?.() } },
+    listen: async (_account, _plan, sink) => {
+      onListen?.(sink)
+      const done = Promise.withResolvers<void>()
+      return { done: done.promise, dispose: async () => { onDispose?.(); done.resolve() } }
+    },
     send: async () => ({ state: 'unknown' }),
     confirm: async () => ({ state: 'unknown' }),
   }
@@ -84,7 +88,11 @@ describe('ImRuntime configuration', () => {
     const fixture = fixtureTransport()
     const { ctx } = await boot(undefined, {
       ...fixture,
-      listen: async (_account, nextPlan) => { plans.push(nextPlan); return async () => { stops++ } },
+      listen: async (_account, nextPlan) => {
+        plans.push(nextPlan)
+        const done = Promise.withResolvers<void>()
+        return { done: done.promise, dispose: async () => { stops++; done.resolve() } }
+      },
     })
     const account = await addAccount(ctx)
     const created = await ctx.imRuntime.createRoute({
@@ -158,7 +166,8 @@ describe('ImRuntime configuration', () => {
         starts++
         plans.push(plan)
         await ready.promise
-        return async () => { stops++ }
+        const done = Promise.withResolvers<void>()
+        return { done: done.promise, dispose: async () => { stops++; done.resolve() } }
       },
     }
     const { ctx } = await boot(undefined, {
@@ -196,6 +205,105 @@ describe('ImRuntime configuration', () => {
     })
     expect(refreshed).toMatchObject({ status: 'applied', account: { authorization: { state: 'ready' }, connectionIntent: 'connected' } })
     expect(listenerStates).toEqual(expect.arrayContaining(['starting', 'running', 'stopped']))
+  })
+
+  it('aborts an intentional stop and waits for listener completion before reconnecting', async () => {
+    const listeners: Array<{
+      readonly signal: AbortSignal
+      readonly done: ReturnType<typeof Promise.withResolvers<void>>
+      disposeCalls: number
+    }> = []
+    const fixture = fixtureTransport()
+    const { ctx } = await boot(undefined, {
+      ...fixture,
+      listen: async (_account, _plan, _sink, signal) => {
+        const done = Promise.withResolvers<void>()
+        const listener = { signal, done, disposeCalls: 0 }
+        listeners.push(listener)
+        return { done: done.promise, dispose: async () => { listener.disposeCalls++ } }
+      },
+    })
+    const account = await addAccount(ctx)
+    await ctx.imRuntime.createRoute({
+      operationId: operation('manual-stop-route'), accountId: account.id, conversationKind: 'direct',
+      target: { kind: 'all' }, workspaceId: WorkspaceId('workspace-a'), enabled: true,
+    })
+    await expect.poll(() => listeners.length).toBe(1)
+    await expect.poll(() => ctx.imRuntime.snapshot().accounts[0]?.listener.state).toBe('running')
+
+    const disconnected = await ctx.imRuntime.disconnectAccount({
+      operationId: operation('manual-stop'), accountId: account.id, observedRevision: account.revision,
+    })
+    await ctx.imRuntime.reconnectAccount({
+      operationId: operation('manual-reconnect'), accountId: account.id, observedRevision: disconnected.account.revision,
+    })
+    await expect.poll(() => listeners[0]?.signal.aborted).toBe(true)
+    expect(listeners[0]?.disposeCalls).toBe(1)
+    expect(listeners).toHaveLength(1)
+
+    listeners[0]?.done.resolve()
+    await expect.poll(() => listeners.length).toBe(2)
+    await expect.poll(() => ctx.imRuntime.snapshot().accounts[0]?.listener.state).toBe('running')
+    listeners[1]?.done.resolve()
+    await expect.poll(() => ctx.imRuntime.snapshot().accounts[0]?.listener).toEqual({ state: 'stopped', reason: 'disconnected' })
+    expect(listeners).toHaveLength(2)
+  })
+
+  it('ignores a stopped generation failure and safely reports a current listener failure', async () => {
+    const sentinel = 'post-ready-credential-sentinel'
+    const listeners: Array<{
+      readonly signal: AbortSignal
+      readonly done: ReturnType<typeof Promise.withResolvers<void>>
+      disposeCalls: number
+    }> = []
+    const fixture = fixtureTransport()
+    const { ctx } = await boot(undefined, {
+      ...fixture,
+      listen: async (_account, _plan, _sink, signal) => {
+        const done = Promise.withResolvers<void>()
+        const listener = { signal, done, disposeCalls: 0 }
+        listeners.push(listener)
+        return { done: done.promise, dispose: async () => { listener.disposeCalls++ } }
+      },
+    })
+    const warnings: string[] = []
+    ctx.logger.warn = ((message: unknown) => { warnings.push(String(message)) }) as typeof ctx.logger.warn
+    const states: string[] = []
+    ctx.imRuntime.subscribe(change => {
+      if (change.kind === 'account-listener') {
+        const state = ctx.imRuntime.snapshot().accounts[0]?.listener.state
+        if (state !== undefined) states.push(state)
+      }
+    })
+    const account = await addAccount(ctx)
+    const route = (await ctx.imRuntime.createRoute({
+      operationId: operation('generation-route'), accountId: account.id, conversationKind: 'direct',
+      target: { kind: 'all' }, workspaceId: WorkspaceId('workspace-a'), enabled: true,
+    })).route
+    if (route === undefined) throw new Error('fixture route was not created')
+    await expect.poll(() => listeners.length).toBe(1)
+    const beforeRestart = states.length
+    await ctx.imRuntime.rebindRoute({
+      operationId: operation('generation-rebind'), accountId: account.id, routeId: route.id,
+      observedRevision: route.revision, observedWorkspaceId: route.workspaceId, workspaceId: WorkspaceId('workspace-b'),
+    })
+    await expect.poll(() => listeners[0]?.signal.aborted).toBe(true)
+    expect(listeners[0]?.disposeCalls).toBe(1)
+    listeners[0]?.done.reject(new Error(sentinel))
+    await expect.poll(() => listeners.length).toBe(2)
+    await expect.poll(() => ctx.imRuntime.snapshot().accounts[0]?.listener.state).toBe('running')
+    expect(states.slice(beforeRestart)).not.toContain('failed')
+
+    listeners[1]?.done.reject(new Error(sentinel))
+    await expect.poll(() => ctx.imRuntime.snapshot().accounts[0]?.listener.state).toBe('failed')
+    expect(listeners).toHaveLength(2)
+    expect(JSON.stringify(ctx.imRuntime.snapshot())).not.toContain(sentinel)
+    expect(JSON.stringify(states)).not.toContain(sentinel)
+    expect(JSON.stringify(warnings)).not.toContain(sentinel)
+    expect(warnings).toEqual([
+      expect.stringContaining('listener stop failed'),
+      expect.stringContaining('listener failed'),
+    ])
   })
 
   it('does not start an unauthorized listener or expose a provider failure', async () => {

@@ -95,7 +95,11 @@ function fixtureTransport(capture: (sink: ImTransportSink) => void, captureSend:
     inspectAccount: async () => ({ authorization: { state: 'unchecked' } }),
     refreshAccount: async () => ({ authorization: { state: 'unchecked' } }),
     discoverConversations: async () => ({ items: [] }),
-    listen: async (_account, _plan, sink) => { capture(sink); return async () => {} },
+    listen: async (_account, _plan, sink) => {
+      capture(sink)
+      const done = Promise.withResolvers<void>()
+      return { done: done.promise, dispose: async () => { done.resolve() } }
+    },
     send: async request => { captureSend(request); return { state: 'unknown' } },
     confirm: async () => ({ state: 'unknown' }),
   }
