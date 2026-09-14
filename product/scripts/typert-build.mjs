@@ -1,6 +1,6 @@
 /** Generate product reflection with the published compiler and protocol declarations. */
 import assert from 'node:assert/strict'
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
+import { cpSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
@@ -64,7 +64,10 @@ export function generateImTypert(productRoot) {
     const protocolRoot = join(packages, '__typert-protocol')
     const declarations = dirname(resolve(dirname(protocolPath), protocol.exports['.'].types))
     mkdirSync(protocolRoot)
-    cpSync(declarations, join(protocolRoot, 'src'), { recursive: true })
+    cpSync(declarations, join(protocolRoot, 'src'), {
+      recursive: true,
+      filter: source => lstatSync(source).isDirectory() || source.endsWith('.d.ts'),
+    })
     const exports = Object.fromEntries(Object.entries(protocol.exports).flatMap(([subpath, value]) => {
       if (typeof value !== 'object' || value === null || typeof value.types !== 'string') return []
       const file = relative(declarations, resolve(dirname(protocolPath), value.types)).split(sep).join('/')
