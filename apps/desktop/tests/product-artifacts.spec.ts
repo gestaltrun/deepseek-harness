@@ -23,9 +23,11 @@ function fixture(packed: Record<string, unknown> = source) {
 
 it('records a product archive separately from the community forks', () => {
   const root = fixture()
-  expect(readProductArtifacts(root, root, 'a'.repeat(40))[0]).toMatchObject({
-    ...source, repository: 'gestaltrun/deepseek-harness', commit: 'a'.repeat(40), integrity: expect.stringMatching(/^sha512-/u),
+  const artifact = readProductArtifacts(root, root, 'a'.repeat(40))[0]
+  expect(artifact).toMatchObject({
+    ...source, repository: 'gestaltrun/deepseek-harness', commit: 'a'.repeat(40),
   })
+  expect(artifact?.integrity).toMatch(/^sha512-/u)
 })
 
 it('rejects a stale archive under the expected filename', () => {
