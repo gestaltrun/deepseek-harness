@@ -7,6 +7,8 @@ import type {
   ImCreateSimulationInstanceRequest, ImDeliveryFollowRequest, ImDeliverySource,
   ImInjectSimulationManagedHumanRequest, ImInjectSimulationMemberRequest,
   ImSimulationInstanceId, ImSimulationInstanceView, ImSimulationSessionSource,
+  ImRealSessionSource, ImSendManualMessageRequest, ImManualMessageResult, ImManualMessageQueryRequest,
+  ImManualMessageQuery, ImRetryManualMessageRequest, ImImportSimulationHistoryRequest, ImImportSimulationHistoryResult,
 } from '@gestaltrun/dsh-api-im/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import {
@@ -77,6 +79,7 @@ export function accountFace(im: IImClient, operationId: () => Parameters<IImClie
 export interface ConversationFace {
   readonly hooks: { readonly configuration: ImConfigurationSource }
   readonly watchSession: (sessionId: SessionId) => ImSimulationSessionSource
+  readonly watchRealSession: (sessionId: SessionId) => ImRealSessionSource
   readonly watchDelivery: (request: ImDeliveryFollowRequest) => ImDeliverySource
   readonly create: (request: ImCreateSimulationInstanceRequest) => Promise<UiResult<ImSimulationInstanceView>>
   readonly injectMember: (request: ImInjectSimulationMemberRequest) => Promise<UiResult<unknown>>
@@ -84,11 +87,18 @@ export interface ConversationFace {
   readonly beginStop: (instanceId: ImSimulationInstanceId) => Promise<UiResult<ImSimulationInstanceView>>
   readonly waitStopped: (instanceId: ImSimulationInstanceId) => Promise<UiResult<ImSimulationInstanceView>>
   readonly resolveSession: (sessionId: SessionId) => Promise<UiResult<ImSimulationInstanceView | undefined>>
+  readonly sendManual: (request: ImSendManualMessageRequest) => Promise<UiResult<ImManualMessageResult>>
+  readonly queryManual: (request: ImManualMessageQueryRequest) => Promise<UiResult<ImManualMessageQuery>>
+  readonly confirmManual: (request: ImManualMessageQueryRequest) => Promise<UiResult<ImManualMessageResult>>
+  readonly retryManual: (request: ImRetryManualMessageRequest) => Promise<UiResult<ImManualMessageResult>>
+  readonly importHistory: (request: ImImportSimulationHistoryRequest) => Promise<UiResult<ImImportSimulationHistoryResult>>
+  readonly setPaused: (request: ImSetAccountPausedRequest) => Promise<UiResult<unknown>>
+  readonly operationId: () => ImOperationId
   readonly openSession: (sessionId: SessionId) => void
 }
 
 /** @param im - authoritative Client object. @param openSession - official Session navigator. @returns sidebar inputs. */
-export function conversationFace(im: IImClient, openSession: (sessionId: SessionId) => void): ConversationFace {
+export function conversationFace(im: IImClient, operationId: () => ImOperationId, openSession: (sessionId: SessionId) => void): ConversationFace {
   const result = async <Value>(pending: Promise<{ readonly ok: true; readonly value: Value } | { readonly ok: false; readonly error: { readonly message: string } }>): Promise<UiResult<Value>> => {
     const settled = await pending
     return settled.ok ? { ok: true, value: settled.value } : { ok: false, message: settled.error.message }
@@ -96,12 +106,20 @@ export function conversationFace(im: IImClient, openSession: (sessionId: Session
   return {
     hooks: { configuration: im.configuration },
     watchSession: sessionId => im.watchSimulationSession(sessionId),
+    watchRealSession: sessionId => im.watchRealSession(sessionId),
     watchDelivery: request => im.watchDelivery(request),
     create: request => result(im.createSimulationInstance(request)),
     injectMember: request => result(im.injectSimulationMember(request)),
     injectManagedHuman: request => result(im.injectSimulationManagedHuman(request)),
     beginStop: instanceId => result(im.beginStopSimulation(instanceId)),
     waitStopped: instanceId => result(im.waitSimulationStopped(instanceId)),
+    sendManual: request => result(im.sendManualMessage(request)),
+    queryManual: request => result(im.queryManualMessage(request)),
+    confirmManual: request => result(im.confirmManualMessage(request)),
+    retryManual: request => result(im.retryManualMessage(request)),
+    importHistory: request => result(im.importSimulationHistory(request)),
+    setPaused: request => result(im.setAccountPaused(request)),
+    operationId,
     resolveSession: async sessionId => {
       const scope = await result(im.scopeForSession(sessionId))
       return !scope.ok || scope.value === undefined

@@ -14,6 +14,7 @@ import type {
   ImCreateSimulationInstanceRequest, ImInjectSimulationManagedHumanRequest, ImInjectSimulationMemberRequest,
   ImSimulationInstanceId,
   ImSessionId,
+  ImImportSimulationHistoryRequest, ImManualMessageQueryRequest, ImRetryManualMessageRequest, ImSendManualMessageRequest,
 } from '../types.ts'
 import { ImConfigurationModel } from './model.ts'
 import type { ImConfigurationState } from './model.ts'
@@ -23,12 +24,15 @@ import { ImDeliveryReader } from './delivery.ts'
 import type { ImDeliverySource } from './delivery.ts'
 import { ImSimulationInstancesReader, ImSimulationSessionReader } from './simulation.ts'
 import type { ImSimulationInstancesSource, ImSimulationSessionSource } from './simulation.ts'
+import { ImRealSessionReader } from './real-session.ts'
+import type { ImRealSessionSource } from './real-session.ts'
 
 export type * from '../types.ts'
 export type { ImConfigurationState } from './model.ts'
 export type { ImAccountCandidateState, ImAccountCandidatesSource, ImAccountCandidatesState } from './candidates.ts'
 export type { ImDeliveryState, ImDeliverySource } from './delivery.ts'
 export type { ImSimulationInstancesSource, ImSimulationInstancesState, ImSimulationSessionState, ImSimulationSessionSource } from './simulation.ts'
+export type { ImRealSessionSource, ImRealSessionState } from './real-session.ts'
 export type {} from '@gestaltrun/dsh-api-im/remote'
 
 /** Generated IM configuration commands on the active Client connection. */
@@ -51,6 +55,8 @@ export interface IImClient {
   watchDelivery(request: ImDeliveryFollowRequest): ImDeliverySource
   /** @param sessionId - exact Session selected by the app. @returns immutable binding reader; the caller disposes it on navigation. */
   watchSimulationSession(sessionId: ImSessionId): ImSimulationSessionSource
+  /** @param sessionId - exact real Session selected by the app. @returns authoritative binding reader. */
+  watchRealSession(sessionId: ImSessionId): ImRealSessionSource
   /** @param platform - platform selected for setup. @param signal - caller cancellation. @returns safe available identities. */
   listAccountCandidates(platform: ImPlatform, signal?: AbortSignal): ReturnType<ImRemote['listAccountCandidates']>
   /** @param request - candidate-bound write-only fields. @param signal - caller cancellation. @returns safe verified identity and a short-lived Host setup identifier. */
@@ -85,6 +91,18 @@ export interface IImClient {
   getSimulationInstance(instanceId: ImSimulationInstanceId): ReturnType<ImRemote['getSimulationInstance']>
   /** @param sessionId - either Session in a pair. @returns Host-authoritative peer and delivery facts. */
   scopeForSession(sessionId: ImSessionId): ReturnType<ImRemote['scopeForSession']>
+  /** @param sessionId - real IM Session. @returns current binding or absence. */
+  realScopeForSession(sessionId: ImSessionId): ReturnType<ImRemote['realScopeForSession']>
+  /** @param request - retained manual-send identity and text. @param signal - caller cancellation. @returns durable delivery result. */
+  sendManualMessage(request: ImSendManualMessageRequest, signal?: AbortSignal): ReturnType<ImRemote['sendManualMessage']>
+  /** @param request - retained manual-send identity. @returns durable result or explicit absence. */
+  queryManualMessage(request: ImManualMessageQueryRequest): ReturnType<ImRemote['queryManualMessage']>
+  /** @param request - uncertain manual-send identity. @param signal - caller cancellation. @returns checked provider result. */
+  confirmManualMessage(request: ImManualMessageQueryRequest, signal?: AbortSignal): ReturnType<ImRemote['confirmManualMessage']>
+  /** @param request - distinct retry identity linked to an uncertain predecessor. @param signal - caller cancellation. @returns durable retry result. */
+  retryManualMessage(request: ImRetryManualMessageRequest, signal?: AbortSignal): ReturnType<ImRemote['retryManualMessage']>
+  /** @param request - local JSONL background and operation identity. @returns durable import receipt. */
+  importSimulationHistory(request: ImImportSimulationHistoryRequest): ReturnType<ImRemote['importSimulationHistory']>
   /** @param request - selected target inputs for the current simulated-user Session. @returns created pair. */
   createSimulationInstance(request: ImCreateSimulationInstanceRequest): ReturnType<ImRemote['createSimulationInstance']>
   /** @param request - allow-listed member input. @returns shared-path inbound message. */
@@ -115,6 +133,7 @@ class ImClient extends Service implements IImClient {
   readonly simulationInstances: ImSimulationInstancesSource
   private readonly readers = new Set<ImDeliverySource>()
   private readonly simulationReaders = new Set<ImSimulationSessionSource>()
+  private readonly realReaders = new Set<ImRealSessionSource>()
 
   constructor(ctx: Context) {
     super(ctx, 'im')
@@ -146,6 +165,8 @@ class ImClient extends Service implements IImClient {
       this.readers.clear()
       await Promise.all([...this.simulationReaders].map(reader => reader.dispose()))
       this.simulationReaders.clear()
+      await Promise.all([...this.realReaders].map(reader => reader.dispose()))
+      this.realReaders.clear()
       await control.dispose()
     }, 'im-client: configuration follow')
     control.start()
@@ -159,6 +180,17 @@ class ImClient extends Service implements IImClient {
       dispose: async () => { this.simulationReaders.delete(source); await reader.dispose() },
     }
     this.simulationReaders.add(source)
+    return source
+  }
+
+  watchRealSession(sessionId: ImSessionId): ImRealSessionSource {
+    const reader = new ImRealSessionReader(this.ctx.remote, sessionId)
+    const source: ImRealSessionSource = {
+      getSnapshot: reader.getSnapshot,
+      subscribe: reader.subscribe,
+      dispose: async () => { this.realReaders.delete(source); await reader.dispose() },
+    }
+    this.realReaders.add(source)
     return source
   }
 
@@ -232,6 +264,12 @@ class ImClient extends Service implements IImClient {
   listSimulationInstances(): ReturnType<ImRemote['listSimulationInstances']> { return this.remote.listSimulationInstances() }
   getSimulationInstance(instanceId: ImSimulationInstanceId): ReturnType<ImRemote['getSimulationInstance']> { return this.remote.getSimulationInstance(instanceId) }
   scopeForSession(sessionId: ImSessionId): ReturnType<ImRemote['scopeForSession']> { return this.remote.scopeForSession(sessionId) }
+  realScopeForSession(sessionId: ImSessionId): ReturnType<ImRemote['realScopeForSession']> { return this.remote.realScopeForSession(sessionId) }
+  sendManualMessage(request: ImSendManualMessageRequest, signal?: AbortSignal): ReturnType<ImRemote['sendManualMessage']> { return this.remote.sendManualMessage(request, signal) }
+  queryManualMessage(request: ImManualMessageQueryRequest): ReturnType<ImRemote['queryManualMessage']> { return this.remote.queryManualMessage(request) }
+  confirmManualMessage(request: ImManualMessageQueryRequest, signal?: AbortSignal): ReturnType<ImRemote['confirmManualMessage']> { return this.remote.confirmManualMessage(request, signal) }
+  retryManualMessage(request: ImRetryManualMessageRequest, signal?: AbortSignal): ReturnType<ImRemote['retryManualMessage']> { return this.remote.retryManualMessage(request, signal) }
+  importSimulationHistory(request: ImImportSimulationHistoryRequest): ReturnType<ImRemote['importSimulationHistory']> { return this.remote.importSimulationHistory(request) }
   createSimulationInstance(request: ImCreateSimulationInstanceRequest): ReturnType<ImRemote['createSimulationInstance']> { return this.remote.createSimulationInstance(request) }
   injectSimulationMember(request: ImInjectSimulationMemberRequest): ReturnType<ImRemote['injectSimulationMember']> { return this.remote.injectSimulationMember(request) }
   injectSimulationManagedHuman(request: ImInjectSimulationManagedHumanRequest): ReturnType<ImRemote['injectSimulationManagedHuman']> { return this.remote.injectSimulationManagedHuman(request) }

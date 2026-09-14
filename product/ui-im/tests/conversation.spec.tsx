@@ -4,7 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
-  ImAccountId, ImDeliverySnapshot, ImOperationId, ImRevision, ImRouteId,
+  ImAccountId, ImAgentTaskId, ImDeliveryOperationId, ImDeliverySnapshot, ImInboundMessageView, ImMessageContent, ImMessageId,
+  ImOperationId, ImOutboundRequestId, ImOutboundView, ImRealSessionBinding, ImRevision, ImRouteId,
   ImRuntimeSnapshot, ImSimulationInstanceId, ImSimulationInstanceView,
 } from '@gestaltrun/dsh-api-im/client'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
@@ -24,15 +25,44 @@ const accountId = brandString<ImAccountId>('account')
 const routeId = brandString<ImRouteId>('route')
 const revision = brandString<ImRevision>('revision')
 const instanceId = brandString<ImSimulationInstanceId>('simulation')
+const taskId = brandString<ImAgentTaskId>('task')
 const now = '2026-09-14T00:00:00.000Z'
 
-const instance = (status: ImSimulationInstanceView['status']): ImSimulationInstanceView => ({
+const realBinding = (accountState: Partial<ImRealSessionBinding['accountState']> = {}, sync?: ImRealSessionBinding['sync']): ImRealSessionBinding => ({
+  sessionId, taskId, routeId, routeRevision: revision, accountRevision: revision, workspaceId,
+  scope: { kind: 'real', platform: 'dingtalk', accountId, conversationKind: 'group', conversationId: 'group-1' },
+  senderIdentity: {
+    accountId, platform: 'dingtalk', displayName: '张伟', providerActorId: 'actor-1',
+    identity: { platform: 'dingtalk', profile: 'default', corpId: 'corp', userId: 'user', displayName: '张伟' },
+  },
+  accountState: {
+    authorization: { state: 'ready', checkedAt: now }, connectionIntent: 'connected',
+    listener: { state: 'running', readyAt: now }, paused: false, manualSend: { state: 'available' },
+    ...accountState,
+  },
+  destination: { conversationKind: 'group', conversationId: 'group-1', displayName: '售后群', memberCount: 12 },
+  ...(sync === undefined ? {} : { sync }),
+})
+
+const outbound = (status: ImOutboundView['status'], content: ImMessageContent, requestId: ImOutboundRequestId): ImOutboundView => ({
+  requestId, scopeId: brandString('scope'), intent: 'human-manual', content, status,
+  sequenceNumber: 1, createdAt: now, updatedAt: now,
+})
+
+const inbound = (content: ImMessageContent): ImInboundMessageView => ({
+  messageId: brandString<ImMessageId>('message'), scopeId: brandString('scope'), externalMessageId: 'external',
+  sender: { kind: 'external', senderId: 'buyer', senderDisplayName: '张伟' },
+  content, origin: 'live', stage: 'received', sequenceNumber: 1, occurredAt: now, receivedAt: now,
+})
+
+const instance = (status: ImSimulationInstanceView['status'], historyImports: ImSimulationInstanceView['historyImports'] = []): ImSimulationInstanceView => ({
   instanceId, status, simUserSessionId: sessionId, simUserWorkspaceId: workspaceId,
   testedSessionId, target: {
     platform: 'wangwang', accountId, routeId, routeRevision: revision, accountRevision: revision,
     conversationKind: 'direct', conversationId: 'buyer-1', workspaceId: testedWorkspaceId, agentPreset: 'standard',
   },
   speakingMembers: [{ actorId: 'buyer-1', displayName: 'Buyer' }],
+  historyImports,
   createdAt: now, updatedAt: now,
   ...(status === 'failed' ? { failure: { code: 'IM_SIMULATION_CREATE_FAILED', message: 'creation failed' } } : {}),
 })
@@ -59,9 +89,17 @@ function mount(options: {
   injectMember?: ReturnType<typeof vi.fn>
   beginStop?: ReturnType<typeof vi.fn>
   waitStopped?: ReturnType<typeof vi.fn>
+  binding?: ImRealSessionBinding
+  delivery?: ImDeliverySnapshot
+  historyImports?: ImSimulationInstanceView['historyImports']
+  sendManual?: ReturnType<typeof vi.fn>
+  queryManual?: ReturnType<typeof vi.fn>
+  confirmManual?: ReturnType<typeof vi.fn>
+  retryManual?: ReturnType<typeof vi.fn>
+  setPaused?: ReturnType<typeof vi.fn>
 } = {}) {
   const store = createConversationUiStore().create()
-  const bound = options.status === undefined ? undefined : instance(options.status)
+  const bound = options.status === undefined ? undefined : instance(options.status, options.historyImports)
   const scope = bound === undefined ? undefined : {
     instanceId, role: 'sim-user' as const, sessionId, peerSessionId: testedSessionId,
     workspaceId, peerWorkspaceId: testedWorkspaceId, deliveryScope: emptyDelivery.scope, status: bound.status,
@@ -70,6 +108,11 @@ function mount(options: {
   const injectMember = options.injectMember ?? vi.fn(async () => ({ ok: true, value: {} }))
   const beginStop = options.beginStop ?? vi.fn(async () => ({ ok: true, value: instance('stopping') }))
   const waitStopped = options.waitStopped ?? vi.fn(async () => ({ ok: true, value: instance('stopped') }))
+  const sendManual = options.sendManual ?? vi.fn(async () => ({ ok: true, value: { outbound: outbound('sent', { format: 'text', text: 'hi' }, brandString<ImOutboundRequestId>('sent')) } }))
+  const queryManual = options.queryManual ?? vi.fn(async () => ({ ok: true, value: { state: 'not-found' } }))
+  const confirmManual = options.confirmManual ?? vi.fn(async () => ({ ok: true, value: { outbound: outbound('sent', { format: 'text', text: 'hi' }, brandString<ImOutboundRequestId>('sent')) } }))
+  const retryManual = options.retryManual ?? vi.fn(async () => ({ ok: true, value: { outbound: outbound('sent', { format: 'text', text: 'hi' }, brandString<ImOutboundRequestId>('retry')) } }))
+  const setPaused = options.setPaused ?? vi.fn(async () => ({ ok: true, value: {} }))
   const openSession = vi.fn()
   const snapshot = options.configured === false ? { ...configuration, simulationTargets: [] } : configuration
   render(<ConversationTab {...({
@@ -77,12 +120,16 @@ function mount(options: {
     useConfiguration: bindSnapshotSelector(source({ phase: 'ready', value: snapshot, error: undefined })),
     useWorkspaces: bindSnapshotSelector(source({ items: [{ workspaceId, sessionIds: [sessionId], title: 'Sim' }] })),
     watchSession: () => source({ phase: 'ready', value: { sessionId, ...(scope === undefined ? {} : { scope }), ...(bound === undefined ? {} : { instance: bound }) }, error: undefined }),
-    watchDelivery: () => source({ phase: 'ready', value: emptyDelivery, error: undefined }),
+    watchRealSession: () => source({ phase: 'ready', value: { sessionId, ...(options.binding === undefined ? {} : { binding: options.binding }) }, error: undefined }),
+    watchDelivery: () => source({ phase: 'ready', value: options.delivery ?? emptyDelivery, error: undefined }),
     create, injectMember, injectManagedHuman: vi.fn(async () => ({ ok: true, value: {} })), beginStop, waitStopped,
+    sendManual, queryManual, confirmManual, retryManual, setPaused,
+    operationId: () => brandString<ImOperationId>('operation'),
+    importHistory: vi.fn(async () => ({ ok: true, value: {} })),
     resolveSession: vi.fn(async () => ({ ok: true, value: undefined })), openSession,
     useTabInfo: () => ({}),
   } as never)} />)
-  return { store, create, injectMember, beginStop, waitStopped, openSession }
+  return { store, create, injectMember, beginStop, waitStopped, openSession, sendManual, queryManual, confirmManual, retryManual, setPaused }
 }
 
 describe('simulation conversation sidebar', () => {
@@ -151,5 +198,114 @@ describe('simulation conversation sidebar', () => {
     mount({ status })
     expect(document.querySelector(`[data-simulation-status="${status}"]`)).toBeTruthy()
     expect(screen.queryByRole('button', { name: zh.sendAsMember })).toBeNull()
+  })
+
+  it('presents an imported history file as query-only background', () => {
+    mount({ status: 'running', historyImports: [{ operationId: brandString<ImDeliveryOperationId>('import'), fileName: 'buyer.jsonl', messageCount: 40, importedCount: 38, importedAt: now }] })
+    expect(screen.getByText(zh.historyNote.replace('{file}', 'buyer.jsonl').replace('{count}', '38'))).toBeTruthy()
+  })
+})
+
+describe('real IM conversation sidebar', () => {
+  it('shows the Host destination, account identity, and AI handling strip', () => {
+    mount({ binding: realBinding() })
+    expect(screen.getByText(`${zh.kindGroup}: 售后群`)).toBeTruthy()
+    expect(screen.getByText(`${zh.realAccount}: 张伟`)).toBeTruthy()
+    expect(screen.getByText(zh.realMembers.replace('{count}', '12'))).toBeTruthy()
+    expect(screen.getByText(zh.live)).toBeTruthy()
+    expect(screen.getByText(zh.sendIdentityReal.replace('{account}', '张伟').replace('{title}', '售后群'))).toBeTruthy()
+  })
+
+  it('pauses automatic handling against the observed account revision', async () => {
+    const { setPaused } = mount({ binding: realBinding() })
+    fireEvent.click(screen.getByRole('button', { name: zh.liveDisable }))
+    await waitFor(() => {
+      expect(setPaused).toHaveBeenCalledWith({ operationId: 'operation', accountId, observedRevision: revision, paused: true })
+    })
+  })
+
+  it('keeps manual sending available while automatic handling is paused', () => {
+    mount({ binding: realBinding({ paused: true }) })
+    expect(screen.getByText(zh.disabledStrip)).toBeTruthy()
+    expect(screen.getByRole('button', { name: zh.enableStrip })).toBeTruthy()
+    fireEvent.change(screen.getByLabelText(zh.composerHint), { target: { value: '我来处理' } })
+    expect(screen.getByRole('button', { name: zh.send }).hasAttribute('disabled')).toBe(false)
+  })
+
+  it.each([
+    ['disconnected', zh.offlineStripSince],
+    ['authorization-required', zh.authorizationRequiredStrip],
+    ['listener-unavailable', zh.listenerUnavailableStrip],
+  ] as const)('names %s as the reason manual sending is unavailable', (reason, copy) => {
+    mount({ binding: realBinding({ manualSend: { state: 'unavailable', reason } }, { lastSyncedAt: now, platformCursor: null }) })
+    const expected = copy === zh.offlineStripSince ? copy.replace('{time}', new Date(now).toLocaleTimeString()) : copy
+    expect(screen.getByText(expected)).toBeTruthy()
+    expect(screen.getByRole('button', { name: zh.send }).hasAttribute('disabled')).toBe(true)
+    expect(screen.getByText(zh.viewAccountsHint)).toBeTruthy()
+  })
+
+  it('explains the reconnect cursor without presenting old history as new', () => {
+    mount({ binding: realBinding({ manualSend: { state: 'unavailable', reason: 'disconnected' } }, { lastSyncedAt: now, platformCursor: null }) })
+    expect(screen.getByText(zh.cursorNote.replace('{time}', new Date(now).toLocaleString()))).toBeTruthy()
+  })
+
+  it('sends manually from the exact Session and clears the draft once accepted', async () => {
+    const { sendManual } = mount({ binding: realBinding() })
+    fireEvent.change(screen.getByLabelText(zh.composerHint), { target: { value: '稍后回复你' } })
+    fireEvent.click(screen.getByRole('button', { name: zh.send }))
+    await waitFor(() => { expect(sendManual).toHaveBeenCalledTimes(1) })
+    expect(sendManual.mock.calls[0]?.[0]).toMatchObject({ sessionId, text: '稍后回复你' })
+    await waitFor(() => { expect(screen.getByText(zh.manualSent)).toBeTruthy() })
+  })
+
+  it('never retries an unknown send on its own and verifies by receipt before confirming', async () => {
+    const requestId = brandString<ImOutboundRequestId>('unknown')
+    const sendManual = vi.fn(async () => ({ ok: true, value: { outbound: outbound('result-unknown', { format: 'text', text: 'hi' }, requestId) } }))
+    const { queryManual, confirmManual, retryManual } = mount({ binding: realBinding(), sendManual })
+    fireEvent.change(screen.getByLabelText(zh.composerHint), { target: { value: 'hi' } })
+    fireEvent.click(screen.getByRole('button', { name: zh.send }))
+    await waitFor(() => { expect(screen.getByText(zh.manualSendUnknown)).toBeTruthy() })
+    expect(retryManual).not.toHaveBeenCalled()
+    fireEvent.click(screen.getAllByRole('button', { name: zh.checkManualSend })[0] as HTMLElement)
+    await waitFor(() => { expect(confirmManual).toHaveBeenCalledTimes(1) })
+    expect(queryManual).toHaveBeenCalledTimes(1)
+    await waitFor(() => { expect(screen.getByText(zh.manualSendRecovered)).toBeTruthy() })
+  })
+
+  it('retries only on an explicit click and links the new request to its predecessor', async () => {
+    const sendManual = vi.fn(async (request: { requestId: ImOutboundRequestId }) => ({ ok: true, value: { outbound: outbound('result-unknown', { format: 'text', text: 'hi' }, request.requestId) } }))
+    const { retryManual } = mount({ binding: realBinding(), sendManual })
+    fireEvent.change(screen.getByLabelText(zh.composerHint), { target: { value: 'hi' } })
+    fireEvent.click(screen.getByRole('button', { name: zh.send }))
+    await waitFor(() => { expect(screen.getByText(zh.manualSendUnknown)).toBeTruthy() })
+    const sent = (sendManual.mock.calls[0]?.[0] as { requestId: ImOutboundRequestId }).requestId
+    fireEvent.click(screen.getAllByRole('button', { name: zh.retryManualSend })[0] as HTMLElement)
+    await waitFor(() => { expect(retryManual).toHaveBeenCalledTimes(1) })
+    const request = retryManual.mock.calls[0]?.[0] as { sessionId: SessionId; requestId: string; retryOfRequestId: string }
+    expect(request.sessionId).toBe(sessionId)
+    expect(request.retryOfRequestId).toBe(sent)
+    expect(request.requestId).not.toBe(sent)
+  })
+
+  it('renders a quote, an image placeholder, and unsupported details without pretending to understand them', () => {
+    const delivery: ImDeliverySnapshot = {
+      ...emptyDelivery,
+      scope: { kind: 'real', platform: 'dingtalk', accountId, conversationKind: 'group', conversationId: 'group-1' },
+      inbound: {
+        hasMore: false,
+        items: [
+          { ...inbound({ format: 'text', text: '支付又超时了', quote: { text: '昨晚超时两次', senderDisplayName: '张伟' } }), messageId: brandString<ImMessageId>('quoted') },
+          { ...inbound({ format: 'image', text: '' }), messageId: brandString<ImMessageId>('image') },
+          { ...inbound({ format: 'unsupported', text: '', messageType: 'audio', details: { duration: 12 } }), messageId: brandString<ImMessageId>('audio') },
+        ],
+      },
+    }
+    mount({ binding: realBinding(), delivery })
+    expect(screen.getByText('昨晚超时两次')).toBeTruthy()
+    expect(screen.getByText(zh.imagePlaceholder)).toBeTruthy()
+    expect(screen.getByText(zh.unsupportedMessageType.replace('{type}', 'audio'))).toBeTruthy()
+    expect(screen.queryByText(/"duration": 12/u)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: zh.viewMessageDetails }))
+    expect(screen.getByText(/"duration": 12/u)).toBeTruthy()
   })
 })
