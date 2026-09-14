@@ -41,17 +41,25 @@ transport 注册服务接收供应方能力说明，并为账号检查、会话�
 
 现有 `settings.section`、`sidebarRightTabs` 和 `sidebar.right.pane.tab` 支持 product 持有全局与会话入口。目标 Better Sidebar pin `e656717672d83f9c21879d4ba8439799d9acf9ba` 使用同一原生右侧栏能力。工作区行菜单没有公开 action slot，但 `sidebar.workspaces` 是可替换的公开 single slot。建议在 product 内维护整块 Workspace browser 呈现适配，保留实际被点击的 Workspace id 和认可设置入口。上游源码不变，`UPSTREAM.json` 记录适配来源与许可；搜索、拖拽/排序、重命名/删除、Session 行、导航和目录选择均须保留并回归。这会扩大 product 的维护责任；全局 Settings 里另选工作区会改变已认可体验，不作为替代。
 
-产品接入改动包括 `product/package.json`、workspace/lock/build 声明、包清单与 bundle patch，以及 `apps/desktop/src/product-profile.ts` 的产品 bundle 清单。这些是产品交付接入，与修改上游业务包分开。Web 通过显式 product bundle/profile overlay 装配，不默认改上游 `base` 或 `web-app`。外置 Typert 注册与浏览器模块发现先做干净安装 smoke，再决定是否提出 loader 例外。Electron 壳、上游 API、工作区和 agent-loop 包不持有 IM 表、凭据、平台代码或业务分支。
+产品接入改动包括 `product/package.json`、workspace/lock/build 声明、包清单与 bundle patch，以及 `apps/desktop/src/product-profile.ts` 的产品 bundle 清单。这些是产品交付接入，与修改上游业务包分开。Web 通过显式 product bundle/profile overlay 装配，不默认改上游 `base` 或 `web-app`。product 自有生成步骤已解决公开编译器的构建期 workspace 约束，未修改运行时 Loader。仍须用干净打包安装 smoke 证明 Host 注册、真实 Remote 调用和浏览器模块发现，再决定是否存在运行时 loader 例外。Electron 壳、上游 API、工作区和 agent-loop 包不持有 IM 表、凭据、平台代码或业务分支。
 
 ### 需明确 review 的上游例外
 
 | 可能的上游修改 | 保持不改的具体影响 | product-only 路径与决定 |
 |---|---|---|
 | `ui-workspace` 的工作区行动作 slot | 由 product 维护整块 browser 适配时不丢必需功能，但上游同步与回归范围更大。 | 默认采用 product 适配。少量 typed 行动作 slot 可降低维护成本，但只是可选例外，并非不可避免，须用户确认。 |
-| Loader/Typert/公共导出 | 尚无已证明缺口；若确有缺口，会阻止打包产品的 Host/API/Client 加载。 | 先验证公开 peers、生成产物和 bundle 发现；仅在复现缺口后才提出具体导出修改供 review。 |
+| Typert 构建输入与运行时 Loader | 固定编译器要求 workspace 布局和 protocol 声明项目，product 自有暂存已提供两者；打包后运行时调用仍待验证。 | 保持上游编译器和 Loader 不变，在私有构建输入中使用公开声明生成，再验证打包产物和真实 Remote 调用；仅复现运行时缺口后才提出上游例外。 |
 | `base` / `web-app` 默认值 | 原版上游 profile 不显示产品 IM 入口。 | 交付显式 Web product overlay 与 Desktop 产品清单，不提议修改上游默认 bundle。 |
 
 任何 `packages/` 例外都必须先展示以上不改影响，再取得用户对具体改动的确认。product 源码适配不能通过 DOM 注入、未公开导入或未记录的私有实现依赖伪装零修改。
+
+### Product 自有 Remote 生成
+
+固定公开版本 `@deepseek-ai/dsh-typert-generator@0.1.5-rc.2` 从编译根的 `packages` 目录发现项目，并通过已注册的 workspace protocol 声明项目识别 Remote marker。直接选择 product 项目，或仅迁移源码位置但不提供该声明项目，都可能得到零 Remote 产物。这是构建期发现与声明身份约束，不证明运行时 Loader 无法加载外置插件。
+
+product 构建 helper 将未改写的 API 及被引用 product 源码、真实已发布 protocol 声明复制到私有临时编译树，仅选择 API 包生成 Host reflection 与 Remote Client 产物，之后删除临时树。生成文件保留正式包导入及相对声明映射。检查拒绝缺失或空 Remote 输出，要求完整预期方法集、无私有绝对路径，并比对两个独立根的输出字节；无效导出与并发构建亦有覆盖。已验证的首个真实 API 检查点包含 13 个 Remote 方法；增加方法必须更新预期集合并重跑生成检查。此检查点证明生成，不代表打包调用或 GUI 验收。
+
+DTO 必须由所属包声明并通过公开、Client-safe 的非根入口导出，例如 `./types`，同时交付真实 JavaScript 与声明产物。仅在 Client 增加 type-only re-export，不能为生成器建立 DTO 的公开 owner。product workspace 通过 override 固定 Zod 为 `4.4.3`，与基线 schema 接口一致，上游包实现保持不变。helper、复制的 protocol 声明和编译器属于构建输入，不进入运行时包内容。
 
 ## 配置与路由
 
@@ -108,6 +116,6 @@ Session 日志与领域记录不能跨库原子提交。先保存带稳定消息
 
 保全代码存在未完成的生产接线。静态检查未发现 `admitInbound` 的生产调用或事件订阅，平台和模拟方法写入消息但未调用它；UI 账号映射丢弃表单凭据并声明 `connected`，保存路径仍发送一个路由请求。这些是限定范围的源码观察，不是产品运行失败报告；历史测试仍证明其实际执行过的层次。
 
-已确定的归属是 `product/`，默认保留上游包。已认可的实施方向包括 runtime/Provider/API/UI 内部分层、product 自有工作区设置适配、聚合 CAS 与部分结果语义，以及 Desktop/Web 产品组合。product-only 入口保真、外置 Typert 兼容性、旧数据导入范围、真实平台回执与派生工作归属仍需证据。任何上游例外必须先展示不改影响与 product-only 替代，再请求用户对具体修改确认；本方案不授权任何此类例外。
+已确定的归属是 `product/`，默认保留上游包。已认可的实施方向包括 runtime/Provider/API/UI 内部分层、product 自有工作区设置适配、聚合 CAS 与部分结果语义，以及 Desktop/Web 产品组合。product-only 入口保真、打包后 Host/Client Remote 调用、旧数据导入范围、真实平台回执与派生工作归属仍需证据；已验证的生成检查点不替代这些运行时义务。任何上游例外必须先展示不改影响与 product-only 替代，再请求用户对具体修改确认；本方案不授权任何此类例外。
 
 本方案保留活动的 capability-seam、Client 组合、profile bundle、Desktop 插件与 Session 迁移决议，不取代或归档任何一篇。架构认可后仍保持 proposed，直到实施和验收证明实际交付行为。
