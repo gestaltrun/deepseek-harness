@@ -8,6 +8,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
+import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from './locale-types.ts'
 import { AccountsSection } from './AccountsSection.tsx'
@@ -16,9 +17,10 @@ import { SimulationSection } from './SimulationSection.tsx'
 import { submitTarget } from './target-operation.ts'
 import type { SimulationTargetCommand } from './stores.ts'
 import { ConversationTab } from './ConversationTab.tsx'
-import { accountFace } from './faces.ts'
+import { simulationHeaderEntry } from './SimulationHeader.tsx'
+import { accountFace, conversationFace } from './faces.ts'
 import { createAccountActionStore } from './account-actions.ts'
-import { createRouteUiStore } from './stores.ts'
+import { createConversationUiStore, createRouteUiStore } from './stores.ts'
 import { submitRouteDraft } from './route-editor.ts'
 import { registerWorkspaceBrowser } from './workspace/apply.ts'
 import { en, NS, zh } from './locales.ts'
@@ -54,5 +56,11 @@ export function apply(ctx: Context, config: Config): void {
   }, SimulationSection))
   const definition = '@gestaltrun/dsh-ui-im/conversation'
   ctx.effect(() => ctx.sidebarRightTabs.register({ id: definition, kind: 'im-conversation', priority: 'extension', title: () => ctx.locale.bind(NS)('tab'), guide: [{ order: 56, title: () => ctx.locale.bind(NS)('tab'), description: () => ctx.locale.bind(NS)('tabGuide') }] }), 'im-ui: conversation tab')
-  ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({ name: 'sidebar.right.pane.tab', key: definition, locale: NS }, ConversationTab))
+  const conversation = conversationFace(ctx.im, sessionId => { ctx.sessions.open(sessionId) })
+  ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
+    name: 'conversation.session.header.actions', id: 'im-simulation-role', order: 55, locale: NS,
+  }, simulationHeaderEntry(conversation.watchSession)))
+  ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
+    name: 'sidebar.right.pane.tab', key: definition, locale: NS, store: createConversationUiStore(), inject: () => conversation,
+  }, ConversationTab))
 }

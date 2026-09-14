@@ -98,6 +98,7 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     createWorkspace: vi.fn(async () => workspace('created', [])),
     useDirectoryFlow: bindSnapshotSelector({ getSnapshot: () => true, subscribe: () => () => {} }),
     useHostInfo: selector => selector({ home: undefined, isLoopback: true }),
+    useSimulationInstances: hook({ phase: 'ready', value: [], error: undefined }),
     renderSlot: ((_name: string, owner: { open: boolean }) => (owner.open ? <div data-testid="directory-flow" /> : null)) as never,
     t,
     ...overrides,
@@ -113,6 +114,20 @@ function rerender(b: ReturnType<typeof mount>, overrides: Partial<WorkspaceBrows
 }
 
 describe('WorkspaceBrowser', () => {
+  it('marks both simulation Sessions and changes stopped instances to the ended badge', () => {
+    mount({
+      useSessions: hook(sessionState([summary('sim-user', 2), summary('tested', 1)])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['sim-user', 'tested'])])),
+      useSimulationInstances: hook({
+        phase: 'ready', error: undefined, value: [{
+          simUserSessionId: sid('sim-user'), testedSessionId: sid('tested'), status: 'stopped',
+        }],
+      }) as never,
+    })
+    fireEvent.click(screen.getByText('alpha'))
+    expect(screen.getAllByText(zh['simulation.stopped'])).toHaveLength(2)
+  })
+
   it('moves focus into Workspace controls without selecting a Session while a main panel is active', () => {
     const panelInfo = { activePanelId: 'panel-a' as MainPanelId }
     const b = mount({

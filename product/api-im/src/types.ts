@@ -3,8 +3,11 @@ import type {
   ImAccountId, ImCreateRouteRequest, ImDeleteRouteRequest, ImOperationId,
   ImRebindRouteRequest, ImRouteMutationResult, ImRuntimeSnapshot, ImSaveRouteRequest,
   ImDeliveryScope, ImConversationCursor, ImHistoryPage, ImOutboundPage,
+  ImSimulationInstanceView, ImSimulationSessionScope,
 } from '@gestaltrun/dsh-im-runtime/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
+
+type SessionId = ImSimulationSessionScope['sessionId']
 
 export type * from '@gestaltrun/dsh-im-runtime/types'
 
@@ -57,6 +60,23 @@ export interface ImDeliverySnapshot {
 export type ImDeliveryFollowFrame =
   | { readonly type: 'baseline'; readonly sequence: number; readonly value: ImDeliverySnapshot }
   | { readonly type: 'replace'; readonly sequence: number; readonly value: ImDeliverySnapshot }
+
+/** Authoritative instance and role for one exact Session, or an explicit unbound state. */
+export interface ImSimulationSessionSnapshot {
+  readonly sessionId: SessionId
+  readonly scope?: ImSimulationSessionScope
+  readonly instance?: ImSimulationInstanceView
+}
+
+/** Opening or replacement simulation state for one immutable Session identity. */
+export type ImSimulationSessionFrame =
+  | { readonly type: 'baseline'; readonly sequence: number; readonly value: ImSimulationSessionSnapshot }
+  | { readonly type: 'replace'; readonly sequence: number; readonly value: ImSimulationSessionSnapshot }
+
+/** Ordered full-list frames used by Session browsing surfaces. */
+export type ImSimulationInstancesFrame =
+  | { readonly type: 'baseline'; readonly sequence: number; readonly value: readonly ImSimulationInstanceView[] }
+  | { readonly type: 'replace'; readonly sequence: number; readonly value: readonly ImSimulationInstanceView[] }
 
 /** Explicit operation intent; only rebind carries a new owner for an existing route. */
 export type ImRouteOperation =

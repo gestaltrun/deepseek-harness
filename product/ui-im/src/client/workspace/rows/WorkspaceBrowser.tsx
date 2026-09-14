@@ -25,7 +25,7 @@ import type { SessionNode, SessionOrderBy } from '../tree.ts'
 import {
   deriveFlat, deriveGroups, deriveSearchResults, owningGroupKey, UNGROUPED_KEY,
 } from '../tree.ts'
-import { ProjectRowItem, SearchResultItem, SessionNodeItem } from './Rows.tsx'
+import { ProjectRowItem, SearchResultItem, SessionNodeItem, type SessionSimulationBadge } from './Rows.tsx'
 import { FLAT_SESSION_ORDER_KEY } from '../stores.ts'
 import { WorkspacePickFlow } from '../WorkspacePicker.tsx'
 import { WorkspaceSettingsDialog } from '../WorkspaceSettingsDialog.tsx'
@@ -257,6 +257,8 @@ type SessionTreeProps = Pick<
   setSessionOrder: (accountKey: string, order: string[]) => void
   /** Registry-global archive set (hidden rows). */
   archivedSessionIds: readonly SessionNode['id'][]
+  /** Latest durable simulation state keyed by either member Session. */
+  simulations: ReadonlyMap<SessionId, SessionSimulationBadge>
   /** Open the browser-owned rename dialog for a real Workspace group. */
   onSettingsRequest: (workspaceId: WorkspaceId) => void
   onRenameRequest: (workspaceId: WorkspaceId, currentTitle: string) => void
@@ -282,7 +284,7 @@ function SessionTree({
   insertWorkspaceBefore, insertSessionBefore, orderBy,
   groupExpansion, setGroupExpanded,
   sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder, home, t,
-  revealSessionId, onSessionRevealed,
+  revealSessionId, onSessionRevealed, simulations,
 }: SessionTreeProps) {
   const panelActive = usePanelInfo(info => info.activePanelId !== null)
   const list = useSessions(s => s)
@@ -597,6 +599,7 @@ function SessionTree({
                       ? () => { onSessionRevealed(node.id) }
                       : undefined}
                     drag={dragProps}
+                    simulation={simulations.get(node.id)}
                     t={t}
                   />
                 )
@@ -627,7 +630,7 @@ function FlatList({
   useSessions, useSessionPendingInteraction, open, forkSession, onSessionRename, onSessionArchive,
   archivedSessionIds, usePanelInfo,
   orderBy, sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder,
-  revealSessionId, onSessionRevealed, t,
+  revealSessionId, onSessionRevealed, simulations, t,
 }: Pick<
   SessionTreeProps,
   | 'useSessions'
@@ -645,6 +648,7 @@ function FlatList({
   | 'setSessionOrder'
   | 'revealSessionId'
   | 'onSessionRevealed'
+  | 'simulations'
   | 't'
 >) {
   const panelActive = usePanelInfo(info => info.activePanelId !== null)
@@ -724,6 +728,7 @@ function FlatList({
                 ? () => { onSessionRevealed(node.id) }
                 : undefined}
               flat
+              simulation={simulations.get(node.id)}
               drag={{
                 start: () => {
                   dropCommitted.current = false
@@ -771,8 +776,9 @@ function SearchResults({
   remote,
   resultLimit,
   usePanelInfo,
+  simulations,
   t,
-}: Pick<SessionTreeProps, 'useSessions' | 'useSessionPendingInteraction' | 'open' | 't' | 'usePanelInfo'> & {
+}: Pick<SessionTreeProps, 'useSessions' | 'useSessionPendingInteraction' | 'open' | 'simulations' | 't' | 'usePanelInfo'> & {
   workspaces: readonly WorkspaceView[]
   archivedSessionIds: readonly SessionNode['id'][]
   query: string
@@ -810,6 +816,7 @@ function SearchResults({
               result={result}
               currentId={panelActive ? undefined : list.current}
               onOpen={open}
+              simulation={simulations.get(result.id)}
               t={t}
             />
           ))}
@@ -864,6 +871,7 @@ export function WorkspaceBrowser({
   searchResultLimit,
   useDirectoryFlow,
   useHostInfo,
+  useSimulationInstances,
   renderSlot,
   t,
 }: WorkspaceBrowserProps) {
@@ -873,6 +881,15 @@ export function WorkspaceBrowser({
   const workspacePhase = useWorkspaces(state => state.phase)
   const workspaceStreamState = useWorkspaces(state => state.state)
   const archivedSessionIds = useWorkspaces(state => state.archivedSessionIds)
+  const simulationState = useSimulationInstances(state => state)
+  const simulations = useMemo(() => {
+    const result = new Map<SessionId, SessionSimulationBadge>()
+    for (const instance of simulationState.value ?? []) {
+      result.set(instance.simUserSessionId, { role: 'sim-user', status: instance.status })
+      result.set(instance.testedSessionId, { role: 'tested', status: instance.status })
+    }
+    return result
+  }, [simulationState.value])
   // Live occupancy of this surface's directory-flow hole (the same source the
   // flow reads): a composition without a picking affordance can add nothing.
   const directoryFlowAvailable = useDirectoryFlow(occupied => occupied)
@@ -1272,6 +1289,7 @@ export function WorkspaceBrowser({
               query={normalizedQuery}
               remote={remoteSearch}
               resultLimit={searchResultLimit}
+              simulations={simulations}
               t={t}
             />
           )
@@ -1290,6 +1308,7 @@ export function WorkspaceBrowser({
                 setSessionOrder={actions.setSessionOrder}
                 revealSessionId={revealSessionId}
                 onSessionRevealed={acknowledgeSessionReveal}
+                simulations={simulations}
                 t={t}
               />
             )
@@ -1310,6 +1329,7 @@ export function WorkspaceBrowser({
                 syncSessionOrderAccount={actions.syncSessionOrderAccount}
                 setSessionOrder={actions.setSessionOrder}
                 archivedSessionIds={archivedSessionIds}
+                simulations={simulations}
                 startSession={startSession}
                 open={open}
                 insertWorkspaceBefore={insertWorkspaceBefore}

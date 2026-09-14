@@ -39,3 +39,39 @@ export function createRouteUiStore(): EngineStoreHandle<RouteUiState, RouteUiAct
     },
   })
 }
+
+/** Drafts and unresolved simulation gestures retained by one Session-scoped sidebar. */
+export interface ConversationUiState {
+  readonly conversationId: string
+  readonly participants: string
+  readonly memberId: string
+  readonly memberText: string
+  readonly managedText: string
+  readonly creating: boolean
+  readonly createUnknown: boolean
+  readonly sending: boolean
+  readonly sendUnknown: boolean
+  readonly stopConfirmation: boolean
+  readonly stopping: boolean
+  readonly feedback: string | undefined
+  readonly error: string | undefined
+}
+
+type ConversationUiActions = {
+  patch: (state: ConversationUiState, patch: Partial<ConversationUiState>) => void
+}
+
+/** @returns Session-scoped transient simulation input and unknown-outcome state. */
+export function createConversationUiStore(): EngineStoreHandle<ConversationUiState, ConversationUiActions> {
+  return defineStore({
+    init: (): ConversationUiState => ({
+      conversationId: '', participants: '', memberId: '', memberText: '', managedText: '',
+      creating: false, createUnknown: false, sending: false, sendUnknown: false,
+      stopConfirmation: false, stopping: false,
+      feedback: undefined, error: undefined,
+    }),
+    actions: {
+      patch(state, patch) { Object.assign(state, patch) },
+    },
+  })
+}
