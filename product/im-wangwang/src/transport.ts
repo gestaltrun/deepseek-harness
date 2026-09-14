@@ -244,8 +244,7 @@ export class WangwangTransport implements ImTransport {
     return {
       externalMessageId: event.messageId,
       senderEvidence,
-      text: event.text,
-      format: event.format,
+      content: { format: event.format, text: event.text },
       occurredAt: event.occurredAt,
     }
   }
