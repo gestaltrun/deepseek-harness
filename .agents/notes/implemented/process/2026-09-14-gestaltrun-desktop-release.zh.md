@@ -14,7 +14,7 @@ Gestaltrun fork 可以构建完整的 Desktop 与 dsh 单元，但仓库还不�
 
 签名候选打包和发布只接受已包含在 `master` 中的提交。发布任务通过本仓库专用 OIDC 角色取得短期阿里云凭据，将不可变安装包和 blockmap 上传到专用 OSS 前缀，并在最后替换各目标的标准 generic feed 元数据。测试部署与生产部署使用不同的公开前缀。生产发布还会创建一个 `gestalt-v<version>` GitHub Release，其中包含 OSS 下载链接，因此 GitHub Releases 是面向用户的版本列表。
 
-DeepSeek Gestalt 使用现有参考图标和应用名称。更新协调器、确认对话框、下载流程、Host 停止、安装和重启行为保持不变。
+DeepSeek Gestalt 使用现有参考图标和应用名称。打包元数据根据应用 ID 生成内部名称，因此 Electron updater cache 不会复用工作区包身份；可见菜单继续使用本地化产品文案。更新协调器、确认对话框、下载流程、Host 停止、安装和重启行为保持不变。
 
 ## Alternatives considered
 

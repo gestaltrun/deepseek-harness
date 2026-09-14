@@ -14,7 +14,7 @@ Keep the existing Desktop version coupling and `electron-updater` interaction. A
 
 Signed candidate packaging and publication accept only a commit contained in `master`. Publication obtains short-lived Alibaba Cloud credentials through the repository's dedicated OIDC role, uploads immutable installers and blockmaps to a dedicated OSS prefix, and replaces each target's standard generic-feed metadata last. The test and production deployments use separate public prefixes. A production publication also creates one `gestalt-v<version>` GitHub Release with OSS download links, so GitHub Releases is the human-readable version list.
 
-DeepSeek Gestalt uses its existing reference artwork and application name. The update coordinator, confirmation dialog, download flow, Host shutdown, installation, and restart remain unchanged.
+DeepSeek Gestalt uses its existing reference artwork and application name. Packaged metadata derives its internal name from the application ID, so Electron's updater cache does not share the workspace package identity; visible menus continue to use localized product copy. The update coordinator, confirmation dialog, download flow, Host shutdown, installation, and restart remain unchanged.
 
 ## Alternatives considered
 

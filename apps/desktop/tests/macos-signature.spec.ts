@@ -8,6 +8,7 @@ import { verifyDesktopRuntime } from '../src/runtime-tree.ts'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { NotarizeOptions } from '@electron/notarize'
 import {
+  desktopInternalName,
   resolveDesktopAppId,
   resolveMacOSNotarizationEnvironment,
   resolveMacOSSigningEnvironment,
@@ -60,6 +61,7 @@ describe('desktop macOS release signature', () => {
     expect(config).toMatchObject({
       appId: RELEASE_ENVIRONMENT.DSH_DESKTOP_APP_ID,
       productName: 'DeepSeek Gestalt',
+      extraMetadata: { name: 'com-example-desktop' },
       mac: {
         artifactName: 'DeepSeek-Gestalt-${version}-${arch}.${ext}',
         identity: RELEASE_ENVIRONMENT.DSH_DESKTOP_MACOS_SIGNING_IDENTITY,
@@ -143,6 +145,14 @@ describe('desktop macOS release signature', () => {
       .toThrow(/unsigned builds require Windows/u)
     expect(() => createElectronBuilderConfig({ ...RELEASE_ENVIRONMENT, DSH_DESKTOP_UNSIGNED: 'yes' }))
       .toThrow(/must be 0 or 1/u)
+  })
+
+  it('derives a distinct Electron updater cache identity from the application id', () => {
+    const name = desktopInternalName('org.gestaltrun.deepseek-harness')
+    expect(name).toBe('org-gestaltrun-deepseek-harness')
+    expect(`${name}-updater`).toBe('org-gestaltrun-deepseek-harness-updater')
+    expect(name).not.toBe('@deepseek-ai/dsh-desktop')
+    expect(() => desktopInternalName('not-an-app-id')).toThrow(/reverse-DNS/u)
   })
 
   it('accepts the configured authority and team', () => {

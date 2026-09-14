@@ -443,7 +443,7 @@ async function main(): Promise<void> {
   }
 
   Menu.setApplicationMenu(Menu.buildFromTemplate([{
-    label: process.platform === 'darwin' ? app.name : messages.application,
+    label: messages.application,
     submenu: [
       {
         label: development === undefined ? messages.pluginsMenu : messages.pluginsMenuPackagedOnly,

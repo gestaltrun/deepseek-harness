@@ -1,7 +1,7 @@
 /** Typed English and Chinese copy owned by the Electron shell. */
 
 export const en = {
-  application: 'Application',
+  application: 'DeepSeek Gestalt',
   startupFailed: 'DeepSeek Gestalt could not start',
   startupLoading: 'Starting DeepSeek Gestalt…',
   startupLoadingDescription: 'Your workspace will open when it is ready.',
@@ -55,7 +55,7 @@ export const en = {
 export type DesktopMessages = { readonly [Key in keyof typeof en]: string }
 
 export const zh = {
-  application: '应用',
+  application: 'DeepSeek Gestalt',
   startupFailed: 'DeepSeek Gestalt 无法启动',
   startupLoading: '正在启动 DeepSeek Gestalt…',
   startupLoadingDescription: '准备就绪后将自动打开工作区。',

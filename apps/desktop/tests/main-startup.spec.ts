@@ -20,6 +20,8 @@ const harness = await vi.hoisted(async () => {
   let navigated = deferred()
   let errorPublished = deferred()
   let quitCompleted = deferred()
+  const buildMenu = vi.fn((template: unknown) => template)
+  const setApplicationMenu = vi.fn()
   class FakeWindow extends EventEmitter {
     destroyed = false
     readonly urls: string[] = []
@@ -75,6 +77,7 @@ const harness = await vi.hoisted(async () => {
   return {
     windows, hosts, handlers, app, FakeWindow, FakeHost,
     dialog: { showErrorBox: vi.fn(), showMessageBox: vi.fn() },
+    buildMenu, setApplicationMenu,
     applyRelease: vi.fn(() => { preparing.resolve(); return prepared.promise }),
     assertProfileRuntime: vi.fn(),
     canRecoverProfile: vi.fn(() => true),
@@ -101,7 +104,7 @@ vi.mock('electron', () => ({
   ipcMain: {
     handle: (channel: string, handler: (event: { senderFrame: { url: string } }) => unknown) => { harness.handlers.set(channel, handler) },
   },
-  Menu: { setApplicationMenu: vi.fn(), buildFromTemplate: vi.fn() },
+  Menu: { setApplicationMenu: harness.setApplicationMenu, buildFromTemplate: harness.buildMenu },
   protocol: { registerSchemesAsPrivileged: vi.fn(), handle: vi.fn() },
 }))
 vi.mock('../src/paths.ts', () => ({ resolveDesktopPaths: () => ({ profile: 'desktop-test-profile' }) }))
@@ -155,6 +158,14 @@ afterEach(async () => {
 })
 
 describe('desktop main startup', () => {
+  it('uses the localized product name for the application menu', async () => {
+    await import('../src/main.ts')
+    await harness.preparing.promise
+    expect(harness.buildMenu).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.objectContaining({ label: 'DeepSeek Gestalt' }),
+    ]))
+  })
+
   it('exits with a diagnostic when both initialization and emergency navigation fail', async () => {
     const exited = Promise.withResolvers<undefined>()
     vi.spyOn(harness.app, 'getLocale').mockImplementationOnce(() => { throw new Error('locale unavailable') })

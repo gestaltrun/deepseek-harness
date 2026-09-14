@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
+  desktopInternalName,
   resolveDesktopAppId,
   resolveMacOSNotarizationEnvironment,
   resolveMacOSSigningEnvironment,
@@ -55,6 +56,7 @@ export function createElectronBuilderConfig(
   return {
     appId,
     productName: 'DeepSeek Gestalt',
+    extraMetadata: { name: desktopInternalName(appId) },
     directories: { output: unsigned ? join(buildPaths.root, 'unsigned-artifacts') : buildPaths.artifacts },
     asar: true,
     files: [
