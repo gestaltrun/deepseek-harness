@@ -74,8 +74,12 @@ export interface ImSpecificConversationTarget { readonly kind: 'specific'; reado
 /** Conversation selection component of a route tuple. */
 export type ImRouteTarget = ImAllConversationsTarget | ImSpecificConversationTarget
 
-/** OR-combined group activation settings. */
-export interface ImGroupTrigger { readonly mention?: boolean; readonly prefix?: string; readonly keyword?: string }
+/** OR-combined group activation settings. Numeric conditions are positive integers. */
+export interface ImGroupTrigger {
+  readonly mention?: boolean
+  readonly everyN?: number
+  readonly fixedIntervalSeconds?: number
+}
 
 /** Complete route tuple and its bound workspace. */
 export interface ImRouteView {
@@ -222,9 +226,24 @@ export interface ImRuntimeChange {
   readonly operationId?: ImOperationId
 }
 
+/** Result of resolving the precedence-ordered routes for one inbound conversation. */
+export type ImRouteResolution =
+  | { readonly state: 'matched'; readonly route: ImRouteView }
+  | { readonly state: 'disabled'; readonly route: ImRouteView }
+  | { readonly state: 'account-paused' }
+  | { readonly state: 'unmatched' }
+
 declare module '@deepseek-ai/cordis' {
   interface Context {
     imRuntime: ImRuntimeService
+  }
+  interface Events {
+    /**
+     * Durable IM configuration changed. The emitted revision is newer than every prior event from this process.
+     * @param change - committed configuration subject and generation revision.
+     * @mode emit
+     */
+    'imRuntime/changed'(change: ImRuntimeChange): void
   }
 }
 
@@ -232,6 +251,10 @@ declare module '@deepseek-ai/cordis' {
 export interface ImRuntimeService {
   /** @returns the current durable configuration projection. */
   snapshot(): ImRuntimeSnapshot
+  /** @param listener - post-commit change observer. @returns disposer for this subscription. */
+  subscribe(listener: (change: ImRuntimeChange) => void): () => void
+  /** @param accountId - receiving account. @param conversationKind - provider category. @param conversationId - provider conversation. @returns precedence-ordered route resolution. */
+  resolveRoute(accountId: ImAccountId, conversationKind: ImConversationKind, conversationId: string): ImRouteResolution
   /** @param request - transport-owned account setup input. @param signal - caller lifetime. @returns the persisted safe account. */
   addAccount(request: import('./transport.ts').ImAccountSetupRequest, signal?: AbortSignal): Promise<ImAccountView>
   /** @param request - guarded account pause mutation. @returns its durable outcome. */
