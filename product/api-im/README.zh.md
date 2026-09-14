@@ -42,7 +42,7 @@ Client 入口通过公开 Gateway 挂载自身生成的 contribution。每个 fo
 
 ## Build inputs
 
-Host 与 Client 独立编译。Host 声明及 JavaScript 先于 `lib/typert.host.*` 和 `lib/typert.remote-client.*` 生成；Client 编译消费这些生成声明。打包的 Client 请求共享 Cordis、Client store 和 Gateway 身份。生成器与安装检查由产品组合负责。包内测试覆盖 follow 顺序和独立结果；构建后的 API smoke 通过仅供配置测试的 Provider，驱动分阶段接入、确认响应丢失后的重放、回执查询、真实 Gateway 调用、JSON 持久化、重连、迟到响应和新进程恢复。
+Host 与 Client 独立编译。Host 声明及 JavaScript 先于 `lib/typert.host.*` 和 `lib/typert.remote-client.*` 生成；Client 编译消费这些生成声明。模拟 Session 参数使用公开 `./types` 入口导出的 `ImSessionId`，使完整生成能解析 Remote 类型。打包的 Client 请求共享 Cordis、Client store 和 Gateway 身份。生成器与安装检查由产品组合负责。包内测试覆盖 follow 顺序和独立结果；构建后的 API smoke 通过仅供配置测试的 Provider，驱动分阶段接入、确认响应丢失后的重放、回执查询、真实 Gateway 调用、JSON 持久化、重连、迟到响应和新进程恢复。
 
 ## Model Experience
 

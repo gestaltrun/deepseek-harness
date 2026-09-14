@@ -7,7 +7,8 @@ import type {
 } from '@gestaltrun/dsh-im-runtime/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 
-type SessionId = ImSimulationSessionScope['sessionId']
+/** Session identity re-exported through this Remote's public type leaf. */
+export type ImSessionId = ImSimulationSessionScope['sessionId']
 
 export type * from '@gestaltrun/dsh-im-runtime/types'
 
@@ -63,7 +64,7 @@ export type ImDeliveryFollowFrame =
 
 /** Authoritative instance and role for one exact Session, or an explicit unbound state. */
 export interface ImSimulationSessionSnapshot {
-  readonly sessionId: SessionId
+  readonly sessionId: ImSessionId
   readonly scope?: ImSimulationSessionScope
   readonly instance?: ImSimulationInstanceView
 }
