@@ -12,6 +12,9 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from './locale-types.ts'
 import { AccountsSection } from './AccountsSection.tsx'
 import { TakeoverSection } from './TakeoverSection.tsx'
+import { SimulationSection } from './SimulationSection.tsx'
+import { submitTarget } from './target-operation.ts'
+import type { SimulationTargetCommand } from './stores.ts'
 import { ConversationTab } from './ConversationTab.tsx'
 import { accountFace } from './faces.ts'
 import { createRouteUiStore } from './stores.ts'
@@ -44,6 +47,10 @@ export function apply(ctx: Context, config: Config): void {
     name: 'sidebar.workspaces.imSettings', id: 'takeover', locale: NS, order: 10, store: routes,
     inject: () => ({ hooks: { configuration: ctx.im.configuration }, operationId, submit: (items: Parameters<typeof submitRouteDraft>[1]) => submitRouteDraft(ctx.im, items, operationId, lifetime.signal) }),
   }, TakeoverSection))
+  ctx.slots.inject('sidebar.workspaces.imSettings', () => ctx.slots.register({
+    name: 'sidebar.workspaces.imSettings', id: 'simulation', locale: NS, order: 20, store: routes,
+    inject: () => ({ hooks: { configuration: ctx.im.configuration }, operationId, submit: (command: SimulationTargetCommand, queryFirst: boolean) => submitTarget(ctx.im, command, queryFirst) }),
+  }, SimulationSection))
   const definition = '@gestaltrun/dsh-ui-im/conversation'
   ctx.effect(() => ctx.sidebarRightTabs.register({ id: definition, kind: 'im-conversation', priority: 'extension', title: () => ctx.locale.bind(NS)('tab'), guide: [{ order: 56, title: () => ctx.locale.bind(NS)('tab'), description: () => ctx.locale.bind(NS)('tabGuide') }] }), 'im-ui: conversation tab')
   ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({ name: 'sidebar.right.pane.tab', key: definition, locale: NS }, ConversationTab))

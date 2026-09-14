@@ -33,7 +33,7 @@ kind: "package-plugin"
 
 产品仅通过更高 slot 优先级替换公开的 `sidebar.workspaces` 呈现。设置动作携带实际点击的工作区身份。搜索、分组、拖拽排序、重命名、删除、Session 操作、导航及目录选择保留 [UPSTREAM.json](UPSTREAM.json) 记录的固定上游呈现。产品子 slots 不重复声明上游目录流 slot；卸载会恢复原 browser，并保留其目录贡献。
 
-定向测试覆盖凭据、确认、多目标部分结果和适配后的 Workspace browser。这些检查不等于完整安装版 GUI 验收。模拟目标控件、权威会话历史、双 Session 导航和停止动作仍待对应 Host API；当前 IM tab 明确显示暂不支持会话查看。
+定向测试覆盖凭据、确认、多目标部分结果和适配后的 Workspace browser。这些检查不等于完整安装版 GUI 验收。模拟目标选择和清除使用运行时的条件路由引用与回执查询；未知响应保留操作身份供后续核对。创建模拟、权威 Session 到 scope 的导航及停止控件仍待对应 Host API。目标卡片和 IM tab 明确显示这些执行与查看限制。
 
 ## Model Experience
 

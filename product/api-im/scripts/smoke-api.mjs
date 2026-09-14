@@ -208,6 +208,20 @@ try {
   const receipt = await client.im.queryRouteOperation({ accountId, operationId: 'rebind' })
   assert(receipt.ok)
   assert.equal(receipt.value.result.route.workspaceId, 'workspace-b')
+  const targetSaved = await client.im.saveSimulationTarget({ operationId: 'target-save', workspaceId: 'sim-user', observedRevision: null, accountId, routeId: route.id })
+  assert(targetSaved.ok)
+  assert.equal(targetSaved.value.status, 'applied')
+  await waitFor(client.im.configuration, state => state.value?.simulationTargets.length === 1, 'Simulation target configuration')
+  const targetConflict = await client.im.saveSimulationTarget({ operationId: 'target-stale', workspaceId: 'sim-user', observedRevision: null, accountId, routeId: route.id })
+  assert(targetConflict.ok)
+  assert.equal(targetConflict.value.status, 'conflict')
+  const targetRemoved = await client.im.removeSimulationTarget({ operationId: 'target-clear', workspaceId: 'sim-user', observedRevision: targetSaved.value.target.revision })
+  assert(targetRemoved.ok)
+  assert.equal(targetRemoved.value.status, 'applied')
+  const targetReceipt = await client.im.querySimulationTargetOperation({ workspaceId: 'sim-user', operationId: 'target-clear' })
+  assert(targetReceipt.ok)
+  assert.equal(targetReceipt.value.state, 'known')
+  await waitFor(client.im.configuration, state => state.value?.simulationTargets.length === 0, 'Simulation target removal')
   const ownership = await host.typertGateway.invoke({ namespace: 'im', method: 'saveRoute', args: { request: {
     operationId: 'ordinary-save', accountId, routeId: route.id, observedRevision: receipt.value.result.route.revision,
     enabled: false, workspaceId: 'workspace-c',
@@ -254,7 +268,7 @@ try {
     encoding: 'utf8', timeout: 15000, maxBuffer: 65536,
   }))
   assert.deepEqual(recovered, { accounts: 1, routes: 2, rebound: 'workspace-b' })
-  console.log(JSON.stringify({ methods: 17, builtHost: true, builtClient: true, realGateway: true, durableRuntime: 'json', freshProcessRecovery: recovered, provider: 'configuration fixture, no provider calls', delivery, targetsRetained: 2, staleRebind: 'conflict', ordinarySaveRetainsOwner: true, invalidInputRejected: true, lostResponseReconciled: true, lateUnaryIsolated: true, reconnectBaseline: true, secretInClientState: false, disposed: true, calls: [...new Set(calls)] }))
+  console.log(JSON.stringify({ methods: 17, builtHost: true, builtClient: true, realGateway: true, durableRuntime: 'json', freshProcessRecovery: recovered, provider: 'configuration fixture, no provider calls', delivery, simulationTargetCas: true, targetsRetained: 2, staleRebind: 'conflict', ordinarySaveRetainsOwner: true, invalidInputRejected: true, lostResponseReconciled: true, lateUnaryIsolated: true, reconnectBaseline: true, secretInClientState: false, disposed: true, calls: [...new Set(calls)] }))
 } finally {
   heldPause.release.resolve()
   await client.fiber.dispose()

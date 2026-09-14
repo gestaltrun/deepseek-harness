@@ -56,7 +56,7 @@ describe('product IM slot ownership', () => {
       await product
       expect(ctx.slots.entries('settings.section').map(entry => entry.options.id)).toContain('im-accounts')
       expect(ctx.slots.entries('sidebar.workspaces').map(entry => entry.options.priority ?? 0)).toEqual([-10, 0])
-      expect(ctx.slots.entries('sidebar.workspaces.imSettings')).toHaveLength(1)
+      expect(ctx.slots.entries('sidebar.workspaces.imSettings')).toHaveLength(2)
       expect(ctx.slots.entries('sidebar.workspaces.imDirectoryFlow')).toHaveLength(1)
       expect(tabs.has('@gestaltrun/dsh-ui-im/conversation')).toBe(true)
       await product.dispose()

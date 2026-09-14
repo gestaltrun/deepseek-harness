@@ -33,7 +33,7 @@ The route editor preserves every specific target. New routes start disabled. Exi
 
 The product replaces only the public `sidebar.workspaces` presentation at a higher slot priority. Its settings action carries the actual clicked Workspace identity. Search, grouping, drag ordering, rename, delete, Session actions, navigation, and directory picking retain the pinned upstream presentation recorded in [UPSTREAM.json](UPSTREAM.json). Product child slots avoid redeclaring the upstream directory-flow slot; unloading restores the original browser and leaves its directory contribution intact.
 
-Focused tests cover credentials, confirmation, multi-target partial results, and the adapted Workspace browser. These checks do not constitute full installed GUI acceptance. Simulation-target controls, authoritative conversation history, double-Session navigation, and stop actions remain pending their Host APIs; the IM tab currently reports that conversation viewing is unavailable.
+Focused tests cover credentials, confirmation, multi-target partial results, and the adapted Workspace browser. These checks do not constitute full installed GUI acceptance. Simulation-target selection and clearing use the runtime's guarded route references and receipt lookup; an unknown response keeps its operation identity for reconciliation. Simulation creation, authoritative Session-to-scope navigation, and stop controls await their Host APIs. The target card and IM tab report these execution and viewing limitations explicitly.
 
 ## Model Experience
 

@@ -75,7 +75,7 @@ function AccountRow(props: AccountRowProps): ReactElement {
       {account.authorization.state === 'required' && <p className={css.sub}>{t('expiredHint')}</p>}
       {disconnected && <p className={css.sub}>{t('disconnectedKeepHint')}</p>}
       {error !== undefined && <p role="alert" className={css.error}>{error}</p>}
-      {confirm && props.disconnect !== undefined && <InlineConfirm cancelLabel={t('cancel')} confirmLabel={t('confirmDisconnect')}
+      {confirm && props.disconnect !== undefined && <InlineConfirm disabled={busy} cancelLabel={t('cancel')} confirmLabel={t('confirmDisconnect')}
         onCancel={() => { setConfirm(false) }} onConfirm={() => { if (!busy && props.disconnect !== undefined) void run(() => props.disconnect!(account.id), t('disconnectedKeepHint')) }}>
         {t('disconnectKeepRules').replace('{count}', String(props.routeCount))}
       </InlineConfirm>}
