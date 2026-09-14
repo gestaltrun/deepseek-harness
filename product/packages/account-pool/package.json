@@ -32,7 +32,12 @@
     "README.zh.md",
     "LICENSE",
     "NOTICE",
-    "UPSTREAM.json"
+    "UPSTREAM.json",
+    "lib/typert.host.js",
+    "lib/typert.host.d.ts",
+    "lib/typert.remote-client.js",
+    "lib/typert.remote-client.d.ts",
+    "lib/typert.remote-client.d.ts.map"
   ],
   "license": "MIT",
   "repository": {
