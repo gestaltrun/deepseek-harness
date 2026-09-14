@@ -47,6 +47,13 @@ export type MacOSNotarizationEnvironment =
 export function resolveDesktopAppId(env: NodeJS.ProcessEnv): string
 
 /**
+ * Derive the packaged application's internal name from its release identifier.
+ * @param appId - Validated reverse-DNS application identifier.
+ * @returns Lowercase internal name used for Electron-owned directories.
+ */
+export function desktopInternalName(appId: string): string
+
+/**
  * Resolve and validate the public identity expected on a macOS release.
  * @param env - Packaging environment.
  * @returns Expected certificate qualifier and Team ID.
