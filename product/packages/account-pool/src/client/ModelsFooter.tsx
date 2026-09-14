@@ -1,7 +1,7 @@
 /** Read-only pooled route information beside the ordinary Models settings. */
 import clsx from 'clsx'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { AccountPoolInjected } from './controller.ts'
+import type { AccountPoolInjected } from './contract.ts'
 import css from './AccountPool.module.css'
 
 type Props = PropsRuntime<'settings.models.footer'> & PropsLocale<'accountPool'> & InjectFace<AccountPoolInjected>

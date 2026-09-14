@@ -2,10 +2,10 @@
 
 import { useSyncExternalStore } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { AccountPoolAccount, AccountPoolAccountName, AccountPoolAccountRef, AccountPoolEditableFields, AccountPoolSnapshot, AccountPoolLoginState } from '../src/account-pool.ts'
 import { AccountPoolControl, type AccountPoolControlProps } from '../src/client/AccountPoolControl.tsx'
-import type { AccountPoolClientActions } from '../src/client/controller.ts'
+import type { AccountPoolClientActions } from '../src/client/contract.ts'
 import { createAccountPoolViewStore } from '../src/client/view-store.ts'
 import { AccountCard } from '../src/client/AccountCard.tsx'
 import { QuotaBarWithTimeline } from '../src/client/QuotaBarWithTimeline.tsx'
@@ -17,7 +17,7 @@ afterEach(cleanup)
 
 function copy(locale: 'en' | 'zh' = 'en'): AccountPoolCopy {
   const dictionary = locale === 'en' ? en : zh
-  return (key: AccountPoolKey, values?: Record<string, string | number>) => {
+  return (key: AccountPoolKey, values?: Record<string, unknown>) => {
     let value: string = dictionary[key]
     for (const [name, item] of Object.entries(values ?? {})) value = value.replaceAll(`{${name}}`, String(item))
     return value
@@ -35,13 +35,13 @@ const ready: AccountPoolSnapshot = { state: 'ready', accounts: [account] }
 
 function commands(overrides: Partial<AccountPoolClientActions> = {}): AccountPoolClientActions {
   return {
-    refresh: vi.fn(async () => ready), setEnabled: vi.fn(async () => ready), deleteAccount: vi.fn(async () => ready),
-    startLogin: vi.fn(async kind => ({ kind, flow: 'pkce', status: 'pending' })),
-    loginStatus: vi.fn(async () => ready), cancelLogin: vi.fn(async () => ready), dismissLogin: vi.fn(async () => ready),
-    submitCallback: vi.fn(async () => ready), submitGlmKey: vi.fn(async () => ready), refreshQuota: vi.fn(async () => ready),
-    refreshAllQuota: vi.fn(async () => ready), listModels: vi.fn(async () => [{ id: 'kimi-k2' }]),
-    readFields: vi.fn(async name => ({ name, info: { account: name }, fields: {} })), patchFields: vi.fn(async () => ready),
-    download: vi.fn(async () => {}), openExternal: vi.fn(async () => {}), ...overrides,
+    refresh: vi.fn<AccountPoolClientActions['refresh']>(async () => ready), setEnabled: vi.fn<AccountPoolClientActions['setEnabled']>(async () => ready), deleteAccount: vi.fn<AccountPoolClientActions['deleteAccount']>(async () => ready),
+    startLogin: vi.fn<AccountPoolClientActions['startLogin']>(async kind => ({ kind, flow: 'pkce', status: 'pending' })),
+    loginStatus: vi.fn<AccountPoolClientActions['loginStatus']>(async () => ready), cancelLogin: vi.fn<AccountPoolClientActions['cancelLogin']>(async () => ready), dismissLogin: vi.fn<AccountPoolClientActions['dismissLogin']>(async () => ready),
+    submitCallback: vi.fn<AccountPoolClientActions['submitCallback']>(async () => ready), submitGlmKey: vi.fn<AccountPoolClientActions['submitGlmKey']>(async () => ready), refreshQuota: vi.fn<AccountPoolClientActions['refreshQuota']>(async () => ready),
+    refreshAllQuota: vi.fn<AccountPoolClientActions['refreshAllQuota']>(async () => ready), listModels: vi.fn<AccountPoolClientActions['listModels']>(async () => [{ id: 'kimi-k2' }]),
+    readFields: vi.fn<AccountPoolClientActions['readFields']>(async name => ({ name, info: { account: name }, fields: {} })), patchFields: vi.fn<AccountPoolClientActions['patchFields']>(async () => ready),
+    download: vi.fn<AccountPoolClientActions['download']>(async () => {}), openExternal: vi.fn<AccountPoolClientActions['openExternal']>(async () => {}), ...overrides,
   }
 }
 
@@ -98,8 +98,8 @@ describe('account pool Settings', () => {
     mount(ready, commands(), 'zh')
     expect(screen.getByText(zh.title)).toBeTruthy()
     fireEvent.click(screen.getByText(zh.addAccount))
-    for (const name of ['ANTHROPIC', 'CODEX', 'ANTIGRAVITY', 'KIMI', 'XAI', 'GLM']) expect(screen.getByRole('button', { name, exact: true })).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'CODEX', exact: true }))
+    for (const name of ['ANTHROPIC', 'CODEX', 'ANTIGRAVITY', 'KIMI', 'XAI', 'GLM']) expect(screen.getByRole('button', { name })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'CODEX' }))
     expect(screen.getByRole('button', { name: zh.startLogin.replace('{provider}', 'CODEX') })).toBeTruthy()
   })
 
@@ -115,7 +115,7 @@ describe('account pool Settings', () => {
   it('submits GLM site and organization only after a complete team form', async () => {
     const { actions } = mount()
     fireEvent.click(screen.getByText(en.addAccount))
-    fireEvent.click(screen.getByRole('button', { name: 'GLM', exact: true }))
+    fireEvent.click(screen.getByRole('button', { name: 'GLM' }))
     fireEvent.change(screen.getByLabelText(en.glmKey), { target: { value: 'test-only-key' } })
     fireEvent.click(screen.getByLabelText(en.glmTeam))
     expect((screen.getByText(en.glmSave) as HTMLButtonElement).disabled).toBe(true)
@@ -129,7 +129,7 @@ describe('account pool Settings', () => {
     const a = deferred<AccountPoolEditableFields>()
     const b = deferred<AccountPoolEditableFields>()
     const second = { ...account, ref: 'codex-2' as AccountPoolAccountRef, name: 'codex.json' as AccountPoolAccountName, provider: 'codex' }
-    const actions = commands({ readFields: vi.fn(name => name === account.name ? a.promise : b.promise) })
+    const actions = commands({ readFields: vi.fn<AccountPoolClientActions['readFields']>(name => name === account.name ? a.promise : b.promise) })
     mount({ ...ready, accounts: [account, second] }, actions)
     fireEvent.click(within(screen.getByTestId('account-card-kimi-1')).getByRole('button', { name: en.settings }))
     fireEvent.click(screen.getByRole('button', { name: en.close }))
@@ -143,15 +143,15 @@ describe('account pool Settings', () => {
 
   it('keeps the edit dialog open and preserves secret fields when saving fails', async () => {
     const actions = commands({
-      readFields: vi.fn(async name => ({ name, info: { account: 'safe' }, fields: { proxyUrl: 'http://proxy.example:80', proxyCredentialsConfigured: true, headers: { Authorization: { kind: 'secret', configured: true }, 'X-Project': { kind: 'value', value: 'demo' } } } })),
-      patchFields: vi.fn(async () => { throw new Error('Write refused') }),
+      readFields: vi.fn<AccountPoolClientActions['readFields']>(async name => ({ name, info: { account: 'safe' }, fields: { proxyUrl: 'http://proxy.example:80', proxyCredentialsConfigured: true, headers: { Authorization: { kind: 'secret', configured: true }, 'X-Project': { kind: 'value', value: 'demo' } } } })),
+      patchFields: vi.fn<AccountPoolClientActions['patchFields']>(async () => { throw new Error('Write refused') }),
     })
     mount(ready, actions)
     fireEvent.click(screen.getByRole('button', { name: en.settings }))
     await screen.findByLabelText(en.fieldPrefix)
     expect(screen.getByText(en.secretConfigured)).toBeTruthy()
     fireEvent.change(screen.getByLabelText(en.fieldPrefix), { target: { value: 'new-prefix' } })
-    fireEvent.click(screen.getByRole('button', { name: en.save, exact: true }))
+    fireEvent.click(screen.getByRole('button', { name: en.save }))
     await screen.findByText(en.actionFailed.replace('{message}', 'Write refused'))
     expect(screen.getByRole('dialog')).toBeTruthy()
     expect((screen.getByLabelText(en.fieldPrefix) as HTMLInputElement).value).toBe('new-prefix')
@@ -171,7 +171,7 @@ describe('account pool Settings', () => {
   })
 
   it('writes explicit replace and remove intents without submitting redacted values', async () => {
-    const actions = commands({ readFields: vi.fn(async name => ({ name, info: {}, fields: { proxyUrl: 'https://proxy.example', proxyCredentialsConfigured: true, headers: { Authorization: { kind: 'secret', configured: true }, 'X-Project': { kind: 'value', value: 'demo' } } } })) })
+    const actions = commands({ readFields: vi.fn<AccountPoolClientActions['readFields']>(async name => ({ name, info: {}, fields: { proxyUrl: 'https://proxy.example', proxyCredentialsConfigured: true, headers: { Authorization: { kind: 'secret', configured: true }, 'X-Project': { kind: 'value', value: 'demo' } } } })) })
     mount(ready, actions)
     fireEvent.click(screen.getByRole('button', { name: en.settings }))
     await screen.findByLabelText('Authorization')
@@ -193,7 +193,7 @@ describe('account pool Settings', () => {
     mount({ ...ready, accounts: [glm] })
     expect(screen.getByText(en.configured)).toBeTruthy()
     expect(screen.getByText(en.successFail.replace('{success}', en.unknown).replace('{fail}', en.unknown))).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: en.models, exact: true }))
+    fireEvent.click(screen.getByRole('button', { name: en.models }))
     await screen.findByText(en.providerModelsScope)
     fireEvent.click(screen.getAllByRole('button', { name: en.close })[0]!)
     fireEvent.click(screen.getByRole('button', { name: en.settings }))
@@ -214,12 +214,44 @@ describe('account pool Settings', () => {
     expect(screen.queryByRole('button')).toBeNull()
   })
 
+  it('tracks concurrent quota refreshes independently for each account', async () => {
+    const first = deferred<AccountPoolSnapshot>()
+    const second = deferred<AccountPoolSnapshot>()
+    const other = { ...account, ref: 'kimi-2' as AccountPoolAccountRef, name: 'second.json' as AccountPoolAccountName }
+    const actions = commands({ refreshQuota: vi.fn<AccountPoolClientActions['refreshQuota']>(ref => ref === account.ref ? first.promise : second.promise) })
+    mount({ ...ready, accounts: [account, other] }, actions)
+    fireEvent.click(screen.getByTestId('global-face-btn-b'))
+    const firstButton = within(screen.getByTestId('account-card-kimi-1')).getByRole('button', { name: en.refreshQuota })
+    const secondButton = within(screen.getByTestId('account-card-kimi-2')).getByRole('button', { name: en.refreshQuota })
+    fireEvent.click(firstButton)
+    fireEvent.click(secondButton)
+    expect(firstButton.getAttribute('aria-busy')).toBe('true')
+    expect(secondButton.getAttribute('aria-busy')).toBe('true')
+    await act(async () => { first.resolve(ready); await first.promise })
+    expect(firstButton.getAttribute('aria-busy')).toBe('false')
+    expect(secondButton.getAttribute('aria-busy')).toBe('true')
+    await act(async () => { second.resolve(ready); await second.promise })
+    expect(secondButton.getAttribute('aria-busy')).toBe('false')
+  })
+
+  it('keeps account B confirmation open after account A deletion completes', async () => {
+    const deletion = deferred<AccountPoolSnapshot>()
+    const other = { ...account, ref: 'kimi-2' as AccountPoolAccountRef, name: 'second.json' as AccountPoolAccountName }
+    mount({ ...ready, accounts: [account, other] }, commands({ deleteAccount: vi.fn<AccountPoolClientActions['deleteAccount']>(() => deletion.promise) }))
+    fireEvent.click(within(screen.getByTestId('account-card-kimi-1')).getByRole('button', { name: en.delete }))
+    fireEvent.click(screen.getByTestId('delete-confirm'))
+    fireEvent.click(screen.getByTestId('delete-cancel'))
+    fireEvent.click(within(screen.getByTestId('account-card-kimi-2')).getByRole('button', { name: en.delete }))
+    await act(async () => { deletion.resolve(ready); await deletion.promise })
+    expect(screen.getByRole('dialog').textContent).toContain('second.json')
+  })
+
   it('reports failed commands without unhandled rejections and confirms deletion', async () => {
-    const actions = commands({ setEnabled: vi.fn(async () => { throw new Error('Account busy') }) })
+    const actions = commands({ setEnabled: vi.fn<AccountPoolClientActions['setEnabled']>(async () => { throw new Error('Account busy') }) })
     mount(ready, actions)
     fireEvent.click(screen.getByRole('switch'))
     await screen.findByRole('alert')
-    fireEvent.click(screen.getByRole('button', { name: en.delete, exact: true }))
+    fireEvent.click(screen.getByRole('button', { name: en.delete }))
     expect(actions.deleteAccount).not.toHaveBeenCalled()
     fireEvent.click(screen.getByTestId('delete-confirm'))
     await waitFor(() => expect(actions.deleteAccount).toHaveBeenCalledWith(account.name))

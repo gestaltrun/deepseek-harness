@@ -14,7 +14,8 @@ describe('account browser actions', () => {
     const signal = new AbortController().signal
     await downloadAccount('codex.json' as AccountPoolAccountName, signal)
     expect(fetcher).toHaveBeenCalledWith(expect.any(URL), { method: 'HEAD', signal, credentials: 'same-origin' })
-    const anchor = save.mock.instances[0]!
+    const anchor = save.mock.instances[0]
+    if (!(anchor instanceof HTMLAnchorElement)) throw new Error('Expected a native download anchor')
     expect(anchor.download).toBe('codex.json')
     expect(new URL(anchor.href).pathname).toBe('/api/account-pool.export')
     expect(new URL(anchor.href).searchParams.get('name')).toBe('codex.json')

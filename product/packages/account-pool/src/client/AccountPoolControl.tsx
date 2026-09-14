@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Button, Pill } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import type {
-  AccountPoolAccount, AccountPoolEditableFields, AccountPoolModel,
+  AccountPoolAccount, AccountPoolAccountRef, AccountPoolEditableFields, AccountPoolModel,
 } from '../account-pool.ts'
 import { AccountCard } from './AccountCard.tsx'
 import { AccountDialog } from './AccountDialog.tsx'
@@ -13,7 +13,7 @@ import { ModelsDialog } from './ModelsDialog.tsx'
 import { PROVIDER_FILTERS, ProviderIcon, providerDisplayName } from './ProviderIcon.tsx'
 import { SettingsDialog } from './SettingsDialog.tsx'
 import css from './AccountPool.module.css'
-import type { AccountPoolInjected } from './controller.ts'
+import type { AccountPoolInjected } from './contract.ts'
 import type { createAccountPoolViewStore } from './view-store.ts'
 
 /** Framework-derived Settings inputs and account-management callbacks. */
@@ -67,7 +67,9 @@ export function AccountPoolControl({ t, useAccountPool, accountPoolActions: clie
     if (mounted.current) setLoginBusy(false)
   }
   const [loginOpen, setLoginOpen] = useState(false)
-  const [refreshingQuota, setRefreshingQuota] = useState<string | 'all' | undefined>()
+  const [refreshingQuota, setRefreshingQuota] = useState<readonly AccountPoolAccountRef[]>([])
+  const [refreshingAllQuota, setRefreshingAllQuota] = useState(false)
+  const [deleting, setDeleting] = useState<AccountPoolAccountRef>()
   const [refreshingRoster, setRefreshingRoster] = useState(false)
   const [modelsDialog, setModelsDialog] = useState<OpenModels | undefined>()
   const [settingsDialog, setSettingsDialog] = useState<OpenSettings | undefined>()
@@ -117,12 +119,12 @@ export function AccountPoolControl({ t, useAccountPool, accountPoolActions: clie
           </div>
           <Button
             variant="ghost"
-            disabled={refreshingQuota !== undefined}
-            aria-busy={refreshingQuota === 'all'}
-            icon={<span className={refreshingQuota === 'all' ? css.spinning : undefined} aria-hidden>↻</span>}
+            disabled={refreshingAllQuota || refreshingQuota.length > 0}
+            aria-busy={refreshingAllQuota}
+            icon={<span className={refreshingAllQuota ? css.spinning : undefined} aria-hidden>↻</span>}
             onClick={() => {
-              setRefreshingQuota('all')
-              void run(() => client.refreshAllQuota()).finally(() => { if (mounted.current) setRefreshingQuota(undefined) })
+              setRefreshingAllQuota(true)
+              void run(() => client.refreshAllQuota()).finally(() => { if (mounted.current) setRefreshingAllQuota(false) })
             }}
           >
             {t('refreshAllQuota')}
@@ -153,12 +155,12 @@ export function AccountPoolControl({ t, useAccountPool, accountPoolActions: clie
             item={account}
             globalFace={globalFace}
             globalEpoch={globalEpoch}
-            refreshingQuota={refreshingQuota === 'all' || refreshingQuota === account.ref}
+            refreshingQuota={refreshingAllQuota || refreshingQuota.includes(account.ref)}
             refreshingRoster={refreshingRoster}
             onToggleStatus={(name, enabled) => { void run(() => client.setEnabled(name, enabled)) }}
             onRefreshQuota={(ref) => {
-              setRefreshingQuota(ref)
-              void run(() => client.refreshQuota(ref)).finally(() => { if (mounted.current) setRefreshingQuota(undefined) })
+              setRefreshingQuota(current => [...current, ref])
+              void run(() => client.refreshQuota(ref)).finally(() => { if (mounted.current) setRefreshingQuota(current => current.filter(item => item !== ref)) })
             }}
             onDelete={() => { setPendingDelete(account) }}
             onListModels={(name) => {
@@ -205,9 +207,14 @@ export function AccountPoolControl({ t, useAccountPool, accountPoolActions: clie
             <Button
               variant="primary"
               data-testid="delete-confirm"
+              disabled={deleting !== undefined}
+              aria-busy={deleting === pendingDelete.ref}
               onClick={() => {
-                const name = pendingDelete.name
-                void run(() => client.deleteAccount(name)).then(ok => { if (ok && mounted.current) setPendingDelete(undefined) })
+                const { name, ref } = pendingDelete
+                setDeleting(ref)
+                void run(() => client.deleteAccount(name)).then(ok => {
+                  if (ok && mounted.current) setPendingDelete(current => current?.ref === ref ? undefined : current)
+                }).finally(() => { if (mounted.current) setDeleting(undefined) })
               }}
             >
               {t('deleteConfirm')}

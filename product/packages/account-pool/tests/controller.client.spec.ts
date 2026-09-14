@@ -50,7 +50,7 @@ function bench() {
         signal: abort.signal, restart: () => {},
         dispose: async () => { abort.abort(); await stopped },
         [Symbol.asyncIterator]: () => iterator,
-      } as RemoteStream<Item>
+      } as unknown as RemoteStream<Item>
     },
   }
   const controller = new AccountPoolClientController(remote, { download: async () => {}, openExternal: async () => {} })
