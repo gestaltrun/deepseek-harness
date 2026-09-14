@@ -30,11 +30,13 @@ A route batch preserves every operation identity and outcome. Targets commit ind
 
 The Client entry mounts its own generated contribution through the public Gateway. Each follow generation starts with a complete baseline and then ordered complete replacements. Slow readers coalesce invalidations. Reconnection retains the last usable configuration until a new baseline arrives. Unary responses return operation outcomes and never overwrite newer stream data.
 
-The observable has stable identity, batches structural notifications, and removes observers during disposal. Connection cancellation closes the Host subscription. Candidate discovery has an independent Client object for each platform; cancelled or superseded reads cannot replace newer choices. UI drafts and selection belong to the consuming UI plugin.
+The observables have stable identities, batch structural notifications, and remove observers during disposal. Connection cancellation closes Host subscriptions. Candidate discovery has an independent Client object for each platform; cancelled or superseded reads cannot replace newer choices. UI drafts and selection belong to the consuming UI plugin.
 
 ## Delivery reads
 
 Read-only history, outbox, and delivery follow methods require the complete real or simulation scope. A Client reader fixes that scope and its inbound/outbound page cursors for its entire lifetime. Each generation publishes a complete bounded window; matching durable changes refresh that window. Navigation disposes the reader before binding a different scope. Page cursors are independent numeric sequences, and uncertain sends remain `result-unknown`.
+
+Simulation readers project the Host's complete instance list and the authoritative role, peer Session, frozen target, and delivery scope for one selected Session. The instance list decorates Session rows; the Session reader follows one immutable Session identity until navigation disposes it. Creation, participant injection, managed-human injection, and stopping delegate to the public runtime methods. Stopping is a two-step operation: the UI awaits the durable transition to `stopping`, then waits for the Host's terminal result.
 
 Provider admission, cursor commits, submission marking, send attempts, and receipt settlement are not Remote methods. The runtime and trusted providers own those actions. The built smoke uses durable test inputs without contacting a provider; it verifies live pages, scope isolation, invalid inputs, and reader disposal through the generated Gateway.
 

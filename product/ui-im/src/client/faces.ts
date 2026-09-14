@@ -4,7 +4,11 @@ import type {
   ImAccountSetupPreview, ImAccountSetupRequest, ImCancelAccountSetupResult,
   ImConfirmAccountSetupRequest, ImOperationId, ImSetAccountPausedRequest,
   ImAccountCandidatesSource, ImConfigurationSource, ImPlatform,
+  ImCreateSimulationInstanceRequest, ImDeliveryFollowRequest, ImDeliverySource,
+  ImInjectSimulationManagedHumanRequest, ImInjectSimulationMemberRequest,
+  ImSimulationInstanceId, ImSimulationInstanceView, ImSimulationSessionSource,
 } from '@gestaltrun/dsh-api-im/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import {
   accountFailureOutcome, accountMutationOutcome, accountOutcome, type AccountActionOutcome,
 } from './account-actions.ts'
@@ -66,5 +70,44 @@ export function accountFace(im: IImClient, operationId: () => Parameters<IImClie
         ? accountMutationOutcome(result.value.result)
         : { status: 'unknown' }
     },
+  }
+}
+
+/** Session-scoped simulation and delivery bindings for the IM sidebar. */
+export interface ConversationFace {
+  readonly hooks: { readonly configuration: ImConfigurationSource }
+  readonly watchSession: (sessionId: SessionId) => ImSimulationSessionSource
+  readonly watchDelivery: (request: ImDeliveryFollowRequest) => ImDeliverySource
+  readonly create: (request: ImCreateSimulationInstanceRequest) => Promise<UiResult<ImSimulationInstanceView>>
+  readonly injectMember: (request: ImInjectSimulationMemberRequest) => Promise<UiResult<unknown>>
+  readonly injectManagedHuman: (request: ImInjectSimulationManagedHumanRequest) => Promise<UiResult<unknown>>
+  readonly beginStop: (instanceId: ImSimulationInstanceId) => Promise<UiResult<ImSimulationInstanceView>>
+  readonly waitStopped: (instanceId: ImSimulationInstanceId) => Promise<UiResult<ImSimulationInstanceView>>
+  readonly resolveSession: (sessionId: SessionId) => Promise<UiResult<ImSimulationInstanceView | undefined>>
+  readonly openSession: (sessionId: SessionId) => void
+}
+
+/** @param im - authoritative Client object. @param openSession - official Session navigator. @returns sidebar inputs. */
+export function conversationFace(im: IImClient, openSession: (sessionId: SessionId) => void): ConversationFace {
+  const result = async <Value>(pending: Promise<{ readonly ok: true; readonly value: Value } | { readonly ok: false; readonly error: { readonly message: string } }>): Promise<UiResult<Value>> => {
+    const settled = await pending
+    return settled.ok ? { ok: true, value: settled.value } : { ok: false, message: settled.error.message }
+  }
+  return {
+    hooks: { configuration: im.configuration },
+    watchSession: sessionId => im.watchSimulationSession(sessionId),
+    watchDelivery: request => im.watchDelivery(request),
+    create: request => result(im.createSimulationInstance(request)),
+    injectMember: request => result(im.injectSimulationMember(request)),
+    injectManagedHuman: request => result(im.injectSimulationManagedHuman(request)),
+    beginStop: instanceId => result(im.beginStopSimulation(instanceId)),
+    waitStopped: instanceId => result(im.waitSimulationStopped(instanceId)),
+    resolveSession: async sessionId => {
+      const scope = await result(im.scopeForSession(sessionId))
+      return !scope.ok || scope.value === undefined
+        ? scope.ok ? { ok: true, value: undefined } : scope
+        : result(im.getSimulationInstance(scope.value.instanceId))
+    },
+    openSession,
   }
 }

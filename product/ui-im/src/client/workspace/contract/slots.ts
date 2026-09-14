@@ -31,6 +31,7 @@ import type { SessionSearchResultItem } from '@deepseek-ai/dsh-api-session-contr
 import type { RemoteHostFacts } from '@deepseek-ai/dsh-api-remotes/client'
 import type { WorkspaceId, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { ImSimulationInstancesState } from '@gestaltrun/dsh-api-im/client'
 import type { createWorkspaceViewStore } from '../stores.ts'
 
 /**
@@ -97,6 +98,8 @@ export type WorkspaceBrowserInjected = {
      * saw. Select the field the surface needs (`info => info.home`).
      */
     hostInfo: HostObservable<RemoteHostFacts>
+    /** Complete durable simulation list used only to decorate Session rows. */
+    simulationInstances: HostObservable<ImSimulationInstancesState>
   }
   /**
    * Start a New Session in a Workspace: reuse-or-create its blank session and

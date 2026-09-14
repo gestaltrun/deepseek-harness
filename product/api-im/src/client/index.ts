@@ -11,6 +11,8 @@ import type {
   ImRouteOperationQueryRequest, ImSaveSimulationTargetRequest, ImSetAccountPausedRequest,
   ImTargetOperationQueryRequest,
   ImDeliveryFollowRequest,
+  ImCreateSimulationInstanceRequest, ImInjectSimulationManagedHumanRequest, ImInjectSimulationMemberRequest,
+  ImSimulationInstanceId, ImSimulationSessionScope,
 } from '../types.ts'
 import { ImConfigurationModel } from './model.ts'
 import type { ImConfigurationState } from './model.ts'
@@ -18,11 +20,16 @@ import { ImAccountCandidatesModel } from './candidates.ts'
 import type { ImAccountCandidatesSource } from './candidates.ts'
 import { ImDeliveryReader } from './delivery.ts'
 import type { ImDeliverySource } from './delivery.ts'
+import { ImSimulationInstancesReader, ImSimulationSessionReader } from './simulation.ts'
+import type { ImSimulationInstancesSource, ImSimulationSessionSource } from './simulation.ts'
+
+type SessionId = ImSimulationSessionScope['sessionId']
 
 export type * from '../types.ts'
 export type { ImConfigurationState } from './model.ts'
 export type { ImAccountCandidateState, ImAccountCandidatesSource, ImAccountCandidatesState } from './candidates.ts'
 export type { ImDeliveryState, ImDeliverySource } from './delivery.ts'
+export type { ImSimulationInstancesSource, ImSimulationInstancesState, ImSimulationSessionState, ImSimulationSessionSource } from './simulation.ts'
 export type {} from '@gestaltrun/dsh-api-im/remote'
 
 /** Generated IM configuration commands on the active Client connection. */
@@ -40,8 +47,11 @@ export interface ImConfigurationSource {
 export interface IImClient {
   readonly configuration: ImConfigurationSource
   readonly accountCandidates: ImAccountCandidatesSource
+  readonly simulationInstances: ImSimulationInstancesSource
   /** @param request - immutable authoritative scope and selected pages. @returns reader; the caller disposes it when navigation changes. */
   watchDelivery(request: ImDeliveryFollowRequest): ImDeliverySource
+  /** @param sessionId - exact Session selected by the app. @returns immutable binding reader; the caller disposes it on navigation. */
+  watchSimulationSession(sessionId: SessionId): ImSimulationSessionSource
   /** @param platform - platform selected for setup. @param signal - caller cancellation. @returns safe available identities. */
   listAccountCandidates(platform: ImPlatform, signal?: AbortSignal): ReturnType<ImRemote['listAccountCandidates']>
   /** @param request - candidate-bound write-only fields. @param signal - caller cancellation. @returns safe verified identity and a short-lived Host setup identifier. */
@@ -70,6 +80,22 @@ export interface IImClient {
   removeSimulationTarget(request: ImRemoveSimulationTargetRequest): ReturnType<ImRemote['removeSimulationTarget']>
   /** @param request - workspace and operation identity. @returns durable receipt or absence. */
   querySimulationTargetOperation(request: ImTargetOperationQueryRequest): ReturnType<ImRemote['querySimulationTargetOperation']>
+  /** @returns all durable simulation instances. */
+  listSimulationInstances(): ReturnType<ImRemote['listSimulationInstances']>
+  /** @param instanceId - Host-minted identity. @returns durable state or absence. */
+  getSimulationInstance(instanceId: ImSimulationInstanceId): ReturnType<ImRemote['getSimulationInstance']>
+  /** @param sessionId - either Session in a pair. @returns Host-authoritative peer and delivery facts. */
+  scopeForSession(sessionId: SessionId): ReturnType<ImRemote['scopeForSession']>
+  /** @param request - selected target inputs for the current simulated-user Session. @returns created pair. */
+  createSimulationInstance(request: ImCreateSimulationInstanceRequest): ReturnType<ImRemote['createSimulationInstance']>
+  /** @param request - allow-listed member input. @returns shared-path inbound message. */
+  injectSimulationMember(request: ImInjectSimulationMemberRequest): ReturnType<ImRemote['injectSimulationMember']>
+  /** @param request - managed human input. @returns shared-path inbound message. */
+  injectSimulationManagedHuman(request: ImInjectSimulationManagedHumanRequest): ReturnType<ImRemote['injectSimulationManagedHuman']>
+  /** @param instanceId - exact operator-confirmed instance. @returns durable stopping or terminal state. */
+  beginStopSimulation(instanceId: ImSimulationInstanceId): ReturnType<ImRemote['beginStopSimulation']>
+  /** @param instanceId - already-stopping instance. @returns final durable state. */
+  waitSimulationStopped(instanceId: ImSimulationInstanceId): ReturnType<ImRemote['waitSimulationStopped']>
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -86,13 +112,18 @@ class ImClient extends Service implements IImClient {
   private readonly remote: ImRemote
   private readonly candidates: ImAccountCandidatesModel
   readonly accountCandidates: ImAccountCandidatesSource
+  private readonly instances: ImSimulationInstancesReader
+  readonly simulationInstances: ImSimulationInstancesSource
   private readonly readers = new Set<ImDeliverySource>()
+  private readonly simulationReaders = new Set<ImSimulationSessionSource>()
 
   constructor(ctx: Context) {
     super(ctx, 'im')
     this.remote = ctx.remote.im
     this.candidates = new ImAccountCandidatesModel((platform, signal) => this.remote.listAccountCandidates(platform, signal))
     this.accountCandidates = this.candidates
+    this.instances = new ImSimulationInstancesReader(ctx.remote)
+    this.simulationInstances = this.instances
     const stream = ctx.remote.$stream<ImConfigurationFrame>({
       name: 'IM configuration',
       open: signal => this.remote.follow(signal),
@@ -111,11 +142,25 @@ class ImClient extends Service implements IImClient {
     ctx.effect(() => async () => {
       this.model.dispose()
       this.candidates.dispose()
+      await this.instances.dispose()
       await Promise.all([...this.readers].map(reader => reader.dispose()))
       this.readers.clear()
+      await Promise.all([...this.simulationReaders].map(reader => reader.dispose()))
+      this.simulationReaders.clear()
       await control.dispose()
     }, 'im-client: configuration follow')
     control.start()
+  }
+
+  watchSimulationSession(sessionId: SessionId): ImSimulationSessionSource {
+    const reader = new ImSimulationSessionReader(this.ctx.remote, sessionId)
+    const source: ImSimulationSessionSource = {
+      getSnapshot: reader.getSnapshot,
+      subscribe: reader.subscribe,
+      dispose: async () => { this.simulationReaders.delete(source); await reader.dispose() },
+    }
+    this.simulationReaders.add(source)
+    return source
   }
 
   watchDelivery(request: ImDeliveryFollowRequest): ImDeliverySource {
@@ -184,6 +229,15 @@ class ImClient extends Service implements IImClient {
   querySimulationTargetOperation(request: ImTargetOperationQueryRequest): ReturnType<ImRemote['querySimulationTargetOperation']> {
     return this.remote.querySimulationTargetOperation(request)
   }
+
+  listSimulationInstances(): ReturnType<ImRemote['listSimulationInstances']> { return this.remote.listSimulationInstances() }
+  getSimulationInstance(instanceId: ImSimulationInstanceId): ReturnType<ImRemote['getSimulationInstance']> { return this.remote.getSimulationInstance(instanceId) }
+  scopeForSession(sessionId: SessionId): ReturnType<ImRemote['scopeForSession']> { return this.remote.scopeForSession(sessionId) }
+  createSimulationInstance(request: ImCreateSimulationInstanceRequest): ReturnType<ImRemote['createSimulationInstance']> { return this.remote.createSimulationInstance(request) }
+  injectSimulationMember(request: ImInjectSimulationMemberRequest): ReturnType<ImRemote['injectSimulationMember']> { return this.remote.injectSimulationMember(request) }
+  injectSimulationManagedHuman(request: ImInjectSimulationManagedHumanRequest): ReturnType<ImRemote['injectSimulationManagedHuman']> { return this.remote.injectSimulationManagedHuman(request) }
+  beginStopSimulation(instanceId: ImSimulationInstanceId): ReturnType<ImRemote['beginStopSimulation']> { return this.remote.beginStopSimulation(instanceId) }
+  waitSimulationStopped(instanceId: ImSimulationInstanceId): ReturnType<ImRemote['waitSimulationStopped']> { return this.remote.waitSimulationStopped(instanceId) }
 }
 
 /** Only the generated namespace mount is required before assembly. */
