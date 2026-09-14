@@ -3,3 +3,7 @@
       name: '@gestaltrun/dsh-im-runtime'
     - id: gestaltrun-im-api
       name: '@gestaltrun/dsh-api-im'
+    - id: gestaltrun-im-ui
+      name: '@gestaltrun/dsh-ui-im'
+      config:
+        directoryPicker: browse

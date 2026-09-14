@@ -40,7 +40,7 @@ async function run(label, args, expected = 0) {
 function imRows(output) {
   const rows = load(output, { schema: entryListSchema })
   assert.ok(Array.isArray(rows))
-  return rows.filter(row => row.id === 'gestaltrun-im-runtime' || row.id === 'gestaltrun-im-api')
+  return rows.filter(row => ['gestaltrun-im-runtime', 'gestaltrun-im-api', 'gestaltrun-im-ui'].includes(row.id))
 }
 
 try {
@@ -50,7 +50,7 @@ try {
   const baselineManifest = JSON.parse(await readFile(manifestPath, 'utf8'))
   const tarballs = []
   const identities = []
-  for (const name of ['im-runtime', 'api-im', 'im-bundle']) {
+  for (const name of ['im-runtime', 'api-im', 'ui-im', 'im-bundle']) {
     const filename = `gestaltrun-dsh-${name}-0.1.0-gestaltrun.0.tgz`
     const target = join(root, filename)
     await copyFile(join(archives, filename), target)
@@ -70,7 +70,7 @@ try {
     packages: [],
     autoInstallPeers: false,
     nodeLinker: 'hoisted',
-    overrides: Object.fromEntries(['im-runtime', 'api-im'].map((name, index) => [
+    overrides: Object.fromEntries(['im-runtime', 'api-im', 'ui-im'].map((name, index) => [
       `@gestaltrun/dsh-${name}@0.1.0-gestaltrun.0`, `file:${tarballs[index]}`,
     ])),
   }, null, 2)}\n`)
@@ -82,12 +82,13 @@ try {
   assert.deepEqual(imRows(composed).map(row => [row.id, row.name]), [
     ['gestaltrun-im-runtime', '@gestaltrun/dsh-im-runtime'],
     ['gestaltrun-im-api', '@gestaltrun/dsh-api-im'],
+    ['gestaltrun-im-ui', '@gestaltrun/dsh-ui-im'],
   ])
   const profileRequire = createRequire(manifestPath)
   const bundleRequire = createRequire(profileRequire.resolve('@gestaltrun/dsh-im-bundle/package.json'))
   const hostCordis = await realpath(require.resolve('@deepseek-ai/cordis/package.json'))
   const installedPackages = []
-  for (const name of ['@gestaltrun/dsh-api-im', '@gestaltrun/dsh-im-runtime']) {
+  for (const name of ['@gestaltrun/dsh-api-im', '@gestaltrun/dsh-im-runtime', '@gestaltrun/dsh-ui-im']) {
     const ownerManifest = profileRequire.resolve(`${name}/package.json`)
     assert.equal(await realpath(bundleRequire.resolve(`${name}/package.json`)), await realpath(ownerManifest))
     const ownerRequire = createRequire(ownerManifest)
@@ -105,7 +106,7 @@ try {
   assert.deepEqual(imRows(removed), [])
   assert.equal(await readFile(retained, 'utf8'), 'profile removal preserves shared state\n')
   console.log(JSON.stringify({ publicCli: true, profile: 'web template with product bundle', installed: true,
-    rows: 2, invalidOverlayRejected: true, removed: true, sharedStateRetained: true,
+    rows: 3, invalidOverlayRejected: true, removed: true, sharedStateRetained: true,
     candidateTarballBindings: true, sharedCordis: true, providerCalls: 0, modelCalls: 0, appLaunched: false,
     ...(process.env.DSH_IM_SMOKE_KEEP_ROOT === '1' ? { evidenceRoot: root } : {}),
   }))

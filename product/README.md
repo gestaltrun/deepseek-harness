@@ -4,7 +4,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Product packages use this independent pnpm workspace and published DSH peers. Install dependencies with `pnpm --dir product install --frozen-lockfile --ignore-scripts`. The workspace pins Zod to `4.4.3` so product schemas and the published DSH schema interfaces resolve the same implementation. The `build`, `test`, `typecheck`, and `pack` scripts select [Model Center](model-center/README.md); its package owns those commands and runtime behavior.
+Product packages use this independent pnpm workspace and published DSH peers. Install dependencies with `pnpm --dir product install --frozen-lockfile --ignore-scripts`. The workspace pins Zod to `4.4.3` so product schemas and the published DSH schema interfaces resolve the same implementation. The default `build`, `test`, `typecheck`, and `pack` scripts include [Model Center](model-center/README.md), IM Runtime, API, and UI; `test` also runs the product build-helper checks, and `pack` includes the IM bundle.
 
 ## Table of Contents
 
@@ -18,7 +18,7 @@ The [accepted IM architecture](../.agents/notes/proposed/architecture/2026-09-14
 
 `pnpm --dir product run build:im-api` builds the runtime, API Host, generated Remote artifacts, and API Client in that order. `pnpm --dir product run pack:im-api` performs the same build and writes both npm archives into `product/dist`.
 
-`pnpm --dir product run pack:im-bundle` also packs the [configuration bundle](im-bundle/README.md). Its package owns the installed profile check and current composition limits.
+`pnpm --dir product run build:im` adds the UI build after the runtime/API sequence. `pnpm --dir product run pack:im-bundle` builds those packages and packs them with the [configuration bundle](im-bundle/README.md). `typecheck` prepares generated Remote declarations before checking every product package. The bundle owns the installed profile check and current composition limits.
 
 Run `pnpm --dir product run generate:im` after building the IM runtime and API Host. Every referenced member and its installed peers must be present; missing inputs fail the command. It generates the API package's Host reflection and Remote Client artifacts before the API Client and UI builds. `pnpm --dir product run test:build` verifies this build step against real published npm declarations.
 

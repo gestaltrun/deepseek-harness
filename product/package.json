@@ -4,17 +4,18 @@
   "type": "module",
   "packageManager": "pnpm@11.7.0",
   "scripts": {
-    "build": "pnpm --filter @gestaltrun/dsh-model-center build",
+    "build": "pnpm --filter @gestaltrun/dsh-model-center --fail-if-no-match run build && pnpm run build:im",
+    "build:im": "pnpm run build:im-api && pnpm --filter @gestaltrun/dsh-ui-im --fail-if-no-match run build",
     "build:im-api": "pnpm --filter @gestaltrun/dsh-im-runtime --fail-if-no-match run build && pnpm --filter @gestaltrun/dsh-api-im --fail-if-no-match run build:host && pnpm run generate:im && pnpm --filter @gestaltrun/dsh-api-im --fail-if-no-match run build:client",
-    "test": "pnpm --filter @gestaltrun/dsh-model-center test",
+    "test": "pnpm run test:build && pnpm --recursive --workspace-concurrency=1 --filter @gestaltrun/dsh-model-center --filter @gestaltrun/dsh-im-runtime --filter @gestaltrun/dsh-api-im --filter @gestaltrun/dsh-ui-im --fail-if-no-match run test",
     "test:build": "node --test scripts/typert-build.test.mjs",
     "smoke:im-loader": "node scripts/smoke-im-loader.mjs",
     "smoke:im-profile": "node scripts/smoke-im-profile.mjs",
-    "typecheck": "pnpm --filter @gestaltrun/dsh-model-center typecheck",
+    "typecheck": "pnpm run build:im-api && pnpm --recursive --workspace-concurrency=1 --filter @gestaltrun/dsh-model-center --filter @gestaltrun/dsh-im-runtime --filter @gestaltrun/dsh-api-im --filter @gestaltrun/dsh-ui-im --fail-if-no-match run typecheck",
     "generate:im": "node scripts/generate-im-typert.mjs",
-    "pack": "pnpm --filter @gestaltrun/dsh-model-center release:pack",
+    "pack": "pnpm run build && pnpm --recursive --workspace-concurrency=1 --filter @gestaltrun/dsh-model-center --filter @gestaltrun/dsh-im-runtime --filter @gestaltrun/dsh-api-im --filter @gestaltrun/dsh-ui-im --filter @gestaltrun/dsh-im-bundle --fail-if-no-match pack --pack-destination dist",
     "pack:im-api": "pnpm run build:im-api && pnpm --filter @gestaltrun/dsh-im-runtime --fail-if-no-match pack --pack-destination dist && pnpm --filter @gestaltrun/dsh-api-im --fail-if-no-match pack --pack-destination dist",
-    "pack:im-bundle": "pnpm run pack:im-api && pnpm --filter @gestaltrun/dsh-im-bundle --fail-if-no-match pack --pack-destination dist"
+    "pack:im-bundle": "pnpm run build:im && pnpm --recursive --workspace-concurrency=1 --filter @gestaltrun/dsh-im-runtime --filter @gestaltrun/dsh-api-im --filter @gestaltrun/dsh-ui-im --filter @gestaltrun/dsh-im-bundle --fail-if-no-match pack --pack-destination dist"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.2",

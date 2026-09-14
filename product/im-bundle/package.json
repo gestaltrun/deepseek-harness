@@ -38,7 +38,8 @@
   },
   "dependencies": {
     "@gestaltrun/dsh-api-im": "workspace:*",
-    "@gestaltrun/dsh-im-runtime": "workspace:*"
+    "@gestaltrun/dsh-im-runtime": "workspace:*",
+    "@gestaltrun/dsh-ui-im": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.2"
