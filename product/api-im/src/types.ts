@@ -7,6 +7,18 @@ import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 
 export type * from '@gestaltrun/dsh-im-runtime/types'
 
+/** Stable configuration failure details, with no provider exception payload. */
+export interface ImConfigurationFailure {
+  readonly code: string
+}
+
+declare module '@deepseek-ai/dsh-typert-protocol' {
+  interface RemoteErrorDetailsMap {
+    /** A documented runtime or provider-registry configuration failure. */
+    'im/configuration': ImConfigurationFailure
+  }
+}
+
 /** Complete configuration at the beginning of one follow generation. */
 export interface ImConfigurationBaseline {
   readonly type: 'baseline'
@@ -39,6 +51,7 @@ export interface ImRouteBatchRequest {
 /** Each route's own durable receipt, or a requirement to query before retrying. */
 export type ImRouteBatchItem =
   | { readonly state: 'known'; readonly accountId: ImAccountId; readonly result: ImRouteMutationResult }
+  | { readonly state: 'rejected'; readonly accountId: ImAccountId; readonly operationId: ImOperationId; readonly code: string; readonly message: string }
   | { readonly state: 'unknown'; readonly accountId: ImAccountId; readonly operationId: ImOperationId }
 
 /** A batch does not promise atomicity across targets or accounts. */
