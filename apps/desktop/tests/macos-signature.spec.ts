@@ -1,8 +1,10 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { createRequire } from 'node:module'
 import { FileMatcher } from 'app-builder-lib/out/fileMatcher.js'
+import { Arch, Platform, type AfterPackContext } from 'electron-builder'
+import { load } from 'js-yaml'
 import { runtimeFixture } from './runtime-fixture.ts'
 import { verifyDesktopRuntime } from '../src/runtime-tree.ts'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -19,6 +21,7 @@ import {
   assertMacOSSignatureDetails,
   developerIdApplicationIdentity,
 } from '../scripts/verify-macos-signature.mjs'
+import { desktopElectronBuilderArguments, resolveDesktopPackageTarget } from '../scripts/package-target.ts'
 
 // app-builder-lib omits this internal copier from its declarations; the regression exercises its actual file filter.
 const { copyFiles } = createRequire(import.meta.url)('app-builder-lib/out/fileMatcher.js') as {
@@ -154,6 +157,58 @@ describe('desktop macOS release signature', () => {
     expect(`${name}-updater`).toBe('org-gestaltrun-deepseek-harness-updater')
     expect(name).not.toBe('@deepseek-ai/dsh-desktop')
     expect(() => desktopInternalName('not-an-app-id')).toThrow(/reverse-DNS/u)
+  })
+
+  it('embeds the SDK update configuration before the directory application becomes a prepackaged artifact', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'desktop-app-update-config-'))
+    try {
+      const appOutDir = join(root, 'mac-arm64')
+      const resources = join(appOutDir, 'DeepSeek Gestalt.app', 'Contents', 'Resources')
+      mkdirSync(resources, { recursive: true })
+      runtimeFixture(join(resources, 'dsh'))
+
+      const { createElectronBuilderConfig } = await import('../electron-builder.config.mjs')
+      const config = createElectronBuilderConfig(RELEASE_ENVIRONMENT, 'darwin', 'arm64')
+      const appInfo = {
+        channel: 'rc',
+        updaterCacheDirName: 'com-example-desktop-updater',
+        version: '1.0.0',
+      }
+      const packager = {
+        appInfo,
+        config,
+        expandMacro: (value: string) => value,
+        getResourcesDir: () => resources,
+        info: { appInfo, config },
+        platform: Platform.MAC,
+        platformSpecificBuildOptions: config.mac,
+      }
+      await config.afterPack({
+        appOutDir,
+        arch: Arch.arm64,
+        electronPlatformName: 'darwin',
+        outDir: root,
+        packager,
+        targets: [],
+      } as unknown as AfterPackContext)
+
+      expect(load(readFileSync(join(resources, 'app-update.yml'), 'utf8'))).toEqual({
+        provider: 'generic',
+        url: 'https://desktop-updates.example.com/desktop/test/mac-arm64/',
+        channel: 'rc',
+        updaterCacheDirName: 'com-example-desktop-updater',
+      })
+
+      const target = resolveDesktopPackageTarget('mac-arm64', 'darwin', 'arm64')
+      expect(desktopElectronBuilderArguments(target, true)).toContain('--dir')
+      expect(desktopElectronBuilderArguments(target, false, {
+        format: 'zip',
+        appPath: join(appOutDir, 'DeepSeek Gestalt.app'),
+        output: join(root, 'zip'),
+      })).toEqual(expect.arrayContaining(['--prepackaged', join(appOutDir, 'DeepSeek Gestalt.app')]))
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 
   it('accepts the configured authority and team', () => {

@@ -1,5 +1,8 @@
+import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { getAppUpdatePublishConfiguration } from 'app-builder-lib/out/publish/PublishManager.js'
+import { dump } from 'js-yaml'
 import {
   desktopInternalName,
   resolveDesktopAppId,
@@ -14,6 +17,27 @@ import {
 } from './scripts/windows-sign.mjs'
 import { resolveDesktopAutoUpdateConfig } from './scripts/desktop-auto-update-environment.mjs'
 import { desktopTargetBuildPaths, resolveDesktopBuildTarget } from './scripts/desktop-build-paths.mjs'
+
+/**
+ * Write electron-builder's resolved updater configuration into the unpacked macOS application.
+ * @param {import('electron-builder').AfterPackContext} context - Application state before signing.
+ * @returns {Promise<void>} Resolves after the updater configuration is part of the unsigned bundle.
+ */
+export async function writeDesktopAppUpdateConfig(context) {
+  const publishConfig = await getAppUpdatePublishConfiguration(
+    context.packager,
+    null,
+    context.arch,
+    true,
+  )
+  if (publishConfig === null) {
+    throw new Error('desktop package: signed macOS build has no updater publish configuration')
+  }
+  await writeFile(
+    join(context.packager.getResourcesDir(context.appOutDir), 'app-update.yml'),
+    dump(publishConfig, { lineWidth: 8000, noRefs: true }),
+  )
+}
 
 /**
  * Create electron-builder configuration from one release environment.
@@ -89,6 +113,7 @@ export function createElectronBuilderConfig(
       writeUpdateInfo: false,
     },
     afterPack: async context => {
+      if (context.electronPlatformName === 'darwin') await writeDesktopAppUpdateConfig(context)
       const { verifyDesktopRuntime } = await import('./lib/types/runtime-tree.js')
       await verifyDesktopRuntime(join(context.packager.getResourcesDir(context.appOutDir), 'dsh'),
         context.packager.appInfo.version, { platform: resolvedPlatform, arch: resolvedArch })
