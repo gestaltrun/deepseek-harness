@@ -15,6 +15,7 @@ import { encodeImScopeId, ImDeliveryStore } from './delivery.ts'
 import { imDeliveryDomainSpec } from './delivery-schema.ts'
 import type { ImDeliveryAggregate, ImExecutionAggregate, ImProviderCursorAggregate } from './delivery-schema.ts'
 import { ImAgentCoordinator } from './agent-coordinator.ts'
+import { ImSimulationController } from './simulation-controller.ts'
 import { ImRuntimeError } from './errors.ts'
 import { imRuntimeDomainSpec } from './schema.ts'
 import type { ImAccountAggregate, ImAccountRecord, ImSimulationTargetAggregate } from './schema.ts'
@@ -62,6 +63,8 @@ import type {
   ImSenderAttribution,
   ImSettleOutboundAttemptRequest,
   ImSettleSimulationOutboundRequest,
+  ImSimulationDeliveryScope,
+  ImSimulationInstanceId,
 } from './delivery-types.ts'
 import type {
   ImAccountId,
@@ -96,6 +99,12 @@ import type {
   ImSetAccountPausedRequest,
   ImSimulationTargetMutationResult,
   ImSimulationTargetOperationQuery,
+  ImCreateSimulationInstanceRequest,
+  ImInjectSimulationManagedHumanRequest,
+  ImInjectSimulationMemberRequest,
+  ImSimulationInstanceView,
+  ImSimulationSessionScope,
+  ImSimulationTargetView,
 } from './types.ts'
 import type { ImRuntimeService } from './service-types.ts'
 
@@ -200,11 +209,13 @@ export class ImRuntime extends Service implements ImRuntimeService {
 
   private accounts?: KvTable<ImAccountId, ImAccountAggregate>
   private simulationTargets?: KvTable<WorkspaceId, ImSimulationTargetAggregate>
+  private simulationInstances?: KvTable<ImSimulationInstanceId, ImSimulationInstanceView>
   private deliveryScopes?: KvTable<import('./delivery-types.ts').ImScopeId, ImDeliveryAggregate>
   private providerCursors?: KvTable<ImProviderCursorId, ImProviderCursorAggregate>
   private executions?: KvTable<ImAgentTaskId, ImExecutionAggregate>
   private delivery?: ImDeliveryStore
   private coordinator: ImAgentCoordinator | undefined
+  private simulationController: ImSimulationController | undefined
   private generation = 0
   private deliveryGeneration = 0
   private simulationTail: Promise<void> = Promise.resolve()
@@ -236,6 +247,7 @@ export class ImRuntime extends Service implements ImRuntimeService {
     this.ctx.effect(() => () => domain.close(), 'imRuntime.domainClose')
     this.accounts = domain.table('accounts')
     this.simulationTargets = domain.table('simulation_targets')
+    this.simulationInstances = domain.table('simulation_instances')
     for (const [, aggregate] of this.accountTable().entries()) {
       for (const route of Object.values(aggregate.routes)) {
         const error = triggerError(route.conversationKind, route.groupTrigger, this.config.admissionBatchSize)
@@ -265,9 +277,14 @@ export class ImRuntime extends Service implements ImRuntimeService {
       agentCtx.effect(async () => {
         const coordinator = new ImAgentCoordinator(agentCtx, this, this.executionTable())
         this.coordinator = coordinator
+        const simulations = new ImSimulationController(agentCtx, this, this.simulationInstanceTable(), this.executionTable(), coordinator)
+        this.simulationController = simulations
+        await simulations.start()
         coordinator.start([...this.deliveryScopeTable().entries()].map(([, aggregate]) => aggregate.scope))
         return async () => {
+          if (this.simulationController === simulations) this.simulationController = undefined
           if (this.coordinator === coordinator) this.coordinator = undefined
+          await simulations.dispose()
           await coordinator.dispose()
         }
       }, 'imRuntime.agentCoordinator()')
@@ -643,6 +660,57 @@ export class ImRuntime extends Service implements ImRuntimeService {
     return result === undefined ? { state: 'not-found' } : { state: 'known', result }
   }
 
+  listSimulationInstances(): readonly ImSimulationInstanceView[] {
+    return [...this.simulationInstanceTable().entries()].map(([, value]) => value)
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+  }
+
+  getSimulationInstance(instanceId: ImSimulationInstanceId): ImSimulationInstanceView | undefined {
+    return this.simulationInstanceTable().get(instanceId)
+  }
+
+  scopeForSession(sessionId: SessionId): ImSimulationSessionScope | undefined {
+    const candidates = this.listSimulationInstances().filter(value =>
+      (value.simUserSessionId === sessionId || value.testedSessionId === sessionId) && value.status !== 'failed')
+    const instance = candidates.findLast(value => value.status === 'creating' || value.status === 'running' || value.status === 'stopping')
+      ?? candidates.at(-1)
+    if (instance === undefined) return undefined
+    const role = instance.simUserSessionId === sessionId ? 'sim-user' : 'tested'
+    return {
+      instanceId: instance.instanceId, role, sessionId,
+      peerSessionId: role === 'sim-user' ? instance.testedSessionId : instance.simUserSessionId,
+      workspaceId: role === 'sim-user' ? instance.simUserWorkspaceId : instance.target.workspaceId,
+      peerWorkspaceId: role === 'sim-user' ? instance.target.workspaceId : instance.simUserWorkspaceId,
+      deliveryScope: this.simulationScope(instance), status: instance.status,
+    }
+  }
+
+  createSimulationInstance(request: ImCreateSimulationInstanceRequest): Promise<ImSimulationInstanceView> {
+    return this.requireSimulationController().create(request)
+  }
+
+  injectSimulationMember(request: ImInjectSimulationMemberRequest): Promise<ImInboundMessageView> {
+    return this.requireSimulationController().injectMember(request)
+  }
+
+  injectSimulationManagedHuman(request: ImInjectSimulationManagedHumanRequest): Promise<ImInboundMessageView> {
+    return this.requireSimulationController().injectManagedHuman(request)
+  }
+
+  beginStopSimulation(instanceId: ImSimulationInstanceId): Promise<ImSimulationInstanceView> {
+    return this.requireSimulationController().beginStop(instanceId)
+  }
+
+  beginStopSimulationForSession(sessionId: SessionId): Promise<ImSimulationInstanceView> {
+    const scope = this.scopeForSession(sessionId)
+    if (scope === undefined) throw new ImRuntimeError('IM_SIMULATION_SESSION_INVALID', `Session '${sessionId}' is not bound to a simulation instance`)
+    return this.beginStopSimulation(scope.instanceId)
+  }
+
+  waitSimulationStopped(instanceId: ImSimulationInstanceId): Promise<ImSimulationInstanceView> {
+    return this.requireSimulationController().waitStopped(instanceId)
+  }
+
   subscribeDelivery(listener: (change: ImDeliveryChange) => void): () => void {
     return this.ctx.on('imRuntime/delivery-changed', listener)
   }
@@ -652,11 +720,7 @@ export class ImRuntime extends Service implements ImRuntimeService {
       if (request.observedCursor !== null || request.nextCursor !== null) {
         throw new ImRuntimeError('IM_DELIVERY_SCOPE_INVALID', 'simulation input cannot carry a provider cursor')
       }
-      const resolved = this.resolveRoute(request.scope.accountId, request.scope.conversationKind, request.scope.conversationId)
-      const target = resolved.state === 'matched' ? this.simulationTargetTable().get(resolved.route.workspaceId)?.target : undefined
-      if (resolved.state !== 'matched' || target === undefined || target.accountId !== request.scope.accountId || target.routeId !== resolved.route.id) {
-        throw new ImRuntimeError('IM_DELIVERY_SCOPE_INVALID', 'simulation input must use an enabled configured simulation target')
-      }
+      if (!this.isSimulationScopeRunning(request.scope)) throw new ImRuntimeError('IM_DELIVERY_SCOPE_INVALID', 'simulation input must use its running frozen instance scope')
     }
     return this.deliveryStore().ingestInboundPage(request)
   }
@@ -761,11 +825,17 @@ export class ImRuntime extends Service implements ImRuntimeService {
   }
 
   registerOutbound(request: ImRegisterOutboundRequest): Promise<ImOutboundView> {
+    if (request.scope.kind === 'simulation' && this.simulationController !== undefined && !this.isSimulationScopeRunning(request.scope)) {
+      throw new ImRuntimeError('IM_SIMULATION_INSTANCE_NOT_RUNNING', `simulation instance '${request.scope.instanceId}' is not running`)
+    }
     return this.deliveryStore().registerOutbound(request)
   }
 
   /** @param request - scope-fixed automated intent. @param binding - task generation recorded before Agent execution. @returns durable intent or a route-changed rejection. */
   registerAgentOutbound(request: ImRegisterOutboundRequest, binding: ImOutboundRouteBinding): Promise<ImOutboundView> {
+    if (request.scope.kind === 'simulation' && !this.isSimulationScopeRunning(request.scope)) {
+      throw new ImRuntimeError('IM_SIMULATION_INSTANCE_NOT_RUNNING', `simulation instance '${request.scope.instanceId}' is not running`)
+    }
     return this.deliveryStore().registerOutbound(request, binding)
   }
 
@@ -777,8 +847,12 @@ export class ImRuntime extends Service implements ImRuntimeService {
     return this.deliveryStore().settleOutboundAttempt(request)
   }
 
-  settleSimulationOutbound(request: ImSettleSimulationOutboundRequest): Promise<ImOutboundView> {
-    return this.deliveryStore().settleSimulationOutbound(request)
+  async settleSimulationOutbound(request: ImSettleSimulationOutboundRequest): Promise<ImOutboundView> {
+    const outbound = await this.deliveryStore().settleSimulationOutbound(request)
+    if (outbound.intent === 'ai' && this.simulationController !== undefined && this.isSimulationScopeRunning(request.scope)) {
+      await this.simulationController.deliverTestedReply(request.scope, outbound)
+    }
+    return outbound
   }
 
   getOutbound(request: ImGetOutboundRequest): ImOutboundView | undefined {
@@ -822,6 +896,33 @@ export class ImRuntime extends Service implements ImRuntimeService {
       default:
         return assertNever(evidence)
     }
+  }
+
+  /** @param workspaceId - simulated-user Workspace. @returns its current target setting. */
+  simulationTargetForWorkspace(workspaceId: WorkspaceId): ImSimulationTargetView | undefined {
+    return this.simulationTargetTable().get(workspaceId)?.target
+  }
+
+  /** @param target - current workspace target setting. @returns its exact route when still present. */
+  routeForSimulationTarget(target: ImSimulationTargetView): ImRouteView | undefined {
+    return this.accountTable().get(target.accountId)?.routes[target.routeId]
+  }
+
+  /** @param target - current workspace target setting. @returns its exact safe account when still present. */
+  accountForSimulationTarget(target: ImSimulationTargetView): ImAccountView | undefined {
+    const aggregate = this.accountTable().get(target.accountId)
+    return aggregate === undefined ? undefined : accountView(aggregate.account, aggregate.routes, this.listenerStates.get(target.accountId))
+  }
+
+  /** @param scope - claimed frozen simulation scope. @returns whether its exact instance accepts delivery. */
+  isSimulationScopeRunning(scope: ImSimulationDeliveryScope): boolean {
+    const instance = this.simulationInstanceTable().get(scope.instanceId)
+    return instance?.status === 'running' && encodeImScopeId(this.simulationScope(instance)) === encodeImScopeId(scope)
+  }
+
+  /** Emit a post-commit instance notification for BFF followers. @param instanceId - changed instance. */
+  publishSimulationInstanceChange(instanceId: ImSimulationInstanceId): void {
+    this.publish({ kind: 'simulation-instance', instanceId })
   }
 
   private async prepareVerifiedAccount(request: ImAccountSetupRequest, signal: AbortSignal): Promise<ImPreparedAccount> {
@@ -922,6 +1023,24 @@ export class ImRuntime extends Service implements ImRuntimeService {
   private simulationTargetTable(): KvTable<WorkspaceId, ImSimulationTargetAggregate> {
     if (this.simulationTargets === undefined) throw new Error('IM runtime domain is not ready')
     return this.simulationTargets
+  }
+
+  private simulationInstanceTable(): KvTable<ImSimulationInstanceId, ImSimulationInstanceView> {
+    if (this.simulationInstances === undefined) throw new Error('IM runtime domain is not ready')
+    return this.simulationInstances
+  }
+
+  private requireSimulationController(): ImSimulationController {
+    if (this.simulationController === undefined) throw new Error('IM simulation requires Agent, Session, preset, tools, and Workspace services')
+    return this.simulationController
+  }
+
+  private simulationScope(instance: ImSimulationInstanceView): ImSimulationDeliveryScope {
+    return {
+      kind: 'simulation', instanceId: instance.instanceId,
+      platform: instance.target.platform, accountId: instance.target.accountId,
+      conversationKind: instance.target.conversationKind, conversationId: instance.target.conversationId,
+    }
   }
 
   private deliveryStore(): ImDeliveryStore {
@@ -1043,6 +1162,7 @@ export class ImRuntime extends Service implements ImRuntimeService {
         if (aggregate.scope.accountId === change.accountId) this.coordinator?.notify(aggregate.scope)
       }
     }
+    if (change.kind === 'simulation-target' || change.kind === 'simulation-instance') this.simulationController?.refreshAllTools()
   }
 
   private publishDelivery(change: Omit<ImDeliveryChange, 'sequence'>): void {

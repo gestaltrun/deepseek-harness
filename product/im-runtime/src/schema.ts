@@ -1,6 +1,7 @@
 /** Durable StorageDomain records for IM configuration. */
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { parseCredentialKey } from '@deepseek-ai/dsh-credentials'
+import { SessionId } from '@deepseek-ai/dsh-session'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import { WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import { z, type ZodType } from 'zod'
@@ -16,6 +17,8 @@ import type {
   ImRouteView,
   ImSimulationTargetMutationResult,
   ImSimulationTargetView,
+  ImSimulationInstanceId,
+  ImSimulationInstanceView,
 } from './types.ts'
 
 const accountId = z.string().min(1).transform(value => brandString<ImAccountId>(value))
@@ -24,6 +27,7 @@ const operationId = z.string().min(1).transform(value => brandString<ImOperation
 const revision = z.string().min(1).transform(value => brandString<ImRevision>(value))
 const workspaceId = z.string().min(1).transform(WorkspaceId)
 const timestamp = z.iso.datetime()
+const simulationInstanceId = z.string().min(1).transform(value => brandString<ImSimulationInstanceId>(value))
 
 const authorization = z.discriminatedUnion('state', [
   z.object({ state: z.literal('unchecked') }),
@@ -162,6 +166,44 @@ export const imSimulationTargetAggregateSchema = z.object({
   operations: z.record(z.string(), z.object({ fingerprint: z.string(), result: simulationTargetResult })),
 }) as ZodType<ImSimulationTargetAggregate>
 
+/** Parser for one durable two-Session simulation lifecycle. */
+export const imSimulationInstanceSchema = z.object({
+  instanceId: simulationInstanceId,
+  status: z.enum(['creating', 'running', 'stopping', 'stopped', 'failed']),
+  simUserSessionId: z.string().min(1).transform(SessionId),
+  simUserWorkspaceId: workspaceId,
+  testedSessionId: z.string().min(1).transform(SessionId),
+  target: z.object({
+    platform: z.enum(['dingtalk', 'wangwang']),
+    accountId,
+    routeId,
+    routeRevision: revision,
+    accountRevision: revision,
+    conversationKind: z.enum(['direct', 'group']),
+    conversationId: z.string().min(1),
+    workspaceId,
+    agentPreset: z.string().min(1),
+    groupTrigger: groupTrigger.optional(),
+    directRecipient: z.object({
+      providerActorId: z.string().min(1),
+      userId: z.string().min(1).optional(),
+      openDingTalkId: z.string().min(1).optional(),
+    }).optional(),
+  }),
+  speakingMembers: z.array(z.object({ actorId: z.string().min(1), displayName: z.string().min(1).optional() })),
+  createdAt: timestamp,
+  updatedAt: timestamp,
+  stoppedAt: timestamp.optional(),
+  failure: z.object({ code: z.string().min(1), message: z.string().min(1) }).optional(),
+}).superRefine((value, context) => {
+  if ((value.status === 'stopped') !== (value.stoppedAt !== undefined)) {
+    context.addIssue({ code: 'custom', message: 'only stopped simulation instances carry stoppedAt' })
+  }
+  if ((value.status === 'failed') !== (value.failure !== undefined)) {
+    context.addIssue({ code: 'custom', message: 'only failed simulation instances carry failure details' })
+  }
+}) as ZodType<ImSimulationInstanceView>
+
 /** IM configuration storage schema. Cross-account or cross-table transactions are not implied. */
 export const imRuntimeDomainSpec = defineDomain({
   name: 'gestaltrun_im_runtime',
@@ -169,5 +211,6 @@ export const imRuntimeDomainSpec = defineDomain({
   tables: {
     accounts: domainTable<ImAccountId, ImAccountAggregate>(imAccountAggregateSchema),
     simulation_targets: domainTable<import('@deepseek-ai/dsh-workspace').WorkspaceId, ImSimulationTargetAggregate>(imSimulationTargetAggregateSchema),
+    simulation_instances: domainTable<ImSimulationInstanceId, ImSimulationInstanceView>(imSimulationInstanceSchema),
   },
 })

@@ -70,6 +70,11 @@ import type {
   ImSetAccountPausedRequest,
   ImSimulationTargetMutationResult,
   ImSimulationTargetOperationQuery,
+  ImCreateSimulationInstanceRequest,
+  ImInjectSimulationManagedHumanRequest,
+  ImInjectSimulationMemberRequest,
+  ImSimulationInstanceView,
+  ImSimulationSessionScope,
 } from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -77,7 +82,7 @@ declare module '@deepseek-ai/cordis' {
   interface Events {
     /**
      * IM configuration or process listener state changed. The emitted revision is newer than every prior event from this process.
-     * @param change - changed account, route, target, or listener and its process generation revision.
+     * @param change - changed account, route, target, instance, or listener and its process generation revision.
      * @mode emit
      */
     'imRuntime/changed'(change: ImRuntimeChange): void
@@ -141,6 +146,24 @@ export interface ImRuntimeService {
   removeSimulationTarget(request: ImRemoveSimulationTargetRequest): Promise<ImSimulationTargetMutationResult>
   /** @param workspaceId - target-owning workspace. @param operationId - idempotency identifier. @returns stored result or an explicit miss. */
   querySimulationTargetOperation(workspaceId: WorkspaceId, operationId: ImOperationId): ImSimulationTargetOperationQuery
+  /** @returns all durable simulation instances in creation order. */
+  listSimulationInstances(): readonly ImSimulationInstanceView[]
+  /** @param instanceId - Host-minted instance identity. @returns its durable state or absence. */
+  getSimulationInstance(instanceId: import('./delivery-types.ts').ImSimulationInstanceId): ImSimulationInstanceView | undefined
+  /** @param sessionId - either side of a simulation pair. @returns Host-authoritative role, peer, workspace, and delivery scope. */
+  scopeForSession(sessionId: SessionId): ImSimulationSessionScope | undefined
+  /** @param request - live simulated-user Session and optional all-route conversation. @returns durable pair after tested Session flush. */
+  createSimulationInstance(request: ImCreateSimulationInstanceRequest): Promise<ImSimulationInstanceView>
+  /** @param request - allow-listed member identity and text. @returns shared-path durable inbound message. */
+  injectSimulationMember(request: ImInjectSimulationMemberRequest): Promise<ImInboundMessageView>
+  /** @param request - instance and text; Host derives the frozen account actor. @returns shared-path durable inbound message. */
+  injectSimulationManagedHuman(request: ImInjectSimulationManagedHumanRequest): Promise<ImInboundMessageView>
+  /** @param instanceId - instance to close. @returns durable stopping or terminal state without awaiting caller activity. */
+  beginStopSimulation(instanceId: import('./delivery-types.ts').ImSimulationInstanceId): Promise<ImSimulationInstanceView>
+  /** @param sessionId - trusted tool caller Session. @returns its instance's durable stopping or terminal state. */
+  beginStopSimulationForSession(sessionId: SessionId): Promise<ImSimulationInstanceView>
+  /** @param instanceId - already-stopping instance. @returns terminal state after both sides and derived work quiesce. */
+  waitSimulationStopped(instanceId: import('./delivery-types.ts').ImSimulationInstanceId): Promise<ImSimulationInstanceView>
   /** @param listener - post-commit delivery observer. @returns disposer for this subscription. */
   subscribeDelivery(listener: (change: ImDeliveryChange) => void): () => void
   /** @param request - complete real scope, cursor CAS, and provider page. @returns durable page receipt. */
