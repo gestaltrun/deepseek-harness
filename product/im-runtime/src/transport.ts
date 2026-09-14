@@ -1,11 +1,11 @@
 /** Provider-facing IM transport capability registered with the runtime. */
 import type { CredentialRecord } from '@deepseek-ai/dsh-credentials'
-import type { ImAccountIdentity, ImAccountView, ImConversationKind, ImPlatform } from './types.ts'
+import type { ImAccountCandidate, ImAccountIdentity, ImAccountView, ImConversationKind, ImPlatform } from './types.ts'
 
 /** DingTalk employee-profile setup input. */
 export interface ImDingTalkAccountSetupRequest { readonly platform: 'dingtalk'; readonly profile: string; readonly displayName?: string }
 /** Wangwang application credential setup input. Secret fields are write-only. */
-export interface ImWangwangAccountSetupRequest { readonly platform: 'wangwang'; readonly candidateId: string; readonly endpoint: string; readonly accessKeyId: string; readonly accessKeySecret: string; readonly displayName?: string }
+export interface ImWangwangAccountSetupRequest { readonly platform: 'wangwang'; readonly candidateId: string; readonly accessKeyId: string; readonly accessKeySecret: string; readonly displayName?: string }
 /** Account setup union dispatched by platform. */
 export type ImAccountSetupRequest = ImDingTalkAccountSetupRequest | ImWangwangAccountSetupRequest
 
@@ -32,6 +32,8 @@ export interface ImTransportConfirmRequest { readonly account: ImAccountView; re
 /** Complete provider capability registered under one platform. */
 export interface ImTransport {
   readonly platform: ImPlatform
+  /** @param signal - caller lifetime. @returns installed or admitted identities safe for account selection. */
+  listAccountCandidates(signal: AbortSignal): Promise<readonly ImAccountCandidate[]>
   /** @param request - write-only setup input. @param signal - caller lifetime. @returns verified safe facts and credential payload. */
   prepareAccount(request: ImAccountSetupRequest, signal: AbortSignal): Promise<ImPreparedAccount>
   /** @param account - safe configured account. @param cursor - provider cursor. @param signal - caller lifetime. @returns one candidate page. */

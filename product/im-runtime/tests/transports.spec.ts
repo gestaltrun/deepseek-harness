@@ -5,6 +5,7 @@ import { ImTransports, type ImTransport } from '../src/index.ts'
 function transport(platform: ImTransport['platform']): ImTransport {
   return {
     platform,
+    listAccountCandidates: async () => [],
     prepareAccount: async () => ({
       displayName: 'fixture',
       identity: platform === 'dingtalk'
