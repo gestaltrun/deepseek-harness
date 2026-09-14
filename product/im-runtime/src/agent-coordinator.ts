@@ -29,15 +29,29 @@ import { registerImAgentTools } from './tools.ts'
 const MAX_TIMER_DELAY = 2_147_483_647
 
 function timestamp(): string { return new Date().toISOString() }
-function assertNever(value: never): never { throw new Error(`unknown IM sender kind: ${String(value)}`) }
+function assertNever(value: never): never { throw new Error(`unknown IM value: ${String(value)}`) }
+
+function formatContent(content: ImInboundMessageView['content']): string {
+  const quote = content.quote === undefined
+    ? ''
+    : `[quoted${content.quote.senderDisplayName === undefined ? '' : ` from ${content.quote.senderDisplayName}`}: ${content.quote.text}]\n`
+  switch (content.format) {
+    case 'text':
+    case 'markdown': return `${quote}${content.text}`
+    case 'image': return `${quote}[image]${content.text === '' ? '' : ` ${content.text}`}`
+    case 'unsupported': return `${quote}[unsupported message type: ${content.messageType}]${content.text === '' ? '' : ` ${content.text}`}`
+    default: return assertNever(content)
+  }
+}
 
 function formatInbound(message: ImInboundMessageView): string {
+  const content = formatContent(message.content)
   switch (message.sender.kind) {
-    case 'external': return message.sender.senderDisplayName === undefined ? message.content.text : `[${message.sender.senderDisplayName}]: ${message.content.text}`
-    case 'human-native': return `[human-native]: ${message.content.text}`
-    case 'human-dsh': return `[human-dsh]: ${message.content.text}`
-    case 'unknown': return `[unknown-sender]: ${message.content.text}`
-    case 'ai': return message.content.text
+    case 'external': return message.sender.senderDisplayName === undefined ? content : `[${message.sender.senderDisplayName}]: ${content}`
+    case 'human-native': return `[human-native]: ${content}`
+    case 'human-dsh': return `[human-dsh]: ${content}`
+    case 'unknown': return `[unknown-sender]: ${content}`
+    case 'ai': return content
     default: return assertNever(message.sender)
   }
 }

@@ -212,8 +212,7 @@ async function receive(bench: Bench, accountId: ImAccountId, suffix: string, tex
       messages: [{
         externalMessageId: `external-${suffix}`,
         senderEvidence: { kind: 'external-actor', senderId: 'buyer-1', senderDisplayName: 'Buyer', openDingTalkId: `open-${suffix}` },
-        text,
-        format: 'text',
+        content: { text, format: 'text' },
         occurredAt: '2026-09-14T01:00:00.000Z',
       }],
     }],
@@ -238,11 +237,11 @@ async function receiveGroup(
       operationId: deliveryOperation(`conversation-${suffix}`),
       conversationKind: 'group',
       conversationId: 'group-1',
+      presentation: { displayName: 'Support group', memberCount: 12 },
       messages: messages.map(message => ({
         externalMessageId: message.externalMessageId,
         senderEvidence: { kind: 'external-actor', senderId: 'buyer-1', senderDisplayName: 'Buyer' },
-        text: message.externalMessageId,
-        format: 'text',
+        content: { text: message.externalMessageId, format: 'text' },
         occurredAt: '2026-09-14T01:00:00.000Z',
         ...(message.mentionedConfiguredAccount === undefined ? {} : { mentionedConfiguredAccount: message.mentionedConfiguredAccount }),
       })),
@@ -292,6 +291,226 @@ describe('IM Agent coordinator', () => {
       conversationId: 'buyer-1',
       directRecipient: { providerActorId: 'buyer-1', openDingTalkId: 'open-first' },
     }])
+  })
+
+  it('projects quote, image, and unsupported presentation through the logged Agent input', async () => {
+    const adapter = new RecordingAdapter(['complete'])
+    const bench = await boot(adapter)
+    const configured = await configure(bench, join(bench.root, 'presentation-workspace'))
+    const sink = bench.sink()
+    if (sink === undefined) throw new Error('fixture listener is not ready')
+    await sink.receivePage({
+      operationId: deliveryOperation('provider-presentation'),
+      owner: { platform: 'wangwang', accountId: configured.accountId, streamId: 'merchant-inbox' },
+      observedCursor: null, nextCursor: 'presentation-cursor',
+      conversations: [{
+        operationId: deliveryOperation('conversation-presentation'), conversationKind: 'direct', conversationId: 'buyer-1',
+        messages: [
+          {
+            externalMessageId: 'quote', senderEvidence: { kind: 'external-actor', senderId: 'buyer-1' },
+            content: { text: 'current', format: 'text', quote: { text: 'earlier', senderDisplayName: 'Buyer' } },
+            occurredAt: '2026-09-14T01:00:00.000Z',
+          },
+          {
+            externalMessageId: 'image', senderEvidence: { kind: 'external-actor', senderId: 'buyer-1' },
+            content: { text: '', format: 'image' }, occurredAt: '2026-09-14T01:01:00.000Z',
+          },
+          {
+            externalMessageId: 'voice', senderEvidence: { kind: 'provider-unknown' },
+            content: { text: '', format: 'unsupported', messageType: 'voice-note', details: { durationMs: 1200 } },
+            occurredAt: '2026-09-14T01:02:00.000Z',
+          },
+        ],
+      }],
+    })
+    await expect.poll(() => bench.ctx.imRuntime.getConversationCursor(configured.scope).pendingCount).toBe(0)
+    const modelInput = JSON.stringify(adapter.requests[0]?.messages)
+    expect(modelInput).toContain('[quoted from Buyer: earlier]\\ncurrent')
+    expect(modelInput).toContain('[image]')
+    expect(modelInput).toContain('[unsupported message type: voice-note]')
+  })
+
+  it('binds paused-account manual sends to one durable real Session and requires explicit retry', async () => {
+    const adapter = new RecordingAdapter(['complete', 'complete'])
+    const first = await boot(adapter)
+    const configured = await configure(first, join(first.root, 'manual-workspace-a'))
+    await receive(first, configured.accountId, 'manual-first')
+    await expect.poll(() => first.ctx.imRuntime.getConversationCursor(configured.scope).pendingCount).toBe(0)
+    const firstTask = first.ctx.imRuntime.getAgentTask(configured.scope)
+    if (firstTask === undefined) throw new Error('first real IM task missing')
+
+    const secondWorkspacePath = join(first.root, 'manual-workspace-b')
+    await mkdir(secondWorkspacePath)
+    const secondWorkspace = await first.ctx.workspaceRegistry.create(secondWorkspacePath)
+    const rebound = await first.ctx.imRuntime.rebindRoute({
+      operationId: operation('manual-rebind'), accountId: configured.accountId, routeId: configured.route.id,
+      observedRevision: configured.route.revision, observedWorkspaceId: configured.route.workspaceId,
+      workspaceId: secondWorkspace.id,
+    })
+    if (rebound.route === undefined) throw new Error('rebound route missing')
+    await first.ctx.imRuntime.ingestInboundPage({
+      operationId: deliveryOperation('manual-second-generation'), scope: configured.scope,
+      observedCursor: first.ctx.imRuntime.getConversationCursor(configured.scope).platformCursor,
+      nextCursor: first.ctx.imRuntime.getConversationCursor(configured.scope).platformCursor,
+      messages: [{
+        externalMessageId: 'manual-second-generation', sender: { kind: 'external', senderId: 'buyer-1' },
+        content: { text: 'new generation', format: 'text' }, occurredAt: '2026-09-14T02:00:00.000Z',
+      }],
+    })
+    await expect.poll(() => first.ctx.imRuntime.getAgentTask(configured.scope)?.generation).toBe(2)
+    await expect.poll(() => first.ctx.imRuntime.getConversationCursor(configured.scope).pendingCount).toBe(0)
+    const secondTask = first.ctx.imRuntime.getAgentTask(configured.scope)
+    if (secondTask === undefined) throw new Error('second real IM task missing')
+    const firstBinding = first.ctx.imRuntime.realScopeForSession(firstTask.sessionId)
+    if (firstBinding === undefined) throw new Error('first real Session binding missing')
+    expect(firstBinding).toMatchObject({ workspaceId: configured.route.workspaceId, routeRevision: configured.route.revision })
+    expect(first.ctx.imRuntime.realScopeForSession(secondTask.sessionId)).toMatchObject({
+      workspaceId: secondWorkspace.id, routeRevision: rebound.route.revision,
+    })
+    expect(first.ctx.imRuntime.realScopeForSession(SessionId('not-an-im-session'))).toBeUndefined()
+
+    const account = first.ctx.imRuntime.snapshot().accounts.find(value => value.id === configured.accountId)
+    if (account === undefined) throw new Error('manual account missing')
+    await first.ctx.imRuntime.setAccountPaused({
+      operationId: operation('manual-pause'), accountId: account.id, observedRevision: account.revision, paused: true,
+    })
+    const transport = first.ctx.imRuntime.transports.require('wangwang')
+    const send = vi.fn()
+      .mockResolvedValueOnce({ state: 'unknown', externalMessageId: 'provider-maybe' })
+      .mockResolvedValueOnce({ state: 'unknown', externalMessageId: 'provider-confirming' })
+      .mockResolvedValueOnce({ state: 'sent', externalMessageId: 'provider-retry', rawStatus: 'delivered' })
+    const confirm = vi.fn()
+      .mockResolvedValueOnce({ state: 'unknown', externalMessageId: 'provider-maybe' })
+      .mockResolvedValueOnce({ state: 'sent', externalMessageId: 'provider-confirmed', rawStatus: 'delivered' })
+    transport.send = send
+    transport.confirm = confirm
+    const requestId = brandString<ImOutboundRequestId>('manual-request')
+    const uncertain = await first.ctx.imRuntime.sendManualMessage({
+      sessionId: firstTask.sessionId, requestId, text: 'send while AI is paused',
+    })
+    expect(uncertain).toMatchObject({
+      binding: {
+        sessionId: firstTask.sessionId, workspaceId: configured.route.workspaceId,
+        accountState: { paused: true, manualSend: { state: 'available' }, listener: { state: 'stopped', reason: 'account-paused' } },
+        sync: { lastSyncedAt: expect.any(String) },
+      },
+      sender: { kind: 'human-dsh', outboundRequestId: requestId, providerActorId: 'merchant-1' },
+      outbound: { status: 'result-unknown', manualBinding: { sessionId: firstTask.sessionId, taskId: firstTask.taskId } },
+    })
+    await expect(first.ctx.imRuntime.sendManualMessage({ sessionId: firstTask.sessionId, requestId, text: 'send while AI is paused' }))
+      .resolves.toEqual(uncertain)
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(first.ctx.imRuntime.queryManualMessage({ sessionId: firstTask.sessionId, requestId })).toMatchObject({
+      state: 'known', result: { outbound: { status: 'result-unknown' } },
+    })
+    expect(confirm).not.toHaveBeenCalled()
+    await expect(first.ctx.imRuntime.confirmManualMessage({ sessionId: firstTask.sessionId, requestId }))
+      .resolves.toMatchObject({ outbound: { status: 'result-unknown' } })
+    expect(confirm).toHaveBeenCalledTimes(1)
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(() => first.ctx.imRuntime.queryManualMessage({ sessionId: secondTask.sessionId, requestId }))
+      .toThrowError(expect.objectContaining({ code: 'IM_MANUAL_MESSAGE_INVALID' }))
+
+    const confirmedRequestId = brandString<ImOutboundRequestId>('manual-confirmed')
+    await expect(first.ctx.imRuntime.sendManualMessage({
+      sessionId: firstTask.sessionId, requestId: confirmedRequestId, text: 'confirm this delivery',
+    })).resolves.toMatchObject({ outbound: { status: 'result-unknown', externalMessageId: 'provider-confirming' } })
+    const confirmed = await first.ctx.imRuntime.confirmManualMessage({ sessionId: firstTask.sessionId, requestId: confirmedRequestId })
+    expect(confirmed).toMatchObject({ outbound: { status: 'sent', externalMessageId: 'provider-confirmed' } })
+    await expect(first.ctx.imRuntime.confirmManualMessage({ sessionId: firstTask.sessionId, requestId: confirmedRequestId }))
+      .resolves.toEqual(confirmed)
+    expect(send).toHaveBeenCalledTimes(2)
+    expect(confirm).toHaveBeenCalledTimes(2)
+    expect(first.ctx.imRuntime.classifyInboundSender(configured.scope, { kind: 'configured-echo', externalMessageId: 'provider-confirmed' }))
+      .toEqual({ kind: 'human-dsh', outboundRequestId: confirmedRequestId, providerActorId: 'merchant-1' })
+
+    await expect(first.ctx.imRuntime.retryManualMessage({
+      sessionId: secondTask.sessionId,
+      requestId: brandString<ImOutboundRequestId>('wrong-session-retry'), retryOfRequestId: requestId,
+    })).rejects.toMatchObject({ code: 'IM_MANUAL_RETRY_INVALID' })
+    const aiRequestId = brandString<ImOutboundRequestId>('manual-nonhuman-prior')
+    await first.ctx.imRuntime.registerOutbound({
+      requestId: aiRequestId, scope: configured.scope, intent: 'ai', content: { text: 'AI', format: 'text' },
+    })
+    expect(first.ctx.imRuntime.getOutbound({ scope: configured.scope, requestId: aiRequestId }))
+      .toMatchObject({ status: 'pre-send-failed', preSendFailureReason: 'account-paused' })
+    await expect(first.ctx.imRuntime.retryManualMessage({
+      sessionId: firstTask.sessionId,
+      requestId: brandString<ImOutboundRequestId>('nonhuman-retry'), retryOfRequestId: aiRequestId,
+    })).rejects.toMatchObject({ code: 'IM_MANUAL_RETRY_INVALID' })
+
+    const retryId = brandString<ImOutboundRequestId>('manual-explicit-retry')
+    const retried = await first.ctx.imRuntime.retryManualMessage({
+      sessionId: firstTask.sessionId, requestId: retryId, retryOfRequestId: requestId,
+    })
+    expect(retried).toMatchObject({
+      sender: { kind: 'human-dsh', outboundRequestId: retryId, providerActorId: 'merchant-1' },
+      outbound: { status: 'sent', retryOfRequestId: requestId, manualBinding: { sessionId: firstTask.sessionId } },
+    })
+    expect(send).toHaveBeenCalledTimes(3)
+    await expect(first.ctx.imRuntime.retryManualMessage({
+      sessionId: firstTask.sessionId, requestId: retryId, retryOfRequestId: requestId,
+    })).resolves.toEqual(retried)
+    await expect(first.ctx.imRuntime.confirmManualMessage({ sessionId: firstTask.sessionId, requestId: retryId }))
+      .resolves.toEqual(retried)
+    expect(send).toHaveBeenCalledTimes(3)
+    expect(confirm).toHaveBeenCalledTimes(2)
+    expect(first.ctx.imRuntime.classifyInboundSender(configured.scope, { kind: 'configured-echo', externalMessageId: 'provider-retry' }))
+      .toEqual({ kind: 'human-dsh', outboundRequestId: retryId, providerActorId: 'merchant-1' })
+
+    await first.ctx.fiber.dispose()
+    contexts.splice(contexts.indexOf(first.ctx), 1)
+    const second = await boot(new RecordingAdapter([]), first.root)
+    expect(second.ctx.imRuntime.realScopeForSession(firstTask.sessionId)).toMatchObject({
+      scope: firstBinding.scope, taskId: firstBinding.taskId, workspaceId: firstBinding.workspaceId,
+      destination: firstBinding.destination, sync: firstBinding.sync,
+      accountState: { paused: true, manualSend: { state: 'available' }, listener: { state: 'stopped', reason: 'account-paused' } },
+    })
+    expect(second.ctx.imRuntime.queryManualMessage({ sessionId: firstTask.sessionId, requestId: retryId }))
+      .toMatchObject({ state: 'known', result: { outbound: { status: 'sent', retryOfRequestId: requestId } } })
+    const pendingRequestId = brandString<ImOutboundRequestId>('manual-pending-before-rpc-response')
+    await second.ctx.imRuntime.registerOutbound({
+      scope: firstBinding.scope, requestId: pendingRequestId, intent: 'human-manual',
+      content: { text: 'resume the durable pending request', format: 'text' },
+      sender: { kind: 'human-dsh', outboundRequestId: pendingRequestId, providerActorId: 'merchant-1' },
+      manualBinding: { sessionId: firstTask.sessionId, taskId: firstTask.taskId },
+    })
+    await expect(second.ctx.imRuntime.sendManualMessage({
+      sessionId: firstTask.sessionId, requestId: pendingRequestId, text: 'resume the durable pending request',
+    })).resolves.toMatchObject({ outbound: { status: 'result-unknown' } })
+    expect(second.sent()).toHaveLength(1)
+    const restartedAccount = second.ctx.imRuntime.snapshot().accounts.find(value => value.id === configured.accountId)
+    if (restartedAccount === undefined) throw new Error('restarted manual account missing')
+    const disconnected = await second.ctx.imRuntime.disconnectAccount({
+      operationId: operation('manual-disconnect'), accountId: restartedAccount.id, observedRevision: restartedAccount.revision,
+    })
+    expect(second.ctx.imRuntime.realScopeForSession(firstTask.sessionId)).toMatchObject({
+      accountState: { connectionIntent: 'disconnected', manualSend: { state: 'unavailable', reason: 'disconnected' } },
+    })
+    await expect(second.ctx.imRuntime.sendManualMessage({
+      sessionId: firstTask.sessionId,
+      requestId: brandString<ImOutboundRequestId>('manual-while-disconnected'),
+      text: 'must not leave the Host',
+    })).rejects.toMatchObject({ code: 'IM_MANUAL_ACCOUNT_UNAVAILABLE' })
+    expect(second.sent()).toHaveLength(1)
+    const reconnected = await second.ctx.imRuntime.reconnectAccount({
+      operationId: operation('manual-reconnect'), accountId: disconnected.account.id, observedRevision: disconnected.account.revision,
+    })
+    second.ctx.imRuntime.transports.require('wangwang').refreshAccount = async () => ({
+      authorization: { state: 'required', reason: 'revoked' },
+    })
+    await second.ctx.imRuntime.refreshAccount({
+      operationId: operation('manual-revoked'), accountId: reconnected.account.id, observedRevision: reconnected.account.revision,
+    })
+    expect(second.ctx.imRuntime.realScopeForSession(firstTask.sessionId)).toMatchObject({
+      accountState: { manualSend: { state: 'unavailable', reason: 'authorization-required' } },
+    })
+    await expect(second.ctx.imRuntime.sendManualMessage({
+      sessionId: firstTask.sessionId,
+      requestId: brandString<ImOutboundRequestId>('manual-with-revoked-auth'),
+      text: 'must not leave the Host either',
+    })).rejects.toMatchObject({ code: 'IM_MANUAL_ACCOUNT_UNAVAILABLE' })
+    expect(second.sent()).toHaveLength(1)
   })
 
   it('keeps an in-flight task on its workspace and admits a post-rebind message into a new generation', async () => {
@@ -383,6 +602,11 @@ describe('IM Agent coordinator', () => {
     await expect.poll(() => bench.ctx.imRuntime.getConversationCursor(scope).pendingCount).toBe(0)
     const firstTask = bench.ctx.imRuntime.getAgentTask(scope)
     if (firstTask === undefined) throw new Error('group Agent task was not created')
+    expect(bench.ctx.imRuntime.realScopeForSession(firstTask.sessionId)).toMatchObject({
+      destination: { conversationKind: 'group', conversationId: 'group-1', displayName: 'Support group', memberCount: 12 },
+      accountState: { manualSend: { state: 'available' }, connectionIntent: 'connected', listener: { state: 'running' } },
+      sync: { lastSyncedAt: expect.any(String), platformCursor: null },
+    })
     const firstAgent = bench.ctx.agents.get(firstTask.sessionId)
     const firstSource = firstAgent?.session.snapshotEvents().find(event => event.type === 'user/message')
     expect(firstSource?.type === 'user/message' ? firstSource.data.source : undefined)
@@ -404,6 +628,13 @@ describe('IM Agent coordinator', () => {
     const finalSources = firstAgent?.session.snapshotEvents().filter(event => event.type === 'user/message') ?? []
     expect(finalSources.at(-1)?.type === 'user/message' ? finalSources.at(-1)?.data.source : undefined)
       .toMatchObject({ admission: { triggerReasons: ['fixed-interval'] } })
+    await bench.ctx.fiber.dispose()
+    contexts.splice(contexts.indexOf(bench.ctx), 1)
+    const restarted = await boot(new RecordingAdapter([]), bench.root)
+    expect(restarted.ctx.imRuntime.realScopeForSession(firstTask.sessionId)).toMatchObject({
+      destination: { displayName: 'Support group', memberCount: 12 },
+      sync: { lastSyncedAt: expect.any(String) },
+    })
   })
 
   it('creates a persisted pair and routes isolated input and replies through the shared delivery path', async () => {
@@ -435,14 +666,27 @@ describe('IM Agent coordinator', () => {
     expect(bench.ctx.imRuntime.scopeForSession(simUser.handle.agent.id)).toMatchObject({
       role: 'sim-user', peerSessionId: instance.testedSessionId, workspaceId: simUser.workspace.id,
     })
+    expect(bench.ctx.tools.schemas(simUser.handle.agent).map(schema => schema.name).filter(name => name.startsWith('im_sim_')).sort())
+      .toEqual(['im_sim_send_as_managed_human', 'im_sim_send_as_member', 'im_sim_stop'])
+    const tested = bench.ctx.agents.get(instance.testedSessionId)
+    if (tested === undefined) throw new Error('tested Agent was not created')
+    expect(bench.ctx.tools.schemas(tested).map(schema => schema.name).filter(name => name.startsWith('im_sim_'))).toEqual([])
+    await expect(bench.ctx.imRuntime.beginStopSimulationForSession(instance.testedSessionId))
+      .rejects.toMatchObject({ code: 'IM_SIMULATION_SESSION_INVALID' })
 
-    await bench.ctx.imRuntime.importJsonlHistory({
-      operationId: deliveryOperation('simulation-history'), scope,
+    const imported = await bench.ctx.imRuntime.importSimulationHistory({
+      instanceId: instance.instanceId, operationId: deliveryOperation('simulation-history'),
+      fileName: '/private/operator/history/simulation-history.jsonl',
       jsonl: `${JSON.stringify({
         externalMessageId: 'historical-only', sender: { kind: 'external', senderId: 'historic-buyer' },
         content: { text: 'historical context', format: 'text' }, occurredAt: '2026-09-14T00:00:00.000Z',
       })}\n`,
     })
+    expect(imported).toMatchObject({
+      source: { fileName: 'simulation-history.jsonl', messageCount: 1, importedCount: 1, duplicateCount: 0 },
+      instance: { historyImports: [{ fileName: 'simulation-history.jsonl', messageCount: 1 }] },
+    })
+    expect(JSON.stringify(imported)).not.toContain('/private/operator/history')
     await new Promise(resolve => setTimeout(resolve, 25))
     expect(adapter.requests).toHaveLength(0)
 
@@ -450,8 +694,6 @@ describe('IM Agent coordinator', () => {
     await expect.poll(() => bench.ctx.imRuntime.getConversationCursor(scope).pendingCount).toBe(0)
     expect(bench.ctx.imRuntime.getAgentTask(scope)).toMatchObject({ sessionId: instance.testedSessionId, scope: { kind: 'simulation', instanceId: instance.instanceId } })
     expect(adapter.requests).toHaveLength(1)
-    const tested = bench.ctx.agents.get(instance.testedSessionId)
-    if (tested === undefined) throw new Error('tested Agent was not created')
     await bench.ctx.tools.execute({
       signal: new AbortController().signal, callId: ToolCallId('simulation-reply'), name: 'im_send_message',
       arguments: { text: 'isolated reply' }, agent: tested,
@@ -512,6 +754,7 @@ describe('IM Agent coordinator', () => {
     expect(bench.ctx.agents.get(first.simUserSessionId)).toBe(firstUser.handle.agent)
     expect(bench.ctx.agents.get(first.testedSessionId)).toBeUndefined()
     expect(bench.ctx.imRuntime.getSimulationInstance(second.instanceId)?.status).toBe('running')
+    expect(bench.ctx.tools.schemas(firstUser.handle.agent).map(schema => schema.name).filter(name => name.startsWith('im_sim_'))).toEqual([])
     await bench.ctx.imRuntime.injectSimulationManagedHuman({ instanceId: second.instanceId, text: 'second still running' })
     await expect.poll(() => adapter.requests.length).toBe(3)
     await expect(bench.ctx.imRuntime.injectSimulationManagedHuman({ instanceId: first.instanceId, text: 'late input' }))

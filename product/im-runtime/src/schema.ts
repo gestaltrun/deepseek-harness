@@ -191,6 +191,13 @@ export const imSimulationInstanceSchema = z.object({
     }).optional(),
   }),
   speakingMembers: z.array(z.object({ actorId: z.string().min(1), displayName: z.string().min(1).optional() })),
+  historyImports: z.array(z.object({
+    operationId: z.string().min(1).transform(value => brandString(value)),
+    fileName: z.string().min(1),
+    messageCount: z.number().int().nonnegative(),
+    importedCount: z.number().int().nonnegative(),
+    duplicateCount: z.number().int().nonnegative(),
+  })).default([]),
   createdAt: timestamp,
   updatedAt: timestamp,
   stoppedAt: timestamp.optional(),

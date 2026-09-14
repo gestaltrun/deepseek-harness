@@ -3,7 +3,7 @@ import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { CredentialKey } from '@deepseek-ai/dsh-credentials/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
-import type { ImSimulationDeliveryScope, ImSimulationInstanceId } from './delivery-types.ts'
+import type { ImDeliveryOperationId, ImSimulationDeliveryScope, ImSimulationInstanceId } from './delivery-types.ts'
 
 export type * from './delivery-types.ts'
 
@@ -296,10 +296,34 @@ export interface ImSimulationInstanceView {
   readonly testedSessionId: SessionId
   readonly target: ImSimulationFrozenTarget
   readonly speakingMembers: readonly ImSimulationParticipant[]
+  readonly historyImports: readonly ImSimulationHistoryImport[]
   readonly createdAt: string
   readonly updatedAt: string
   readonly stoppedAt?: string
   readonly failure?: { readonly code: string; readonly message: string }
+}
+
+/** Durable display facts for one query-only simulation history import. */
+export interface ImSimulationHistoryImport {
+  readonly operationId: ImDeliveryOperationId
+  readonly fileName: string
+  readonly messageCount: number
+  readonly importedCount: number
+  readonly duplicateCount: number
+}
+
+/** Scope-free local history import; the Host derives the frozen instance scope. */
+export interface ImImportSimulationHistoryRequest {
+  readonly instanceId: ImSimulationInstanceId
+  readonly operationId: ImDeliveryOperationId
+  readonly fileName: string
+  readonly jsonl: string
+}
+
+/** Updated instance and exact durable receipt for one local history import. */
+export interface ImImportSimulationHistoryResult {
+  readonly source: ImSimulationHistoryImport
+  readonly instance: ImSimulationInstanceView
 }
 
 /** Create a simulation from one live, workspace-owned simulated-user Session. */

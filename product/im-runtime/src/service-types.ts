@@ -24,6 +24,9 @@ import type {
   ImIngestInboundPageRequest,
   ImMarkSubmittedRequest,
   ImMarkSubmittedResult,
+  ImManualMessageQuery,
+  ImManualMessageQueryRequest,
+  ImManualMessageResult,
   ImMessageId,
   ImMessageSource,
   ImOutboundPage,
@@ -35,7 +38,10 @@ import type {
   ImProviderCursorOwner,
   ImProviderCursorView,
   ImRealDeliveryScope,
+  ImRealSessionBinding,
   ImRegisterOutboundRequest,
+  ImRetryManualMessageRequest,
+  ImSendManualMessageRequest,
   ImSettleOutboundAttemptRequest,
   ImSettleSimulationOutboundRequest,
   ImSessionReconciliationResult,
@@ -73,6 +79,8 @@ import type {
   ImCreateSimulationInstanceRequest,
   ImInjectSimulationManagedHumanRequest,
   ImInjectSimulationMemberRequest,
+  ImImportSimulationHistoryRequest,
+  ImImportSimulationHistoryResult,
   ImSimulationInstanceView,
   ImSimulationSessionScope,
 } from './types.ts'
@@ -146,6 +154,16 @@ export interface ImRuntimeService {
   removeSimulationTarget(request: ImRemoveSimulationTargetRequest): Promise<ImSimulationTargetMutationResult>
   /** @param workspaceId - target-owning workspace. @param operationId - idempotency identifier. @returns stored result or an explicit miss. */
   querySimulationTargetOperation(workspaceId: WorkspaceId, operationId: ImOperationId): ImSimulationTargetOperationQuery
+  /** @param sessionId - durable real IM task Session. @returns its frozen target plus current safe account, listener, presentation, and sync facts. */
+  realScopeForSession(sessionId: SessionId): ImRealSessionBinding | undefined
+  /** @param request - Session-bound stable request and text. @param signal - caller lifetime. @returns durable manual delivery and identity facts when the account is available. */
+  sendManualMessage(request: ImSendManualMessageRequest, signal?: AbortSignal): Promise<ImManualMessageResult>
+  /** @param request - Session-bound stable request identity. @returns durable result without provider activity. */
+  queryManualMessage(request: ImManualMessageQueryRequest): ImManualMessageQuery
+  /** @param request - Session-bound uncertain request. @param signal - caller lifetime. @returns provider-confirmed or still-unknown result without sending. */
+  confirmManualMessage(request: ImManualMessageQueryRequest, signal?: AbortSignal): Promise<ImManualMessageResult>
+  /** @param request - new request linked to an uncertain predecessor. @param signal - caller lifetime. @returns explicit retry delivery result. */
+  retryManualMessage(request: ImRetryManualMessageRequest, signal?: AbortSignal): Promise<ImManualMessageResult>
   /** @returns all durable simulation instances in creation order. */
   listSimulationInstances(): readonly ImSimulationInstanceView[]
   /** @param instanceId - Host-minted instance identity. @returns its durable state or absence. */
@@ -164,6 +182,8 @@ export interface ImRuntimeService {
   beginStopSimulationForSession(sessionId: SessionId): Promise<ImSimulationInstanceView>
   /** @param instanceId - already-stopping instance. @returns terminal state after both sides and derived work quiesce. */
   waitSimulationStopped(instanceId: import('./delivery-types.ts').ImSimulationInstanceId): Promise<ImSimulationInstanceView>
+  /** @param request - instance identity, stable operation, display filename, and local JSONL. @returns durable query-only source counts and updated instance. */
+  importSimulationHistory(request: ImImportSimulationHistoryRequest): Promise<ImImportSimulationHistoryResult>
   /** @param listener - post-commit delivery observer. @returns disposer for this subscription. */
   subscribeDelivery(listener: (change: ImDeliveryChange) => void): () => void
   /** @param request - complete real scope, cursor CAS, and provider page. @returns durable page receipt. */

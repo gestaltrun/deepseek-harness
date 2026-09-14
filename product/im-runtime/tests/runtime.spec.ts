@@ -205,14 +205,14 @@ describe('ImRuntime configuration', () => {
           operationId: brandString('buyer-a-page'), conversationKind: 'direct', conversationId: 'buyer-a',
           messages: [{
             externalMessageId: 'message-a', senderEvidence: { kind: 'external-actor', senderId: 'buyer-a' },
-            text: 'hello', format: 'text', occurredAt: '2026-09-14T01:00:00.000Z', mentionedConfiguredAccount: true,
+            content: { text: 'hello', format: 'text' }, occurredAt: '2026-09-14T01:00:00.000Z', mentionedConfiguredAccount: true,
           }],
         },
         {
           operationId: brandString('buyer-b-page'), conversationKind: 'direct', conversationId: 'buyer-b',
           messages: [{
             externalMessageId: 'message-b', senderEvidence: { kind: 'provider-unknown' },
-            text: 'world', format: 'text', occurredAt: '2026-09-14T01:01:00.000Z',
+            content: { text: 'world', format: 'text' }, occurredAt: '2026-09-14T01:01:00.000Z',
           }],
         },
       ],

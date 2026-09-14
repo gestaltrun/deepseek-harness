@@ -132,6 +132,7 @@ export class ImSimulationController {
       const requestId = brandString<ImOutboundRequestId>(`im-simulation-human:${randomUUID()}`)
       await this.runtime.registerOutbound({
         requestId, scope, intent: 'human-manual', content: { text: request.text, format: 'text' },
+        sender: { kind: 'human-dsh', outboundRequestId: requestId, providerActorId },
       })
       await this.runtime.settleSimulationOutbound({ scope, requestId })
       return this.ingest(instance, {
@@ -229,6 +230,7 @@ export class ImSimulationController {
         ...(route.target.kind !== 'specific' || route.target.directRecipient === undefined ? {} : { directRecipient: route.target.directRecipient }),
       },
       speakingMembers: members,
+      historyImports: [],
       createdAt, updatedAt: createdAt,
     }
     await this.instances.put(id, record)

@@ -84,7 +84,7 @@ export function registerSimulationTools(
       },
     })))
   }
-  if (bound !== undefined && (bound.status === 'running' || bound.status === 'stopping')) {
+  if (bound?.role === 'sim-user' && (bound.status === 'running' || bound.status === 'stopping')) {
     disposers.push(ctx.tools.register(defineTool({
       name: 'im_sim_stop',
       description: 'Begin the terminal stop of this exact simulation instance without waiting for this turn.',

@@ -55,13 +55,14 @@ const simulationScope = z.object({
 
 export const imDeliveryScopeSchema = z.discriminatedUnion('kind', [realScope, simulationScope]) as ZodType<ImDeliveryScope>
 
+const humanDshSender = z.object({ kind: z.literal('human-dsh'), outboundRequestId, providerActorId: z.string().min(1).optional() })
 const sender = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('external'), senderId: z.string().min(1), senderDisplayName: z.string().optional(),
     userId: z.string().min(1).optional(), openDingTalkId: z.string().min(1).optional(),
   }),
   z.object({ kind: z.literal('human-native'), accountId, providerActorId: z.string().min(1) }),
-  z.object({ kind: z.literal('human-dsh'), outboundRequestId, providerActorId: z.string().min(1).optional() }),
+  humanDshSender,
   z.object({ kind: z.literal('ai'), outboundRequestId }),
   z.object({
     kind: z.literal('unknown'),
@@ -70,7 +71,41 @@ const sender = z.discriminatedUnion('kind', [
   }),
 ])
 
-const content = z.object({ text: z.string(), format: z.enum(['text', 'markdown', 'unsupported']) })
+const quote = z.object({
+  text: z.string(), senderDisplayName: z.string().min(1).optional(), externalMessageId: z.string().min(1).optional(),
+})
+const forbiddenDetailKeys = new Set([
+  'accesskey', 'accesskeyid', 'accesskeysecret', 'authorization', 'connectionconfig', 'cookie', 'credential',
+  'credentials', 'header', 'headers', 'password', 'secret', 'token', 'transportconfig',
+])
+function unsafeDetailPath(value: unknown, path: readonly string[] = []): readonly string[] | undefined {
+  if (value === null || typeof value !== 'object') return undefined
+  if (Array.isArray(value)) {
+    for (const [index, entry] of value.entries()) {
+      const unsafe = unsafeDetailPath(entry, [...path, String(index)])
+      if (unsafe !== undefined) return unsafe
+    }
+    return undefined
+  }
+  for (const [key, entry] of Object.entries(value)) {
+    const next = [...path, key]
+    if (forbiddenDetailKeys.has(key.replaceAll('-', '').replaceAll('_', '').toLowerCase())) return next
+    const unsafe = unsafeDetailPath(entry, next)
+    if (unsafe !== undefined) return unsafe
+  }
+  return undefined
+}
+const displaySafeJson = z.json().superRefine((value, context) => {
+  const path = unsafeDetailPath(value)
+  if (path !== undefined) context.addIssue({ code: 'custom', message: 'unsupported-message details contain private transport configuration', path: [...path] })
+})
+const content = z.discriminatedUnion('format', [
+  z.object({ text: z.string(), format: z.enum(['text', 'markdown']), quote: quote.optional() }),
+  z.object({ text: z.string(), format: z.literal('image'), quote: quote.optional() }),
+  z.object({
+    text: z.string(), format: z.literal('unsupported'), messageType: z.string().min(1), details: displaySafeJson, quote: quote.optional(),
+  }),
+])
 
 /** Parser for provider and JSONL inbound records. */
 export const imInboundMessageInputSchema = z.object({
@@ -102,7 +137,12 @@ const cursor = z.object({
   lastReceivedSequenceNumber: z.number().int().nonnegative(),
   lastSubmittedSequenceNumber: z.number().int().nonnegative(),
   pendingCount: z.number().int().nonnegative(),
+  lastSyncedAt: timestamp.optional(),
   updatedAt: timestamp,
+})
+
+const conversationPresentation = z.object({
+  displayName: z.string().min(1).optional(), memberCount: z.number().int().positive().optional(),
 })
 
 const pageResult = z.object({
@@ -120,6 +160,8 @@ const importResult = z.object({
   kind: z.literal('jsonl-import'),
   operationId,
   status: z.literal('applied'),
+  fileName: z.string().min(1),
+  messageCount: z.number().int().nonnegative(),
   importedCount: z.number().int().nonnegative(),
   duplicateCount: z.number().int().nonnegative(),
 })
@@ -146,6 +188,9 @@ const outbound = z.object({
   status: z.enum(['pending', 'dispatching', 'pre-send-failed', 'sent', 'result-unknown', 'confirmed-failed']),
   sequenceNumber: z.number().int().positive(),
   routeBinding: routeBinding.optional(),
+  sender: humanDshSender.optional(),
+  manualBinding: z.object({ sessionId: z.string().min(1).transform(SessionId), taskId: agentTaskId }).optional(),
+  retryOfRequestId: outboundRequestId.optional(),
   preSendFailureReason: z.enum(['account-not-found', 'platform-mismatch', 'account-paused', 'route-disabled', 'route-unmatched', 'route-changed', 'cancelled']).optional(),
   attempt: z.object({ attemptId: outboundAttemptId, startedAt: timestamp }).optional(),
   receipt: receipt.optional(),
@@ -167,6 +212,7 @@ export interface ImDeliveryAggregate {
   readonly nextMessageSequenceNumber: number
   readonly nextOutboundSequenceNumber: number
   readonly cursor: import('./delivery-types.ts').ImConversationCursor
+  readonly presentation?: import('./delivery-types.ts').ImConversationPresentation
   readonly messages: Readonly<Record<string, ImInboundMessageView>>
   readonly messageIdsByExternalId: Readonly<Record<string, ImMessageId>>
   readonly operations: Readonly<Record<string, StoredDeliveryOperation>>
@@ -179,6 +225,7 @@ export const imDeliveryAggregateSchema = z.object({
   nextMessageSequenceNumber: z.number().int().positive(),
   nextOutboundSequenceNumber: z.number().int().positive(),
   cursor,
+  presentation: conversationPresentation.optional(),
   messages: z.record(z.string(), inboundMessage),
   messageIdsByExternalId: z.record(z.string(), messageId),
   operations: z.record(z.string(), z.object({ fingerprint: z.string(), result: z.union([pageResult, importResult]) })),
