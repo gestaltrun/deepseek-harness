@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "adoptedFeatures": {
+    "repository": "gestaltrun/deepseek-harness-gestalt",
+    "commit": "8380c365a987482327131d238ffd849b1083a1e5",
+    "path": "packages/client/ui-im",
+    "unstagedPatchSha256": "fd55b4659b89e22cf9ff81474f33a335ddbba13c1be04b98011c7d023f928a97",
+    "license": "MIT"
+  },
+  "workspaceBrowser": {
+    "repository": "gestaltrun/deepseek-harness",
+    "commit": "8a973c1dd557464b702f19dd90f60d8b6ebcdbe0",
+    "path": "packages/client/ui-workspace",
+    "license": "MIT",
+    "adaptation": "Product-owned workspace settings action and directory-flow declaration; upstream workspace navigation service remains the owner."
+  },
+  "directoryFlows": {
+    "repository": "gestaltrun/deepseek-harness",
+    "commit": "8a973c1dd557464b702f19dd90f60d8b6ebcdbe0",
+    "paths": [
+      "packages/client/ui-directory-picker-native/src/client",
+      "packages/client/ui-directory-picker-browse/src/client"
+    ],
+    "license": "MIT",
+    "adaptation": "Private native and browse flows use a product-owned child slot and the public uiWorkspace directory methods."
+  }
+}

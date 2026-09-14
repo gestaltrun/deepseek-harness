@@ -1,0 +1,24 @@
+/* Inline destructive-action confirmation bar. */
+
+.strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-layer-2);
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.body {
+  flex: 1;
+  min-width: 0;
+}
+
+.danger {
+  color: var(--dsw-alias-state-error-primary);
+  border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 45%, transparent);
+}
