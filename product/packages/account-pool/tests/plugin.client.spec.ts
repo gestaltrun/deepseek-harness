@@ -14,9 +14,9 @@ import * as Stores from '@deepseek-ai/dsh-client-store'
 import * as Slots from '@deepseek-ai/dsh-client-ui-slots'
 import * as Primitives from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ClientBundleRegistration, ClientModuleLoaderTarget, ClientModuleSystem } from '@deepseek-ai/dsh-client-modules/client'
-import type { ClientRemote } from '@deepseek-ai/dsh-api-remotes/client'
-import type { RemoteStream, RemoteStreamOptions } from '@deepseek-ai/dsh-api-gateway/client'
-import type { TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
+import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
+import llmContribution from '@deepseek-ai/dsh-llm/remote'
+import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AccountPoolInjected } from '../src/client/contract.ts'
 import type { AccountPoolSnapshot } from '../src/account-pool.ts'
@@ -27,6 +27,7 @@ const moduleId = '@deepseek-ai/dsh-client-modules'
 const rendererId = '@deepseek-ai/dsh-client-ui-renderer'
 const localeId = '@deepseek-ai/dsh-client-locale'
 const hmrId = '@deepseek-ai/dsh-client-hmr'
+const gatewayId = '@deepseek-ai/dsh-api-gateway'
 const cleanups: Array<() => void | Promise<void>> = []
 afterEach(async () => {
   const failures: unknown[] = []
@@ -59,7 +60,7 @@ function createModules(): ClientModuleSystem {
   const registration = queue.shift()!
   const bootstrap = registration.factory(() => { throw new Error('The bootstrap module requests no platform dependencies') })
   const api = bootstrap as typeof import('@deepseek-ai/dsh-client-modules/client')
-  const ids = [moduleId, rendererId, localeId, hmrId, id]
+  const ids = [moduleId, rendererId, localeId, hmrId, gatewayId, id]
   const rows = ids.map((name, index) => ({ id: name, url: `/client/${index}.js?rev=1`, rev: '1' }))
   const modules = api.createClientModuleSystem(target, { id: moduleId, exports: bootstrap }, {
     boot: { rev: '1', entries: rows, batches: rows.map(row => ({ phase: 'application', url: row.url, rev: '1', entries: [row.id] })) },
@@ -76,7 +77,7 @@ function createModules(): ClientModuleSystem {
     },
   })
   cleanups.push(() => {
-    for (const name of [id, localeId, rendererId, hmrId]) {
+    for (const name of [id, localeId, rendererId, hmrId, gatewayId]) {
       modules.invalidate(name)
       for (const style of document.querySelectorAll(`style[data-plugin="${name}"]`)) style.remove()
     }
@@ -84,52 +85,37 @@ function createModules(): ClientModuleSystem {
   return modules
 }
 
-function provideRemote(ctx: Cordis.Context) {
+async function provideRemote(ctx: Cordis.Context, modules: ClientModuleSystem) {
   const ready: AccountPoolSnapshot = { state: 'ready', accounts: [] }
-  const listeners = new Set<() => void>()
   const stopped = vi.fn()
-  const unmounted = vi.fn()
-  const mount = vi.fn(async (contribution: TypertRemoteContribution) => {
-    expect(contribution.descriptors).toHaveLength(16)
-    expect(contribution.descriptors.every(method => method.result.mode === 'strict')).toBe(true)
-    const dispose = ctx.provide('remote.accountPool', namespace)
-    return async () => { await dispose(); unmounted() }
+  const open = vi.fn<NonNullable<ConnectionHandle['rpc']['open']>>((_channel, endpoint, _payload, signal) => (async function* () {
+    if (endpoint !== 'accountPool/watch') throw new Error(`Unexpected stream ${endpoint}`)
+    try {
+      yield ready
+      await new Promise<void>(resolve => {
+        if (signal.aborted) resolve()
+        else signal.addEventListener('abort', () => { resolve() }, { once: true })
+      })
+    } finally { stopped() }
+  })())
+  const call = vi.fn<ConnectionHandle['rpc']['call']>(async (_channel, endpoint) => {
+    if (endpoint !== 'llm/listProviders') throw new Error(`Unexpected call ${endpoint}`)
+    return { ok: true, value: [] }
   })
-  const namespace = {
-    watch: async function* (signal?: AbortSignal) {
-      try {
-        yield ready
-        await new Promise<void>(resolve => {
-          if (signal?.aborted) resolve()
-          else signal?.addEventListener('abort', () => { resolve() }, { once: true })
-        })
-      } finally { stopped() }
-    },
+  const connection: ConnectionHandle = {
+    isLoopback: true,
+    generation: { getSnapshot: () => undefined, subscribe: () => () => {} },
+    state: { getSnapshot: () => undefined, subscribe: () => () => {} },
+    rpc: { call, open }, reconnect: () => {},
+    registerGenerationSource: () => () => {}, start: () => ({ stop: () => {} }),
   }
-  const remote = {
-    accountPool: namespace,
-    llm: { listProviders: async () => ({ ok: true, value: [] }) },
-    $mount: mount,
-    $on: (_event: string, listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener) } },
-    $stream: <Item,>(options: RemoteStreamOptions<Item>): RemoteStream<Item> => {
-      const abort = new AbortController()
-      let finish!: () => void
-      const closed = new Promise<void>(resolve => { finish = resolve })
-      const iterator = (async function* () {
-        try {
-          for await (const value of options.open(abort.signal)) yield { value, generation: 1, signal: abort.signal, accept: () => {} }
-        } finally { finish() }
-      })()
-      // Remote is the scripted external boundary; Cordis, modules, locale and slots remain real.
-      return {
-        signal: abort.signal, restart: () => {}, [Symbol.asyncIterator]: () => iterator,
-        dispose: async () => { abort.abort(); await closed },
-      } as unknown as RemoteStream<Item>
-    },
-  }
-  ctx.provide('remote', remote as unknown as ClientRemote)
-  ctx.provide('remote.llm', remote.llm)
-  return { mount, listeners, stopped, unmounted }
+  // Only physical Connection is scripted; Gateway creates real traced namespace services.
+  ctx.provide('connection', connection)
+  await ctx.plugin(TypertRegistry).await()
+  const gateway = await modules.import(`${gatewayId}/client`) as typeof import('@deepseek-ai/dsh-api-gateway/client')
+  await ctx.plugin(gateway).await()
+  await ctx.remote.$mount(llmContribution)
+  return { stopped, open, call }
 }
 
 describe('built account-pool Client plugin', () => {
@@ -150,7 +136,7 @@ describe('built account-pool Client plugin', () => {
     await ctx.plugin(renderer.SlotRegistry).await()
     const locale = new locales.LocaleRuntime(ctx)
     ctx.provide('locale', locale)
-    const remote = provideRemote(ctx)
+    const remote = await provideRemote(ctx, modules)
     function Root({ renderSlot }: Slots.PropsRuntime<'root'> & Slots.PropsRenderSlots<'settings.section' | 'settings.models.footer'>) {
       return React.createElement('div', null, renderSlot('settings.section', { close: () => {} }), renderSlot('settings.models.footer', {}))
     }
@@ -172,15 +158,13 @@ describe('built account-pool Client plugin', () => {
     const firstFace = (ctx.slots.entries('settings.section')[0]!.inject as unknown as () => AccountPoolInjected)()
     await vi.waitFor(() => expect(firstFace.hooks.accountPool.getSnapshot()).toEqual({ state: 'ready', accounts: [] }))
     expect(locale.bind('accountPool')('settingsNav')).toBe('Account pool')
-    expect(remote.listeners.size).toBe(1)
+    expect(remote.call).toHaveBeenCalledWith('/api', 'llm/listProviders', { args: {} }, expect.any(AbortSignal))
 
     sources[0]!.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'rebuilt', id, rev: '2' }) }))
-    await vi.waitFor(() => expect(remote.mount).toHaveBeenCalledTimes(2))
+    await vi.waitFor(() => expect(remote.open).toHaveBeenCalledTimes(2))
     await entry.fiber?.await()
     expect(entry.fiber).not.toBe(firstFiber)
     expect(remote.stopped).toHaveBeenCalledTimes(1)
-    expect(remote.unmounted).toHaveBeenCalledTimes(1)
-    expect(remote.listeners.size).toBe(1)
     expect(firstStyles.every(style => !style.isConnected)).toBe(true)
     expect(document.querySelectorAll(`style[data-plugin="${id}"]`)).toHaveLength(firstStyles.length)
     expect(ctx.slots.entries('settings.section').map(item => item.options.id)).toEqual(['account-pool'])
@@ -191,9 +175,7 @@ describe('built account-pool Client plugin', () => {
     expect(ctx.slots.entries('settings.models.footer')).toEqual([])
     expect(ctx.get('remote.accountPool')).toBeUndefined()
     expect(locale.bind('accountPool')('settingsNav')).toBe('settingsNav')
-    expect(remote.listeners.size).toBe(0)
     expect(remote.stopped).toHaveBeenCalledTimes(2)
-    expect(remote.unmounted).toHaveBeenCalledTimes(2)
     await hmrFiber.dispose()
     expect(sources[0]!.closed).toBe(true)
   })

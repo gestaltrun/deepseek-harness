@@ -24,7 +24,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 /** Client services used by the product's own Remote assembly and Settings entries. */
-export const inject = ['slots', 'locale', 'remote', 'remote.llm']
+export const inject = ['remote']
 
 /**
  * Mount the product namespace and feature entries for this Client fiber.
@@ -33,31 +33,26 @@ export const inject = ['slots', 'locale', 'remote', 'remote.llm']
  */
 export async function apply(ctx: Context): Promise<void> {
   const unmount = await ctx.remote.$mount(remoteContribution)
-  let controller: AccountPoolClientController
-  try {
-    controller = new AccountPoolClientController(ctx.remote, { download: downloadAccount, openExternal: openAuthorization })
-  } catch (error) {
-    await unmount()
-    throw error
-  }
-  ctx.effect(() => async () => {
-    try { await controller.dispose() } finally { await unmount() }
-  }, 'account-pool Client lifetime')
-  ctx.effect(() => ctx.locale.register('accountPool', { zh, en }), 'account-pool locale')
-  const t = ctx.locale.bind('accountPool')
-  const view = createAccountPoolViewStore()
-  const injected = (): AccountPoolInjected => ({
-    accountPoolActions: controller.actions,
-    hooks: { accountPool: controller.snapshot, accountPoolDirectory: controller.directory },
-  })
-  ctx.effect(() => ctx.remote.$on('llm/adapters-updated', () => { void controller.refreshDirectory() }), 'account-pool directory updates')
-  ctx.on('connection/reset', () => { void controller.refreshDirectory() })
-  ctx.slots.inject('settings.section', () => ctx.slots.register({
-    name: 'settings.section', id: 'account-pool', order: 12,
-    label: () => t('settingsNav'), locale: 'accountPool', store: view, inject: injected,
-  }, AccountPoolControl))
-  ctx.slots.inject('settings.models.footer', () => ctx.slots.register({
-    name: 'settings.models.footer', id: 'account-pool', order: 20,
-    locale: 'accountPool', inject: injected,
-  }, ModelsFooter))
+  ctx.effect(() => unmount, 'account-pool Remote contribution')
+  await ctx.inject(['slots', 'locale', 'remote', 'remote.llm', 'remote.accountPool'], (inner) => {
+    const controller = new AccountPoolClientController(inner.remote, { download: downloadAccount, openExternal: openAuthorization })
+    inner.effect(() => () => controller.dispose(), 'account-pool Client controller')
+    inner.effect(() => inner.locale.register('accountPool', { zh, en }), 'account-pool locale')
+    const t = inner.locale.bind('accountPool')
+    const view = createAccountPoolViewStore()
+    const injected = (): AccountPoolInjected => ({
+      accountPoolActions: controller.actions,
+      hooks: { accountPool: controller.snapshot, accountPoolDirectory: controller.directory },
+    })
+    inner.effect(() => inner.remote.$on('llm/adapters-updated', () => { void controller.refreshDirectory() }), 'account-pool directory updates')
+    inner.on('connection/reset', () => { void controller.refreshDirectory() })
+    inner.slots.inject('settings.section', () => inner.slots.register({
+      name: 'settings.section', id: 'account-pool', order: 12,
+      label: () => t('settingsNav'), locale: 'accountPool', store: view, inject: injected,
+    }, AccountPoolControl))
+    inner.slots.inject('settings.models.footer', () => inner.slots.register({
+      name: 'settings.models.footer', id: 'account-pool', order: 20,
+      locale: 'accountPool', inject: injected,
+    }, ModelsFooter))
+  }).await()
 }
