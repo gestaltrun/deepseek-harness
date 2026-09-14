@@ -155,6 +155,7 @@ async function main(): Promise<void> {
     region: plan.region,
     secure: true,
     authorizationV4: true,
+    timeout: plan.timeoutMs,
   })
   process.stdout.write(`desktop upload: ${plan.target} ${plan.version} ${phase} -> ${plan.publicUrl}\n`)
   for (const artifact of desktopUploadArtifactsForPhase(plan.artifacts, phase)) {

@@ -15,6 +15,7 @@ function uploadPlan(target: DesktopUploadPlan['target'], version = '1.2.3'): Des
     bucket: 'desktop-releases',
     endpoint: 'https://oss-cn-hangzhou.aliyuncs.com',
     region: 'oss-cn-hangzhou',
+    timeoutMs: 600000,
     artifacts: [{
       path: `/artifacts/${filename}`,
       filename,

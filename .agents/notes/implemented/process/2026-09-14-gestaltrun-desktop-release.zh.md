@@ -4,15 +4,17 @@ Status: implemented
 
 [English](2026-09-14-gestaltrun-desktop-release.md) | 中文
 
+Desktop 版本绑定和 updater 行为遵循 [Electron 打包和更新决策](../architecture/2026-08-25-electron-desktop-packaging-and-updates.zh.md)。
+
 ## Problem
 
 Gestaltrun fork 可以构建完整的 Desktop 与 dsh 单元，但仓库还不能将签名后的各平台产物发布到公开更新源。现有上传路径指向 DeepSeek 基础设施，GitHub 也没有列出 Gestaltrun Desktop 版本。
 
 ## Decision
 
-保留现有 Desktop 版本绑定和 `electron-updater` 交互。手动触发的工作流验证准确的提交和版本，使用现有签名要求打包必选的 macOS arm64 和 macOS x64 目标，并将不含凭据的未发布候选保留为工作流产物，不会将其加入更新频道。Windows x64 仍可明确选择，但缺少硬件签名输入时会失败。
+保留现有 Desktop 版本绑定和 `electron-updater` 交互。手动触发的工作流验证准确的提交和版本，使用现有签名要求打包必选的 macOS arm64 和 macOS x64 目标，并将不含凭据的未发布候选保留为工作流产物，不会将其加入更新频道。Windows x64 仍可明确选择，但缺少硬件签名输入时会失败。运行时物化只从环境包管理器设置中接收通过验证的 pnpm 网络并发数和获取超时；Desktop 继续控制 registry、身份验证、hook 和包管理器状态。
 
-签名候选打包和发布只接受已包含在 `master` 中的提交。发布任务通过本仓库专用 OIDC 角色取得短期阿里云凭据，将不可变安装包和 blockmap 上传到专用 OSS 前缀，并在最后替换各目标的标准 generic feed 元数据。测试部署与生产部署使用不同的公开前缀。生产发布还会创建一个 `gestalt-v<version>` GitHub Release，其中包含 OSS 下载链接，因此 GitHub Releases 是面向用户的版本列表。
+签名候选打包和发布只接受已包含在 `master` 中的提交。发布任务通过本仓库专用 OIDC 角色取得短期阿里云凭据，使用经过验证且可配置的请求超时将不可变安装包和 blockmap 上传到专用 OSS 前缀，并在最后替换各目标的标准 generic feed 元数据。测试部署与生产部署使用不同的公开前缀。生产发布还会创建一个 `gestalt-v<version>` GitHub Release，其中包含 OSS 下载链接，因此 GitHub Releases 是面向用户的版本列表。
 
 DeepSeek Gestalt 使用现有参考图标和应用名称。打包元数据根据应用 ID 生成内部名称，因此 Electron updater cache 不会复用工作区包身份；可见菜单继续使用本地化产品文案。更新协调器、确认对话框、下载流程、Host 停止、安装和重启行为保持不变。
 

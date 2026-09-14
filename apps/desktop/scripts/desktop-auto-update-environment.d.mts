@@ -21,6 +21,7 @@ export interface DesktopUploadConfig extends DesktopAutoUpdateConfig {
   readonly bucket: string
   readonly endpoint: string
   readonly region: string
+  readonly timeoutMs: number
 }
 
 /**

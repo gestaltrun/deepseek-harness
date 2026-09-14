@@ -4,15 +4,17 @@ Status: implemented
 
 English | [中文](2026-09-14-gestaltrun-desktop-release.zh.md)
 
+Desktop version coupling and updater behavior follow the [Electron packaging and update decision](../architecture/2026-08-25-electron-desktop-packaging-and-updates.md).
+
 ## Problem
 
 The Gestaltrun fork builds the complete Desktop and dsh unit but has no repository-owned path from signed target artifacts to the public update feed. The existing upload path targets DeepSeek infrastructure, and GitHub does not list Gestaltrun Desktop versions.
 
 ## Decision
 
-Keep the existing Desktop version coupling and `electron-updater` interaction. A manually dispatched workflow validates an exact commit and version, packages the required macOS arm64 and macOS x64 targets with the existing signing requirements, and retains credential-free unpublished candidates as workflow artifacts without adding them to an update channel. Windows x64 remains explicitly selectable and fails unless its hardware-backed signing inputs are available.
+Keep the existing Desktop version coupling and `electron-updater` interaction. A manually dispatched workflow validates an exact commit and version, packages the required macOS arm64 and macOS x64 targets with the existing signing requirements, and retains credential-free unpublished candidates as workflow artifacts without adding them to an update channel. Windows x64 remains explicitly selectable and fails unless its hardware-backed signing inputs are available. Runtime materialization admits only validated pnpm network concurrency and fetch-timeout controls from ambient package-manager settings; Desktop continues to own the registry, authentication, hooks, and package-manager state.
 
-Signed candidate packaging and publication accept only a commit contained in `master`. Publication obtains short-lived Alibaba Cloud credentials through the repository's dedicated OIDC role, uploads immutable installers and blockmaps to a dedicated OSS prefix, and replaces each target's standard generic-feed metadata last. The test and production deployments use separate public prefixes. A production publication also creates one `gestalt-v<version>` GitHub Release with OSS download links, so GitHub Releases is the human-readable version list.
+Signed candidate packaging and publication accept only a commit contained in `master`. Publication obtains short-lived Alibaba Cloud credentials through the repository's dedicated OIDC role, uploads immutable installers and blockmaps to a dedicated OSS prefix with a validated configurable request timeout, and replaces each target's standard generic-feed metadata last. The test and production deployments use separate public prefixes. A production publication also creates one `gestalt-v<version>` GitHub Release with OSS download links, so GitHub Releases is the human-readable version list.
 
 DeepSeek Gestalt uses its existing reference artwork and application name. Packaged metadata derives its internal name from the application ID, so Electron's updater cache does not share the workspace package identity; visible menus continue to use localized product copy. The update coordinator, confirmation dialog, download flow, Host shutdown, installation, and restart remain unchanged.
 

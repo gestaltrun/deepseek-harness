@@ -15,6 +15,7 @@ const OSS_ENVIRONMENT = {
   DESKTOP_RELEASE_OSS_BUCKET: OSS_BUCKET,
   DESKTOP_RELEASE_OSS_ENDPOINT: 'https://oss-cn-hangzhou.aliyuncs.com',
   DESKTOP_RELEASE_ALIYUN_REGION: 'cn-hangzhou',
+  DESKTOP_RELEASE_OSS_TIMEOUT_MS: '600000',
 }
 
 interface Fixture {
@@ -116,6 +117,7 @@ describe('desktop upload plan', () => {
       bucket: OSS_BUCKET,
       endpoint: OSS_ENVIRONMENT.DESKTOP_RELEASE_OSS_ENDPOINT,
       region: `oss-${OSS_ENVIRONMENT.DESKTOP_RELEASE_ALIYUN_REGION}`,
+      timeoutMs: 600000,
     })
     expect(plan.artifacts.map(artifact => artifact.filename)).toEqual([
       'DeepSeek-Gestalt-1.2.3-arm64.dmg',

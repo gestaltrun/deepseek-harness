@@ -28,6 +28,7 @@ import { resolveDesktopBuildTarget, resolveDesktopTargetBuildPaths } from './des
 import { desktopRuntimeFileExclusion, prepareDesktopNativeHelpers } from './runtime-file-policy.ts'
 import { readCommunityPlugins } from '../../../scripts/community.ts'
 import { DESKTOP_PRODUCT_BUNDLES } from '../src/product-profile.ts'
+import { desktopPnpmEnvironment } from './desktop-pnpm-environment.ts'
 
 const APP_ROOT = resolve(import.meta.dirname, '..')
 const BUILD_PATHS = resolveDesktopTargetBuildPaths()
@@ -80,10 +81,7 @@ function runPnpm(args: readonly string[]): Promise<void> {
       ...commandArgs,
     ], {
       cwd: BUILD_ROOT,
-      env: {
-        ...Object.fromEntries(Object.entries(process.env).filter(([name]) => (
-          name !== 'NODE_OPTIONS' && name !== 'NODE_PATH' && !/^DSH_DESKTOP_/u.test(name) && !/^(?:npm|pnpm|corepack)_/iu.test(name)
-        ))),
+      env: desktopPnpmEnvironment(process.env, {
         NPM_CONFIG_REGISTRY: 'https://registry.npmjs.org/',
         NPM_CONFIG_STORE_DIR: STORE_ROOT,
         NPM_CONFIG_USERCONFIG: userConfig,
@@ -91,7 +89,7 @@ function runPnpm(args: readonly string[]): Promise<void> {
         XDG_CACHE_HOME: join(PNPM_BUILD_STATE, 'cache'),
         XDG_CONFIG_HOME: config,
         XDG_STATE_HOME: join(PNPM_BUILD_STATE, 'state'),
-      },
+      }),
       stdio: 'inherit',
     })
     child.once('error', reject)

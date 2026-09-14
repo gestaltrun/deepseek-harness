@@ -30,6 +30,7 @@ describe('desktop auto-update environment', () => {
       bucket: 'desktop-releases',
       endpoint: 'https://oss-cn-hangzhou.aliyuncs.com',
       region: 'oss-cn-hangzhou',
+      timeoutMs: 600000,
       keyPrefix: 'desktop/test/mac-arm64',
     })
   })
@@ -50,6 +51,7 @@ describe('desktop auto-update environment', () => {
       DESKTOP_RELEASE_OSS_BUCKET: 'desktop-releases',
       DESKTOP_RELEASE_OSS_ENDPOINT: 'https://oss-cn-hangzhou.aliyuncs.com',
       DESKTOP_RELEASE_ALIYUN_REGION: 'cn-hangzhou',
+      DESKTOP_RELEASE_OSS_TIMEOUT_MS: '600000',
     }, 'win32', 'x64')).toMatchObject({
       bucket: 'desktop-releases',
       keyPrefix: 'desktop/stable/win-x64',
@@ -89,7 +91,16 @@ describe('desktop auto-update environment', () => {
       DESKTOP_RELEASE_OSS_BUCKET: 'desktop-releases',
       DESKTOP_RELEASE_OSS_ENDPOINT: 'https://oss-cn-hangzhou.aliyuncs.com',
       DESKTOP_RELEASE_ALIYUN_REGION: 'oss-cn-hangzhou',
+      DESKTOP_RELEASE_OSS_TIMEOUT_MS: '600000',
     }, 'darwin', 'arm64')).toThrow(/Alibaba Cloud region ID form/u)
+    expect(() => resolveDesktopUploadConfig({
+      DESKTOP_RELEASE_TEST_FEED_URL: 'https://desktop-updates.example.com/desktop/test',
+      DESKTOP_RELEASE_TEST_OSS_PREFIX: 'desktop/test',
+      DESKTOP_RELEASE_OSS_BUCKET: 'desktop-releases',
+      DESKTOP_RELEASE_OSS_ENDPOINT: 'https://oss-cn-hangzhou.aliyuncs.com',
+      DESKTOP_RELEASE_ALIYUN_REGION: 'cn-hangzhou',
+      DESKTOP_RELEASE_OSS_TIMEOUT_MS: '0',
+    }, 'darwin', 'arm64')).toThrow(/positive integer/u)
   })
 
   it('rejects unknown deployments and targets', () => {

@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/process/2026-09-14-gestaltrun-desktop-release.md
-2026-09-14-gestaltrun-desktop-release.md: df332ee61945bca7cfdb1a30d54680f9f9e4909e
-2026-09-14-gestaltrun-desktop-release.zh.md: 575301d44860683c4978225c80250daec6936cdd
+2026-09-14-gestaltrun-desktop-release.md: a2ab805e7335ed47dec0215d7bc4511dd9deec70
+2026-09-14-gestaltrun-desktop-release.zh.md: 645634e69726b023c55a574e201ade5c97b7de33

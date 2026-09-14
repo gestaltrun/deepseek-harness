@@ -29,6 +29,12 @@ describe('Desktop Release workflow', () => {
     expect(workflow).toContain('rm -f "$APPLE_API_KEY"')
   })
 
+  it('maps only the reviewed package and OSS network timeouts', () => {
+    expect(workflow).toContain('PNPM_CONFIG_NETWORK_CONCURRENCY: ${{ vars.DESKTOP_RELEASE_PNPM_NETWORK_CONCURRENCY }}')
+    expect(workflow).toContain('PNPM_CONFIG_FETCH_TIMEOUT: ${{ vars.DESKTOP_RELEASE_PNPM_FETCH_TIMEOUT }}')
+    expect(workflow).toContain('DESKTOP_RELEASE_OSS_TIMEOUT_MS: ${{ vars.DESKTOP_RELEASE_OSS_TIMEOUT_MS }}')
+  })
+
   it('finishes every selected immutable upload before moving channel metadata', () => {
     const immutable = workflow.indexOf('      - name: Upload immutable installers and blockmaps')
     const channel = workflow.indexOf('      - name: Publish update channel metadata')

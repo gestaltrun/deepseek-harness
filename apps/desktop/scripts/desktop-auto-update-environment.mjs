@@ -19,6 +19,8 @@ const UPDATE_ENVIRONMENTS = {
 const OSS_BUCKET_ENV = 'DESKTOP_RELEASE_OSS_BUCKET'
 const OSS_ENDPOINT_ENV = 'DESKTOP_RELEASE_OSS_ENDPOINT'
 const ALIYUN_REGION_ENV = 'DESKTOP_RELEASE_ALIYUN_REGION'
+const OSS_TIMEOUT_ENV = 'DESKTOP_RELEASE_OSS_TIMEOUT_MS'
+const DEFAULT_OSS_TIMEOUT_MS = 600_000
 
 const UPDATE_TARGETS = new Set(['mac-arm64', 'mac-x64', 'win-x64'])
 
@@ -168,6 +170,16 @@ function ossRegion(value) {
   return `oss-${value}`
 }
 
+function positiveInteger(env, name) {
+  const value = env[name]?.trim()
+  if (value === undefined || value === '') return DEFAULT_OSS_TIMEOUT_MS
+  const parsed = Number(value)
+  if (!/^[1-9]\d*$/u.test(value) || !Number.isSafeInteger(parsed)) {
+    throw new Error(`desktop auto-update: ${name} must be a positive integer`)
+  }
+  return parsed
+}
+
 /**
  * Resolve the public updater URL for one release target.
  * @param {NodeJS.ProcessEnv} env - Packaging or upload environment.
@@ -197,7 +209,7 @@ export function resolveDesktopAutoUpdateConfig(env, platform, arch) {
  * @param {NodeJS.ProcessEnv} env - Upload environment.
  * @param {NodeJS.Platform} platform - Target Node.js platform.
  * @param {string} arch - Target Node.js architecture.
- * @returns {{ environment: 'test' | 'production', target: 'mac-arm64' | 'mac-x64' | 'win-x64', feedBaseUrl: string, publicUrl: string, keyPrefix: string, bucket: string, endpoint: string, region: string }} Resolved upload configuration.
+ * @returns {{ environment: 'test' | 'production', target: 'mac-arm64' | 'mac-x64' | 'win-x64', feedBaseUrl: string, publicUrl: string, keyPrefix: string, bucket: string, endpoint: string, region: string, timeoutMs: number }} Resolved upload configuration.
  * @throws {Error} When the selected deployment lacks a valid feed URL or OSS setting.
  */
 export function resolveDesktopUploadConfig(env, platform, arch) {
@@ -212,5 +224,6 @@ export function resolveDesktopUploadConfig(env, platform, arch) {
     bucket: requiredEnvironmentValue(env, OSS_BUCKET_ENV),
     endpoint: httpsEndpoint(requiredEnvironmentValue(env, OSS_ENDPOINT_ENV), OSS_ENDPOINT_ENV),
     region: ossRegion(requiredEnvironmentValue(env, ALIYUN_REGION_ENV)),
+    timeoutMs: positiveInteger(env, OSS_TIMEOUT_ENV),
   }
 }

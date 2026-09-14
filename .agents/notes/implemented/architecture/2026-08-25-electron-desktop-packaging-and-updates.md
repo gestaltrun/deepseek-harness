@@ -6,6 +6,8 @@ English | [中文](2026-08-25-electron-desktop-packaging-and-updates.zh.md)
 
 Profile mutation and recovery follow the [in-place profile decision](2026-09-09-desktop-in-place-profile.md).
 
+The Gestaltrun OSS and GitHub Release process follows the [Gestaltrun Desktop release decision](../process/2026-09-14-gestaltrun-desktop-release.md).
+
 ## Problem
 
 DeepSeek Harness needs an Electron desktop application that reuses the Web UI, works without system Node.js or pnpm, installs dsh and desktop plugins through an application-bundled pnpm, and updates the complete desktop release through one user-facing flow.

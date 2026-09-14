@@ -46,6 +46,7 @@ export interface DesktopUploadPlan {
   readonly bucket: string
   readonly endpoint: string
   readonly region: string
+  readonly timeoutMs: number
   readonly artifacts: readonly DesktopUploadArtifact[]
 }
 
@@ -257,6 +258,7 @@ export async function createDesktopUploadPlan(
     bucket: update.bucket,
     endpoint: update.endpoint,
     region: update.region,
+    timeoutMs: update.timeoutMs,
     artifacts,
   }
 }

@@ -100,6 +100,8 @@ macOS arm64 命令要求 Apple Silicon。macOS x64 命令可以在 Intel macOS �
 
 每个目标都在 `apps/desktop/.desktop-build/targets/<target>/` 下持有自己的打包输入、已准备运行时、包集合、dsh 依赖树、pnpm 准备状态、未打包应用、更新元数据和最终产物。打包使用 DeepSeek Gestalt 产品名称，并根据 `DSH_DESKTOP_APP_ID` 生成内部应用名称，使 Electron updater cache 与工作区 npm 包使用不同身份。Node.js 归档缓存继续由 `.desktop-build/downloads` 共享，因为每个归档文件名都包含版本、平台和架构，并且在解包前经过验证。目标构建绝不读取其他目标的可变准备状态。
 
+运行时物化使用下文所述的隔离 npmjs registry 和包管理器状态。发布自动化可以将 `PNPM_CONFIG_NETWORK_CONCURRENCY` 和 `PNPM_CONFIG_FETCH_TIMEOUT` 设置为正整数，用于该内置 pnpm 安装；其他环境中的 npm、pnpm、Corepack、registry、身份验证和 hook 设置仍会被排除。未设置时保留 pnpm 默认值。
+
 ### 运行时文件筛选
 
 生产包首先经过 npm 发布规则和依赖安装。[桌面文件规则](scripts/runtime-file-policy.ts)随后在签名和完整性封存之前过滤不可变的 `resources/dsh/node_modules` 副本。它排除 TypeScript 声明、明确属于 JavaScript/CSS/TypeScript 的 source map、TypeScript 构建缓存、Domino 测试目录、指定的原生编译产物，以及其他平台的 node-pty 预构建文件。它保留运行时 JavaScript、原生模块及其 DLL/EXE 辅助程序、WASM、未知资源、许可证和声明。规则不会修改 npm tarball、内置包管理器或用户安装的插件文件。
@@ -123,7 +125,7 @@ pwsh -NoProfile -File apps/desktop/scripts/smoke-windows.ps1 -Electron $Electron
 | `test` 或未设置 | `DESKTOP_RELEASE_TEST_FEED_URL` | `DESKTOP_RELEASE_TEST_OSS_PREFIX` |
 | `production` | `DESKTOP_RELEASE_PRODUCTION_FEED_URL` | `DESKTOP_RELEASE_PRODUCTION_OSS_PREFIX` |
 
-上传还要求设置 `DESKTOP_RELEASE_OSS_BUCKET`、`DESKTOP_RELEASE_OSS_ENDPOINT` 和 `DESKTOP_RELEASE_ALIYUN_REGION`。仓库范围的阿里云 OIDC action 只向发布任务提供 `ALIBABA_CLOUD_ACCESS_KEY_ID`、`ALIBABA_CLOUD_ACCESS_KEY_SECRET` 和 `ALIBABA_CLOUD_SECURITY_TOKEN`。打包流程会从每个子进程中移除这些临时凭据，只需要所选 feed URL。
+上传还要求设置 `DESKTOP_RELEASE_OSS_BUCKET`、`DESKTOP_RELEASE_OSS_ENDPOINT` 和 `DESKTOP_RELEASE_ALIYUN_REGION`。`DESKTOP_RELEASE_OSS_TIMEOUT_MS` 接受以毫秒为单位的正整数请求超时，大型安装包默认使用 600000。仓库范围的阿里云 OIDC action 只向发布任务提供 `ALIBABA_CLOUD_ACCESS_KEY_ID`、`ALIBABA_CLOUD_ACCESS_KEY_SECRET` 和 `ALIBABA_CLOUD_SECURITY_TOKEN`。打包流程会从每个子进程中移除这些临时凭据，只需要所选 feed URL。
 
 每个目标都会写入 `<所选前缀>/<target>/`，其中 `target` 为 `mac-arm64`、`mac-x64` 或 `win-x64`。上传会在发送数据前验证发布完成记录、绑定的 dsh 与 Desktop 版本、频道元数据、产物名称、大小和 SHA-512。所有所选的不可变安装包和 blockmap 均完成上传和验证后，流程才会替换任何所选频道的元数据。重试只会复用大小和已存 SHA-512 均匹配的不可变对象；同一个带版本 key 上的其他载荷会导致失败。频道元数据使用 `no-cache`，也是唯一可以替换的对象。稳定版本使用 `latest-mac.yml` 或 `latest.yml`；预发布版本使用 electron-builder 生成的频道名称。
 
