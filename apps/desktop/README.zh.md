@@ -116,7 +116,7 @@ pwsh -NoProfile -File apps/desktop/scripts/smoke-windows.ps1 -Electron $Electron
 
 ### 发布更新
 
-手动触发的 [Desktop Release 工作流](../../.github/workflows/desktop-release.yml)接受准确的提交、dsh 与 Desktop 共享的版本、`test` 或 `production`，以及三种操作之一。`validate` 执行无凭据的请求检查。`candidate` 接受已包含在 `master` 中的提交，并创建经过签名和公证的产物，但不会将其加入更新频道。`publish` 使用相同的源码限制，上传所选目标，并为生产部署创建 GitHub Release。macOS arm64 和 x64 是必选目标；Windows x64 仍可明确选择，但缺少已配置的硬件签名输入时会失败。
+手动触发的 [Desktop Release 工作流](../../.github/workflows/desktop-release.yml)接受准确的提交、dsh 与 Desktop 共享的版本、`test` 或 `production`，以及四种操作之一。`validate` 执行无凭据的请求检查。`candidate` 接受已包含在 `master` 中的提交，并创建经过签名和公证的产物，但不会将其加入更新频道。`publish` 使用相同的源码限制，上传所选的已签名目标，并为生产部署创建 GitHub Release。`windows-unsigned` 接受已包含在 `master` 中的提交，并将 Windows x64 安装包作为短期 Actions 产物提供手动安装；它要求使用 `test` 部署，绝不会上传 OSS 元数据或创建 GitHub Release。签名操作要求 macOS arm64 和 x64；签名 Windows x64 仍可明确选择，但缺少已配置的硬件签名输入时会失败。
 
 `DSH_DESKTOP_AUTO_UPDATE_ENV` 选择打包时写入的公开 generic feed。每个部署都提供一个公开 feed 根地址及其对应的 OSS 对象前缀：
 
@@ -145,7 +145,7 @@ macOS 签名遍历真实文件，不跟随 Framework 的软链接别名。PAK �
 pnpm run package:desktop:win:x64:unsigned
 ```
 
-该命令要求设置 `DSH_DESKTOP_APP_ID` 并具备常规构建依赖，包括编译原生模块所需的 Python 和 Visual C++ 构建工具。Python 不在 `PATH` 中时，将 `PYTHON` 设置为其可执行文件路径。命令将安装包写入 `.desktop-build/targets/win-x64/unsigned-artifacts/`，省略自动更新配置，清除签名凭据，且不生成发布完成记录。它不需要 EV 凭据或更新源地址。签名打包和上传命令仍遵循正式发布要求。
+该命令要求设置 `DSH_DESKTOP_APP_ID` 并具备常规构建依赖，包括编译原生模块所需的 Python 和 Visual C++ 构建工具。Python 不在 `PATH` 中时，将 `PYTHON` 设置为其可执行文件路径。命令将安装包写入 `.desktop-build/targets/win-x64/unsigned-artifacts/`，省略自动更新配置，清除签名凭据，且不生成发布完成记录。它不需要 EV 凭据或更新源地址。工作流的 `windows-unsigned` 操作会在受控 Windows runner 上运行相同命令，仅将安装包作为 Actions 产物提供手动安装；它拒绝 `production`，也不会调用 OSS 上传器。签名打包和上传命令仍遵循正式发布要求。
 
 ### Windows EV 签名
 
