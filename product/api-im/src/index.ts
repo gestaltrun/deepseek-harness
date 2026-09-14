@@ -1,8 +1,9 @@
 /** Host BFF for authoritative IM configuration and generated Remote methods. */
+import type {} from '@gestaltrun/dsh-im-runtime'
 import type { Context } from '@deepseek-ai/cordis'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {
-  ImAccountMutationResult, ImAccountSetupRequest, ImAccountView,
+  ImAccountCandidate, ImAccountMutationResult, ImAccountSetupRequest, ImAccountView, ImPlatform,
   ImConfigurationFrame, ImCreateRouteRequest, ImDeleteRouteRequest,
   ImRebindRouteRequest, ImRemoveSimulationTargetRequest, ImRouteBatchRequest,
   ImRouteBatchResult, ImRouteMutationResult, ImRouteOperationQuery,
@@ -52,6 +53,17 @@ export class ImApi extends TypertRemoteService {
   @Remote({ mode: 'stream' })
   follow(signal: AbortSignal): AsyncIterable<ImConfigurationFrame> {
     return this.feed.follow(signal)
+  }
+
+  /**
+   * Discover installed or admitted identities for account setup.
+   * @param platform - platform selected by the operator.
+   * @param signal - cancellation of candidate discovery.
+   * @returns safe candidates from the registered provider.
+   */
+  @Remote('listAccountCandidates')
+  listAccountCandidates(platform: ImPlatform, signal: AbortSignal): Promise<readonly ImAccountCandidate[]> {
+    return this.ctx.imRuntime.listAccountCandidates(platform, signal)
   }
 
   /**

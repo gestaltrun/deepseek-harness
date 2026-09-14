@@ -5,7 +5,7 @@ import type {} from '@deepseek-ai/dsh-api-gateway/client'
 import imRemote from '@gestaltrun/dsh-api-im/remote'
 import type { TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 import type {
-  ImAccountSetupRequest, ImConfigurationBaseline, ImConfigurationFrame,
+  ImAccountSetupRequest, ImConfigurationBaseline, ImConfigurationFrame, ImPlatform,
   ImConfigurationReplacement, ImRemoveSimulationTargetRequest, ImRouteBatchRequest,
   ImRouteOperationQueryRequest, ImSaveSimulationTargetRequest, ImSetAccountPausedRequest,
   ImTargetOperationQueryRequest,
@@ -31,6 +31,8 @@ export interface ImConfigurationSource {
 /** Configuration object consumed by product UI adapters. */
 export interface IImClient {
   readonly configuration: ImConfigurationSource
+  /** @param platform - platform selected for setup. @param signal - caller cancellation. @returns safe available identities. */
+  listAccountCandidates(platform: ImPlatform, signal?: AbortSignal): ReturnType<ImRemote['listAccountCandidates']>
   /** @param request - write-only setup fields. @param signal - caller cancellation. @returns safe Host account facts. */
   connectAccount(request: ImAccountSetupRequest, signal?: AbortSignal): ReturnType<ImRemote['connectAccount']>
   /** @param request - account revision and desired pause state. @returns Host mutation receipt. */
@@ -83,6 +85,10 @@ class ImClient extends Service implements IImClient {
       await control.dispose()
     }, 'im-client: configuration follow')
     control.start()
+  }
+
+  listAccountCandidates(platform: ImPlatform, signal?: AbortSignal): ReturnType<ImRemote['listAccountCandidates']> {
+    return this.remote.listAccountCandidates(platform, signal)
   }
 
   connectAccount(request: ImAccountSetupRequest, signal?: AbortSignal): ReturnType<ImRemote['connectAccount']> {

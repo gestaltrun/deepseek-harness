@@ -16,6 +16,9 @@
     "paths": {
       "@gestaltrun/dsh-im-runtime": [
         "../im-runtime/src/index.ts"
+      ],
+      "@gestaltrun/dsh-im-runtime/types": [
+        "../im-runtime/src/types.ts"
       ]
     }
   }

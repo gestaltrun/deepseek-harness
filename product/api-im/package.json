@@ -88,5 +88,8 @@
     "@deepseek-ai/dsh-brand": "0.1.5-rc.2",
     "zustand": "4.4.7",
     "immer": "10.1.1"
+  },
+  "dependencies": {
+    "zod": "4.4.3"
   }
 }
