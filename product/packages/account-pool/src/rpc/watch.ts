@@ -7,7 +7,7 @@ import type { AccountPool, AccountPoolSnapshot } from '../account-pool.ts'
  * @param signal - combined request and RPC owner lifetime.
  * @returns complete snapshots; cancellation ends pending reads and unregisters immediately.
  */
-export function watchAccountPool(pool: AccountPool, signal: AbortSignal): AsyncIterable<AccountPoolSnapshot> {
+export function watchAccountPool(pool: Pick<AccountPool, 'getSnapshot' | 'subscribe'>, signal: AbortSignal): AsyncIterable<AccountPoolSnapshot> {
   return {
     [Symbol.asyncIterator]() {
       let pending: AccountPoolSnapshot | undefined

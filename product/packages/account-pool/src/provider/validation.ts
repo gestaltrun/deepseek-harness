@@ -15,7 +15,7 @@ export function safeAccountFilename(name: string): boolean {
 /** Scalar metadata record from core JSON. */
 export const recordSchema = z.record(z.string(), z.unknown())
 /** Filename validation at account-management entry points. */
-export const nameSchema = z.string().refine(safeAccountFilename)
+export const nameSchema = z.string().min(1).max(512).regex(/^[^\\/\u0000-\u001f\u007f]+$/u)
 /** Supported enrollment provider input. */
 export const kindSchema = z.enum(['anthropic', 'codex', 'antigravity', 'kimi', 'xai', 'glm'])
 /** Opaque login operation input. */

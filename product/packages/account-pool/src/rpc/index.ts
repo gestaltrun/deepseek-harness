@@ -38,7 +38,7 @@ export class AccountPoolController extends TypertRemoteService {
     super(ctx, 'accountPoolController', { namespace: 'accountPool' })
     ctx.effect(() => () => { this.lifetime.abort() }, 'account pool RPC lifetime')
     ctx.connection.fetch.register({
-      path: ACCOUNT_POOL_EXPORT_PATH, methods: ['GET'], requestBody: 'buffered',
+      path: ACCOUNT_POOL_EXPORT_PATH, methods: ['GET', 'HEAD'], requestBody: 'buffered',
       fetch: request => accountPoolExportResponse(ctx.accountPool, config.allowCredentialExport, request),
     })
   }

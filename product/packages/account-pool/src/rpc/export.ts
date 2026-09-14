@@ -20,12 +20,14 @@ export async function accountPoolExportResponse(
 ): Promise<Response> {
   const headers = { 'cache-control': 'no-store' }
   if (!allowed) return new Response('Credential export is disabled.', { status: 403, headers })
-  if (request.method !== 'GET') return new Response(null, { status: 405, headers })
+  if (request.method !== 'GET' && request.method !== 'HEAD') return new Response(null, { status: 405, headers })
   const query = new URL(request.url).searchParams
   const name = query.get('name')
   if (name === null || !safeAccountFilename(name) || query.getAll('name').length !== 1) {
     return new Response('A safe account filename is required.', { status: 400, headers })
   }
+  if (request.method === 'HEAD') return new Response(null, { headers: { ...headers,
+    'content-disposition': `attachment; filename="${name}"`, 'content-type': 'application/json' } })
   try {
     const file = await owner.downloadAuthFile(brandString<AccountPoolAccountName>(name), request.signal)
     if (!safeAccountFilename(file.name)) {
