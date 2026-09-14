@@ -1,5 +1,6 @@
 /** Durable receive, history, Session reconciliation, and outbox state. */
 import { createHash, randomUUID } from 'node:crypto'
+import { basename } from 'node:path'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { KvTable } from '@deepseek-ai/dsh-storage-domain'
 import type {
@@ -148,11 +149,11 @@ function submittedWatermark(aggregate: ImDeliveryAggregate): number {
 }
 
 function pageFingerprint(request: ImIngestInboundPageRequest): string {
-  return JSON.stringify(['page', request.scope, request.observedCursor, request.nextCursor, request.messages])
+  return JSON.stringify(['page', request.scope, request.observedCursor, request.nextCursor, request.presentation ?? null, request.messages])
 }
 
-function importFingerprint(request: ImImportJsonlHistoryRequest, messages: readonly ImInboundMessageInput[]): string {
-  return JSON.stringify(['jsonl-import', request.scope, messages])
+function importFingerprint(request: ImImportJsonlHistoryRequest, fileName: string, messages: readonly ImInboundMessageInput[]): string {
+  return JSON.stringify(['jsonl-import', request.scope, fileName, messages])
 }
 
 function assertOperation(existing: { readonly fingerprint: string } | undefined, fingerprint: string, operationId: ImDeliveryOperationId): void {
@@ -163,8 +164,8 @@ function assertOperation(existing: { readonly fingerprint: string } | undefined,
 
 function assertOutbound(existing: ImOutboundView | undefined, request: ImRegisterOutboundRequest): void {
   if (existing === undefined) return
-  const stored = JSON.stringify([existing.intent, existing.content, existing.replyToExternalMessageId ?? null])
-  const incoming = JSON.stringify([request.intent, request.content, request.replyToExternalMessageId ?? null])
+  const stored = JSON.stringify([existing.intent, existing.content, existing.sender ?? null, existing.manualBinding ?? null, existing.retryOfRequestId ?? null, existing.replyToExternalMessageId ?? null])
+  const incoming = JSON.stringify([request.intent, request.content, request.sender ?? null, request.manualBinding ?? null, request.retryOfRequestId ?? null, request.replyToExternalMessageId ?? null])
   if (stored !== incoming) {
     throw new ImRuntimeError('IM_OUTBOUND_REQUEST_REUSED', `IM outbound request '${request.requestId}' was already used for a different intent`)
   }
@@ -201,6 +202,9 @@ export class ImDeliveryStore {
 
   async ingestInboundPage(request: ImIngestInboundPageRequest): Promise<ImInboundPageResult> {
     if (request.scope.kind === 'real') this.assertRealScope(request.scope)
+    if (request.scope.conversationKind === 'direct' && request.presentation?.memberCount !== undefined) {
+      throw new ImRuntimeError('IM_DELIVERY_SCOPE_INVALID', 'direct-conversation presentation cannot carry a member count')
+    }
     const scopeId = encodeImScopeId(request.scope)
     const fingerprint = pageFingerprint(request)
     return this.mutate<ImInboundPageResult>(request.scope, (current) => {
@@ -260,6 +264,7 @@ export class ImDeliveryStore {
         platformCursor: request.nextCursor,
         lastReceivedSequenceNumber: accepted.at(-1)?.sequenceNumber ?? current.cursor.lastReceivedSequenceNumber,
         pendingCount: current.cursor.pendingCount + accepted.length,
+        lastSyncedAt: receivedAt,
         updatedAt: receivedAt,
       }
       const result: ImInboundPageResult = {
@@ -269,6 +274,9 @@ export class ImDeliveryStore {
       return {
         aggregate: {
           ...current, nextMessageSequenceNumber: nextSequence, cursor, messages, messageIdsByExternalId: byExternalId,
+          ...(request.presentation === undefined
+            ? {}
+            : { presentation: { ...current.presentation, ...request.presentation } }),
           operations: { ...current.operations, [request.operationId]: { fingerprint, result } },
         },
         value: result,
@@ -440,6 +448,8 @@ export class ImDeliveryStore {
   }
 
   async importJsonlHistory(request: ImImportJsonlHistoryRequest): Promise<ImImportJsonlHistoryResult> {
+    const fileName = basename(request.fileName.trim().replaceAll('\\', '/'))
+    if (fileName === '' || fileName === '.' || fileName === '..') throw new ImRuntimeError('IM_JSONL_INVALID', 'IM history import fileName must name a file')
     const parsed: ImInboundMessageInput[] = []
     for (const [index, line] of request.jsonl.split(/\r?\n/u).entries()) {
       if (line.trim() === '') continue
@@ -452,7 +462,7 @@ export class ImDeliveryStore {
       parsed.push(admitted.data)
     }
     const scopeId = encodeImScopeId(request.scope)
-    const fingerprint = importFingerprint(request, parsed)
+    const fingerprint = importFingerprint(request, fileName, parsed)
     return this.mutate(request.scope, (current) => {
       const existing = current.operations[request.operationId]
       assertOperation(existing, fingerprint, request.operationId)
@@ -477,7 +487,8 @@ export class ImDeliveryStore {
         importedCount++
       }
       const result: ImImportJsonlHistoryResult = {
-        kind: 'jsonl-import', operationId: request.operationId, status: 'applied', importedCount, duplicateCount,
+        kind: 'jsonl-import', operationId: request.operationId, status: 'applied', fileName,
+        messageCount: parsed.length, importedCount, duplicateCount,
       }
       return {
         aggregate: {
@@ -499,6 +510,20 @@ export class ImDeliveryStore {
       const existing = current.outbounds[request.requestId]
       assertOutbound(existing, request)
       if (existing !== undefined) return { aggregate: current, value: existing, changed: false }
+      if (request.sender !== undefined && (request.intent !== 'human-manual' || request.sender.outboundRequestId !== request.requestId)) {
+        throw new ImRuntimeError('IM_MANUAL_MESSAGE_INVALID', 'manual sender evidence must identify its own human-manual request')
+      }
+      if (request.manualBinding !== undefined && (request.intent !== 'human-manual' || request.sender === undefined)) {
+        throw new ImRuntimeError('IM_MANUAL_MESSAGE_INVALID', 'manual Session binding requires persisted human sender evidence')
+      }
+      if (request.retryOfRequestId !== undefined) {
+        const prior = current.outbounds[request.retryOfRequestId]
+        if (request.intent !== 'human-manual' || request.retryOfRequestId === request.requestId
+          || prior?.intent !== 'human-manual' || prior.status !== 'result-unknown'
+          || request.manualBinding === undefined || JSON.stringify(prior.manualBinding) !== JSON.stringify(request.manualBinding)) {
+          throw new ImRuntimeError('IM_MANUAL_RETRY_INVALID', 'manual retry must name a distinct result-unknown human message in the same scope')
+        }
+      }
       const policy = this.registrationPolicy(request, frozenBinding)
       const createdAt = timestamp()
       const outbound: ImOutboundView = {
@@ -509,6 +534,9 @@ export class ImDeliveryStore {
         status: policy.reason === undefined ? 'pending' : 'pre-send-failed',
         sequenceNumber: current.nextOutboundSequenceNumber,
         ...(policy.binding === undefined ? {} : { routeBinding: policy.binding }),
+        ...(request.sender === undefined ? {} : { sender: request.sender }),
+        ...(request.manualBinding === undefined ? {} : { manualBinding: request.manualBinding }),
+        ...(request.retryOfRequestId === undefined ? {} : { retryOfRequestId: request.retryOfRequestId }),
         ...(policy.reason === undefined ? {} : { preSendFailureReason: policy.reason }),
         ...(request.replyToExternalMessageId === undefined ? {} : { replyToExternalMessageId: request.replyToExternalMessageId }),
         createdAt,

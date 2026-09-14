@@ -62,7 +62,7 @@ kind: "package-reference"
 
 提供方轮询游标由明确的平台账号与 stream 共同拥有。runtime 拥有的监听 sink 接收一个带稳定逐会话 operation id 的提供方页面。它先提交每个会话分组，再带全部页面收据提交提供方游标。如果进程在这些写入之间停止，或后续分组失败，重启后仍读取旧提供方游标，并通过持久去重安全重放各分组。监听器会收到启用路由计划，其中明确是否需要 mention 证据。因此一个旺旺商家页面可以覆盖多个会话，钉钉也可组合全量群消息与 at-me 观察，而不会把提供方游标错误归给某个会话。
 
-`registerOutbound` 在任何平台调用前保存意图。`beginOutboundAttempt` 只授予一次尝试；调度结果未决时重启或重复 begin 会记录 `result-unknown`，调用者随后查询或确认，不盲目重试。自动意图冻结路由与账号 generation。账号或路由暂停时，DSH 人工发送和模拟发送仍可用；暂停或路由变更前的自动意图不能在恢复后继续发送。
+`registerOutbound` 在任何平台调用前保存意图。`beginOutboundAttempt` 只授予一次尝试；调度结果未决时重启或重复 begin 会记录 `result-unknown`，调用者随后查询或确认，不盲目重试。自动意图冻结路由与账号 generation。`realScopeForSession` 只根据持久任务代次解析真实 Session，并返回冻结 scope、工作区、直接收件人、安全账号身份、账号及监听状态、最近会话同步时间，以及提供方已知的会话名称或群人数；未知名称和人数保持缺失。GUI 使用同一个稳定 request id 调用 `sendManualMessage`、`queryManualMessage` 与 `confirmManualMessage`；核验只调用提供方回执查询。`retryManualMessage` 要求新 request id 和同一 Session 任务中处于 `result-unknown` 的前序请求，并持久保存该关联。自动处理暂停时 DSH 人工发送仍可用；账号断连、未授权或监听不可用时拒绝新人工发送意图。自动意图继续受暂停和路由代次检查阻断。
 
 提供方把参与者和回显事实传给 `classifyInboundSender`。匹配已发送自动 outbox 时返回 `ai`，匹配已发送人工 outbox 时返回 `human-dsh`，明确的平台原生操作证据返回 `human-native`。无法匹配的已配置账号观察仍为 `unknown`；文本相等不会改变发送者归因。mention 触发只使用随消息持久保存的提供方明确 mention 元数据。
 
@@ -70,7 +70,9 @@ kind: "package-reference"
 
 `createSimulationInstance` 接受一个已经属于工作区且当前存活的模拟用户 Session，该工作区必须已配置目标。它先持久保存 `creating`，其中包含 Host 生成的被测 Session id、精确目标、两个工作区 id、路由和账号 revision、preset、触发设置与准入参与者；随后通过普通 Agent 与 preset 服务创建被测 Agent，把其 Session 关联到目标工作区，flush 两份 Session 日志，最后发布 `running`。指定路由固定其会话 id；`all` 路由要求调用方提供一个会话 id。目标变更只影响后续实例。不同模拟用户 Session 可以针对同一目标运行互相隔离的实例。
 
-组员和受管人工注入与提供方消息进入同一个持久入站存储与 Agent coordinator。Host 根据冻结账号身份推导受管操作人，并依据冻结准入名单检查组员注入。被测 Agent 回复使用同一个 scope 绑定 outbox，在本地结算后只返回配对的模拟用户 Session；模拟路径不会调用平台 transport。JSONL 导入仍是已提交历史，不唤醒任何一端。`scopeForSession` 为 Client 导航返回权威角色、对端 Session、工作区对和投递 scope。
+组员和受管人工注入与提供方消息进入同一个持久入站存储与 Agent coordinator。Host 根据冻结账号身份推导受管操作人，并依据冻结准入名单检查组员注入。只有模拟用户 Session 获得 `im_sim_*` 控制工具；被测 Agent 只获得普通的 scope 绑定历史与发送工具，看不到模拟内部控制。被测 Agent 回复使用同一个 scope 绑定 outbox，在本地结算后只返回配对的模拟用户 Session；模拟路径不会调用平台 transport。`importSimulationHistory` 推导冻结 scope，仅在实例上保存来源 basename 与 Host 统计的总数、导入数和重复数，并让所有导入行保持仅可查询。`scopeForSession` 为 Client 导航返回权威角色、对端 Session、工作区对和投递 scope。
+
+入站内容区分文本、Markdown、图片占位与提供方不支持类型。引用只携带可取得的发送者、外部 id 与文本上下文。不支持内容保留原始消息类型及提供方已归一化、可安全展示的 JSON 明细；提供方凭据、transport header 与连接配置不属于此值。这些字段按原样持久保存，供历史展示与 Session 重建。
 
 `beginStopSimulation` 先持久保存 `stopping`，使后续输入和回复投递被拒绝，并且不等待工具调用方的当前 turn。`waitSimulationStopped` 是 GUI 的终态屏障。控制器只取消配对的实时活动与所选 scope 的 coordinator 工作，保留模拟用户 Session 和两份日志，并在静止后保存 `stopped`。GUI 与绑定的 `im_sim_stop` 无论调用顺序如何都会去重。已停止实例永不恢复；runtime 装载也不会只为显示运行中实例而恢复任一 Session。
 

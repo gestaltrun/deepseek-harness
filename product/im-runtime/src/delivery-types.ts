@@ -2,7 +2,18 @@
 import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
-import type { ImAccountId, ImGroupTrigger, ImPlatform, ImRevision, ImRouteId } from './types.ts'
+import type {
+  ImAccountAuthorization,
+  ImAccountConnectionIntent,
+  ImAccountId,
+  ImAccountIdentity,
+  ImAccountListener,
+  ImDirectRecipient,
+  ImGroupTrigger,
+  ImPlatform,
+  ImRevision,
+  ImRouteId,
+} from './types.ts'
 
 /** Collision-safe identifier of one real or simulated conversation scope. */
 export type ImScopeId = Branded<'ImScopeId'>
@@ -98,11 +109,21 @@ export type ImInboundSenderEvidence =
   | { readonly kind: 'configured-self'; readonly observedSenderId?: string }
   | { readonly kind: 'provider-unknown'; readonly observedSenderId?: string }
 
-/** Text accepted from a provider, manual-send UI, or Agent outbox. */
-export interface ImMessageContent {
+/** JSON value already reduced by a provider to display-safe message details. */
+export type ImSafeJsonValue = null | boolean | number | string | readonly ImSafeJsonValue[] | { readonly [key: string]: ImSafeJsonValue }
+
+/** Provider quote context shown without resolving or rewriting another message. */
+export interface ImMessageQuote {
   readonly text: string
-  readonly format: 'text' | 'markdown' | 'unsupported'
+  readonly senderDisplayName?: string
+  readonly externalMessageId?: string
 }
+
+/** Text, image placeholder, or honest unsupported-message presentation. */
+export type ImMessageContent =
+  | { readonly text: string; readonly format: 'text' | 'markdown'; readonly quote?: ImMessageQuote }
+  | { readonly text: string; readonly format: 'image'; readonly quote?: ImMessageQuote }
+  | { readonly text: string; readonly format: 'unsupported'; readonly messageType: string; readonly details: ImSafeJsonValue; readonly quote?: ImMessageQuote }
 
 /** One normalized inbound provider message before persistence. */
 export interface ImInboundMessageInput {
@@ -191,7 +212,15 @@ export interface ImConversationCursor {
   readonly lastReceivedSequenceNumber: number
   readonly lastSubmittedSequenceNumber: number
   readonly pendingCount: number
+  /** Last provider page admission; Agent submission does not change this value. */
+  readonly lastSyncedAt?: string
   readonly updatedAt: string
+}
+
+/** Provider-known labels for one conversation. Missing fields remain unknown. */
+export interface ImConversationPresentation {
+  readonly displayName?: string
+  readonly memberCount?: number
 }
 
 /** Atomic provider page admission request. */
@@ -200,6 +229,7 @@ export interface ImIngestInboundPageRequest {
   readonly scope: ImDeliveryScope
   readonly observedCursor: string | null
   readonly nextCursor: string | null
+  readonly presentation?: ImConversationPresentation
   readonly messages: readonly ImInboundMessageInput[]
 }
 
@@ -265,6 +295,8 @@ export type ImProviderCursorOperationQuery =
 export interface ImImportJsonlHistoryRequest {
   readonly operationId: ImDeliveryOperationId
   readonly scope: ImDeliveryScope
+  /** Display source; the Host persists its basename only. */
+  readonly fileName: string
   readonly jsonl: string
 }
 
@@ -273,6 +305,8 @@ export interface ImImportJsonlHistoryResult {
   readonly kind: 'jsonl-import'
   readonly operationId: ImDeliveryOperationId
   readonly status: 'applied'
+  readonly fileName: string
+  readonly messageCount: number
   readonly importedCount: number
   readonly duplicateCount: number
 }
@@ -361,6 +395,9 @@ export interface ImOutboundView {
   /** Scope-local admission order, independent of timestamps. */
   readonly sequenceNumber: number
   readonly routeBinding?: ImOutboundRouteBinding
+  readonly sender?: ImHumanDshSenderAttribution
+  readonly manualBinding?: { readonly sessionId: SessionId; readonly taskId: ImAgentTaskId }
+  readonly retryOfRequestId?: ImOutboundRequestId
   readonly preSendFailureReason?: 'account-not-found' | 'platform-mismatch' | 'account-paused' | 'route-disabled' | 'route-unmatched' | 'route-changed' | 'cancelled'
   readonly attempt?: { readonly attemptId: ImOutboundAttemptId; readonly startedAt: string }
   readonly receipt?: ImOutboundReceipt
@@ -376,8 +413,78 @@ export interface ImRegisterOutboundRequest {
   readonly scope: ImDeliveryScope
   readonly intent: ImOutboundIntent
   readonly content: ImMessageContent
+  readonly sender?: ImHumanDshSenderAttribution
+  readonly manualBinding?: { readonly sessionId: SessionId; readonly taskId: ImAgentTaskId }
+  readonly retryOfRequestId?: ImOutboundRequestId
   readonly replyToExternalMessageId?: string
 }
+
+/** Durable real-Session assignment and safe identity confirmation for manual sends. */
+export interface ImRealSessionBinding {
+  readonly sessionId: SessionId
+  readonly scope: ImRealDeliveryScope
+  readonly taskId: ImAgentTaskId
+  readonly routeId: ImRouteId
+  readonly routeRevision: ImRevision
+  readonly accountRevision: ImRevision
+  readonly workspaceId: WorkspaceId
+  readonly directRecipient?: ImDirectRecipient
+  readonly senderIdentity: {
+    readonly accountId: ImAccountId
+    readonly platform: ImPlatform
+    readonly displayName: string
+    readonly identity: ImAccountIdentity
+    readonly providerActorId: string
+  }
+  readonly accountState: {
+    readonly authorization: ImAccountAuthorization
+    readonly connectionIntent: ImAccountConnectionIntent
+    readonly listener: ImAccountListener
+    readonly paused: boolean
+    readonly manualSend: ImManualSendAvailability
+  }
+  readonly destination:
+    | { readonly conversationKind: 'direct'; readonly conversationId: string; readonly displayName?: string; readonly directRecipient?: ImDirectRecipient }
+    | { readonly conversationKind: 'group'; readonly conversationId: string; readonly displayName?: string; readonly memberCount?: number }
+  readonly sync?: { readonly lastSyncedAt: string; readonly platformCursor: string | null }
+}
+
+/** Current Host decision for a real Session's manual composer. */
+export type ImManualSendAvailability =
+  | { readonly state: 'available' }
+  | { readonly state: 'unavailable'; readonly reason: 'disconnected' | 'authorization-required' | 'listener-unavailable' }
+
+/** GUI request for one idempotent real-platform manual message. */
+export interface ImSendManualMessageRequest {
+  readonly sessionId: SessionId
+  readonly requestId: ImOutboundRequestId
+  readonly text: string
+}
+
+/** Query or confirmation input for a manual message bound through its Session. */
+export interface ImManualMessageQueryRequest {
+  readonly sessionId: SessionId
+  readonly requestId: ImOutboundRequestId
+}
+
+/** Explicit retry creates a distinct durable intent linked to an uncertain predecessor. */
+export interface ImRetryManualMessageRequest {
+  readonly sessionId: SessionId
+  readonly requestId: ImOutboundRequestId
+  readonly retryOfRequestId: ImOutboundRequestId
+}
+
+/** Safe result for rendering identity, destination, provenance, and delivery state together. */
+export interface ImManualMessageResult {
+  readonly binding: ImRealSessionBinding
+  readonly sender: ImHumanDshSenderAttribution
+  readonly outbound: ImOutboundView
+}
+
+/** Durable lookup after an uncertain or lost manual-send response. */
+export type ImManualMessageQuery =
+  | { readonly state: 'not-found'; readonly binding: ImRealSessionBinding }
+  | { readonly state: 'known'; readonly result: ImManualMessageResult }
 
 /** Start the sole provider attempt after a fresh route-policy check. */
 export interface ImBeginOutboundAttemptRequest {

@@ -213,16 +213,72 @@ describe('inbound delivery', () => {
       external('import-2', '2026-09-14T02:00:00.000Z'),
       external('live', '2026-09-14T03:00:00.000Z'),
     ].map(value => JSON.stringify(value)).join('\n')
-    await expect(ctx.imRuntime.importJsonlHistory({ operationId: deliveryOperation('import'), scope, jsonl }))
-      .resolves.toMatchObject({ importedCount: 2, duplicateCount: 1 })
+    await expect(ctx.imRuntime.importJsonlHistory({ operationId: deliveryOperation('import'), scope, fileName: '/tmp/history.jsonl', jsonl }))
+      .resolves.toMatchObject({ fileName: 'history.jsonl', messageCount: 3, importedCount: 2, duplicateCount: 1 })
     expect(ctx.imRuntime.pendingInbound({ scope, limit: 10 })).toHaveLength(1)
     const latest = ctx.imRuntime.queryHistory({ scope, limit: 2 })
     expect(latest.items.map(item => item.externalMessageId)).toEqual(['import-1', 'import-2'])
     expect(latest.hasMore).toBe(true)
     expect(ctx.imRuntime.queryHistory({ scope, limit: 10, origins: ['jsonl-import'] }).items).toHaveLength(2)
-    await expect(ctx.imRuntime.importJsonlHistory({ operationId: deliveryOperation('bad-import'), scope, jsonl: '{"externalMessageId":' }))
+    await expect(ctx.imRuntime.importJsonlHistory({ operationId: deliveryOperation('bad-import'), scope, fileName: 'bad.jsonl', jsonl: '{"externalMessageId":' }))
       .rejects.toMatchObject({ code: 'IM_JSONL_INVALID' })
+    await expect(ctx.imRuntime.importJsonlHistory({
+      operationId: deliveryOperation('private-details'), scope, fileName: 'private.jsonl',
+      jsonl: JSON.stringify({
+        externalMessageId: 'private', sender: { kind: 'unknown', reason: 'provider-unknown' },
+        content: { text: '', format: 'unsupported', messageType: 'opaque', details: { headers: { authorization: 'private' } } },
+        occurredAt: '2026-09-14T04:00:00.000Z',
+      }),
+    })).rejects.toMatchObject({ code: 'IM_JSONL_INVALID' })
     expect(ctx.imRuntime.queryHistory({ scope, limit: 10 }).items).toHaveLength(3)
+  })
+
+  it('persists quote, image placeholder, and safe unsupported-message presentation', async () => {
+    const first = await boot()
+    const { scope } = await configured(first.ctx)
+    await expect(first.ctx.imRuntime.ingestInboundPage({
+      operationId: deliveryOperation('invalid-direct-presentation'), scope,
+      observedCursor: null, nextCursor: null, presentation: { memberCount: 2 }, messages: [],
+    })).rejects.toMatchObject({ code: 'IM_DELIVERY_SCOPE_INVALID' })
+    await first.ctx.imRuntime.ingestInboundPage({
+      operationId: deliveryOperation('presentation'), scope, observedCursor: null, nextCursor: null,
+      messages: [
+        {
+          externalMessageId: 'quoted', sender: { kind: 'external', senderId: 'buyer' },
+          content: {
+            text: 'current reply', format: 'text',
+            quote: { text: 'earlier context', senderDisplayName: 'Buyer', externalMessageId: 'earlier' },
+          },
+          occurredAt: '2026-09-14T01:00:00.000Z',
+        },
+        {
+          externalMessageId: 'image', sender: { kind: 'external', senderId: 'buyer' },
+          content: { text: '', format: 'image' }, occurredAt: '2026-09-14T01:01:00.000Z',
+        },
+        {
+          externalMessageId: 'unsupported', sender: { kind: 'unknown', reason: 'provider-unknown' },
+          content: {
+            text: '', format: 'unsupported', messageType: 'voice-note',
+            details: { durationMs: 3200, sizeBytes: 8192, sender: 'buyer', sentAt: '2026-09-14T01:02:00.000Z' },
+          },
+          occurredAt: '2026-09-14T01:02:00.000Z',
+        },
+      ],
+    })
+    await first.ctx.fiber.dispose()
+    roots.splice(roots.indexOf(first.ctx), 1)
+    const second = await boot(first.root)
+    expect(second.ctx.imRuntime.queryHistory({ scope, limit: 10 }).items.map(item => item.content)).toEqual([
+      {
+        text: 'current reply', format: 'text',
+        quote: { text: 'earlier context', senderDisplayName: 'Buyer', externalMessageId: 'earlier' },
+      },
+      { text: '', format: 'image' },
+      {
+        text: '', format: 'unsupported', messageType: 'voice-note',
+        details: { durationMs: 3200, sizeBytes: 8192, sender: 'buyer', sentAt: '2026-09-14T01:02:00.000Z' },
+      },
+    ])
   })
 
   it('rejects reuse of inbound and provider-cursor operation identities', async () => {
@@ -328,7 +384,7 @@ describe('outbound delivery', () => {
     if (manualAttempt.state !== 'ready') throw new Error('fixture did not begin a manual attempt')
     await ctx.imRuntime.settleOutboundAttempt({ scope, requestId: manualId, attemptId: manualAttempt.attemptId, status: 'sent', externalMessageId: 'manual-echo' })
     expect(ctx.imRuntime.classifyInboundSender(scope, { kind: 'configured-echo', externalMessageId: 'manual-echo' }))
-      .toEqual({ kind: 'human-dsh', outboundRequestId: manualId })
+      .toEqual({ kind: 'human-dsh', outboundRequestId: manualId, providerActorId: 'merchant-1' })
   })
 
   it('turns an interrupted dispatch into result-unknown on restart', async () => {

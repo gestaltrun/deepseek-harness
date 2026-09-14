@@ -2,9 +2,10 @@
 import type { CredentialRecord } from '@deepseek-ai/dsh-credentials'
 import type {
   ImDeliveryOperationId,
-  ImInboundMessageInput,
+  ImConversationPresentation,
   ImInboundPageResult,
   ImInboundSenderEvidence,
+  ImMessageContent,
   ImProviderCursorCommitResult,
   ImProviderCursorOwner,
 } from './delivery-types.ts'
@@ -23,8 +24,8 @@ export interface ImTransportAccountInspection { readonly authorization: ImAccoun
 export interface ImTransportInboundMessage {
   readonly externalMessageId: string
   readonly senderEvidence: ImInboundSenderEvidence
-  readonly text: string
-  readonly format: ImInboundMessageInput['content']['format']
+  /** Provider-normalized safe presentation; raw credentials, headers, and connection settings are excluded. */
+  readonly content: ImMessageContent
   readonly occurredAt: string
   /** True only when the provider protocol identifies this configured account in its mention metadata. */
   readonly mentionedConfiguredAccount?: boolean
@@ -34,6 +35,8 @@ export interface ImTransportConversationPage {
   readonly operationId: ImDeliveryOperationId
   readonly conversationId: string
   readonly conversationKind: ImConversationKind
+  /** Provider-known group or peer labels; absent facts stay absent. */
+  readonly presentation?: ImConversationPresentation
   readonly messages: readonly ImTransportInboundMessage[]
 }
 /** One provider page that may span multiple conversations. */

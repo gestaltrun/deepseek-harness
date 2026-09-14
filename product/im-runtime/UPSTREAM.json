@@ -56,6 +56,11 @@
     "creating-first simulation records with Host-minted tested Session identity and recoverable failure state",
     "normal Agent, preset, Workspace, Session, history, and outbox paths for isolated simulation delivery",
     "Host-authoritative peer Session navigation and current-instance tool binding",
-    "separate begin-stop and terminal-wait semantics with instance-scoped cancellation"
+    "separate begin-stop and terminal-wait semantics with instance-scoped cancellation",
+    "durable real-Session binding for identity-confirmed manual platform sends",
+    "provider-known conversation labels, group size, last-sync, and account availability in real-Session binding",
+    "receipt-only confirmation and explicit request-linked retry for uncertain manual sends",
+    "query-only simulation history provenance with Host-counted rows and basename-only display",
+    "durable quote, image-placeholder, and unsupported-message presentation facts"
   ]
 }
