@@ -20,6 +20,7 @@ const calls = []
 const heldPause = { received: Promise.withResolvers(), release: Promise.withResolvers() }
 const heldDisconnect = { received: Promise.withResolvers(), release: Promise.withResolvers() }
 let authorizationRefreshes = 0
+let loseSetupConfirmation = true
 let apiFiber
 
 async function bootHost() {
@@ -34,7 +35,7 @@ async function bootHost() {
     apply(ctx) {
       ctx.imTransports.register({
         platform: 'wangwang',
-        listAccountCandidates: async () => [{ platform: 'wangwang', candidateId: 'fixture', displayName: 'Configuration fixture' }],
+        listAccountCandidates: async () => [{ platform: 'wangwang', candidateId: 'fixture', endpoint: 'https://wangwang.invalid', displayName: 'Configuration fixture' }],
         prepareAccount: async request => ({
           displayName: 'Configuration fixture',
           identity: { platform: 'wangwang', merchantId: request.candidateId, displayName: 'Configuration fixture' },
@@ -87,6 +88,10 @@ async function bootClient() {
         }
         if (request.payload.args.request?.operations?.some(operation => operation.request.operationId === 'lost-save')) {
           throw new Error('Configuration smoke lost the committed response')
+        }
+        if (endpoint === 'im/confirmAccountSetup' && request.payload.args.request?.operationId === 'setup-confirm-lost' && loseSetupConfirmation) {
+          loseSetupConfirmation = false
+          throw new Error('Configuration smoke lost the account confirmation response')
         }
         if (request.payload.args.request?.operationId === 'disconnect-old') {
           heldDisconnect.received.resolve()
@@ -181,10 +186,33 @@ try {
   const candidates = await client.im.listAccountCandidates('wangwang')
   assert(candidates.ok)
   assert.equal(candidates.value[0].candidateId, 'fixture')
-  const setup = await client.im.connectAccount({ platform: 'wangwang', candidateId: 'fixture', accessKeyId: 'fixture-key', accessKeySecret: 'fixture-secret' })
+  assert.equal(candidates.value[0].endpoint, 'https://wangwang.invalid')
+  const cancelledPreview = await client.im.previewAccountSetup({ platform: 'wangwang', candidateId: 'fixture', endpoint: 'https://wangwang.invalid', accessKeyId: 'cancel-key', accessKeySecret: 'cancel-secret' })
+  assert(cancelledPreview.ok)
+  assert.equal(client.im.configuration.getSnapshot().value.accounts.length, 0)
+  const cancelled = await client.im.cancelAccountSetup(cancelledPreview.value.setupId)
+  assert(cancelled.ok)
+  assert.equal(cancelled.value.state, 'cancelled')
+  const preview = await client.im.previewAccountSetup({ platform: 'wangwang', candidateId: 'fixture', endpoint: 'https://wangwang.invalid', accessKeyId: 'fixture-key', accessKeySecret: 'fixture-secret' })
+  assert(preview.ok)
+  assert.equal(preview.value.authorization.state, 'unchecked')
+  assert(!JSON.stringify(preview.value).includes('fixture-secret'))
+  assert.equal(client.im.configuration.getSnapshot().value.accounts.length, 0)
+  const confirmation = { setupId: preview.value.setupId, operationId: 'setup-confirm-lost' }
+  const lostConfirmation = await client.im.confirmAccountSetup(confirmation)
+  assert.equal(lostConfirmation.ok, false)
+  const setup = await client.im.confirmAccountSetup(confirmation)
   assert(setup.ok)
-  assert.equal(setup.value.authorization.state, 'unchecked')
-  const accountId = setup.value.id
+  assert.equal(setup.value.status, 'applied')
+  const accountId = setup.value.account.id
+  const setupReceipt = await client.im.queryAccountOperation({ accountId, operationId: confirmation.operationId })
+  assert(setupReceipt.ok)
+  assert.equal(setupReceipt.value.state, 'known')
+  assert.equal(setupReceipt.value.result.account.id, accountId)
+  const confirmedCancel = await client.im.cancelAccountSetup(preview.value.setupId)
+  assert(confirmedCancel.ok)
+  assert.equal(confirmedCancel.value.state, 'confirmed')
+  assert.equal(confirmedCancel.value.accountId, accountId)
   const delivery = await exerciseDelivery(host, client, accountId, waitFor)
   const operations = ['first', 'second'].map(id => ({
     kind: 'create', request: { operationId: id, accountId, workspaceId: 'workspace-a', conversationKind: 'direct', target: { kind: 'specific', conversationId: id }, enabled: false },
@@ -293,14 +321,14 @@ try {
   assert.equal(client.get('im'), undefined)
   assert.equal(client.get('remote.im'), undefined)
   assert.equal(retained.getSnapshot().value.routes.length, 2)
-  assert.equal(TYPERT.invocations.length, 20)
+  assert.equal(TYPERT.invocations.length, 23)
   await client.fiber.dispose()
   await host.fiber.dispose()
   const recovered = JSON.parse(execFileSync(process.execPath, [fileURLToPath(new URL('./read-configuration.mjs', import.meta.url)), directory], {
     encoding: 'utf8', timeout: 15000, maxBuffer: 65536,
   }))
   assert.deepEqual(recovered, { accounts: 1, routes: 2, rebound: 'workspace-b' })
-  console.log(JSON.stringify({ methods: 20, accountLifecycle: { disconnect: true, reconnect: true, authorizationRefresh: true, lateDisconnectIsolated: true, routesAndHistoryRetained: true }, builtHost: true, builtClient: true, realGateway: true, durableRuntime: 'json', freshProcessRecovery: recovered, provider: 'configuration fixture, no external platform or model calls', delivery, simulationTargetCas: true, targetsRetained: 2, staleRebind: 'conflict', ordinarySaveRetainsOwner: true, invalidInputRejected: true, lostResponseReconciled: true, lateUnaryIsolated: true, reconnectBaseline: true, secretInClientState: false, disposed: true, calls: [...new Set(calls)] }))
+  console.log(JSON.stringify({ methods: 23, stagedAccountSetup: { previewDoesNotPersist: true, cancelledSetupReleased: true, lostConfirmationReplayed: true, receiptQueried: true, confirmedCancellationReported: true }, accountLifecycle: { disconnect: true, reconnect: true, authorizationRefresh: true, lateDisconnectIsolated: true, routesAndHistoryRetained: true }, builtHost: true, builtClient: true, realGateway: true, durableRuntime: 'json', freshProcessRecovery: recovered, provider: 'configuration fixture, no external platform or model calls', delivery, simulationTargetCas: true, targetsRetained: 2, staleRebind: 'conflict', ordinarySaveRetainsOwner: true, invalidInputRejected: true, lostResponseReconciled: true, lateUnaryIsolated: true, reconnectBaseline: true, secretInClientState: false, disposed: true, calls: [...new Set(calls)] }))
 } finally {
   heldPause.release.resolve()
   heldDisconnect.release.resolve()

@@ -38,7 +38,7 @@ describe('account candidate objects', () => {
     model.subscribe(() => { notices++ })
     const loading = model.load('wangwang')
     model.dispose()
-    result.resolve({ ok: true, value: [{ platform: 'wangwang', candidateId: 'late', displayName: 'Late' }] })
+    result.resolve({ ok: true, value: [{ platform: 'wangwang', candidateId: 'late', endpoint: 'https://wangwang.invalid', displayName: 'Late' }] })
     await loading
     expect(notices).toBe(0)
     expect(model.getSnapshot().wangwang.items).toEqual([])

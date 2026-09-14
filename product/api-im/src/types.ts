@@ -87,6 +87,12 @@ export interface ImRouteOperationQueryRequest {
   readonly operationId: ImOperationId
 }
 
+/** Account aggregate and operation identity required for lifecycle receipt reconciliation. */
+export interface ImAccountOperationQueryRequest {
+  readonly accountId: ImAccountId
+  readonly operationId: ImOperationId
+}
+
 /** Workspace aggregate and operation identity required for target reconciliation. */
 export interface ImTargetOperationQueryRequest {
   readonly workspaceId: WorkspaceId
