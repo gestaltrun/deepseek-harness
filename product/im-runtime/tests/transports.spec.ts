@@ -13,6 +13,8 @@ function transport(platform: ImTransport['platform']): ImTransport {
         : { platform, merchantId: 'merchant', displayName: 'Fixture' },
       authorization: { state: 'unchecked' },
     }),
+    inspectAccount: async () => ({ authorization: { state: 'unchecked' } }),
+    refreshAccount: async () => ({ authorization: { state: 'unchecked' } }),
     discoverConversations: async () => ({ items: [] }),
     listen: async () => async () => {},
     send: async () => ({ state: 'unknown' }),

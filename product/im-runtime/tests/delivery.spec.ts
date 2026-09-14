@@ -50,6 +50,8 @@ function transport(): ImTransport {
         credentialRecord: { kind: 'grant', payload: { accessKeyId: request.accessKeyId, accessKeySecret: request.accessKeySecret } },
       }
     },
+    inspectAccount: async () => ({ authorization: { state: 'unchecked' } }),
+    refreshAccount: async () => ({ authorization: { state: 'unchecked' } }),
     discoverConversations: async () => ({ items: [] }),
     listen: async () => async () => {},
     send: async () => ({ state: 'unknown' }),

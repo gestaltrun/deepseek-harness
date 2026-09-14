@@ -43,6 +43,7 @@ import type {
 import type {
   ImAccountId,
   ImAccountCandidate,
+  ImAccountLifecycleRequest,
   ImAccountMutationResult,
   ImAccountSetupRequest,
   ImAccountView,
@@ -104,6 +105,12 @@ export interface ImRuntimeService {
   addAccount(request: ImAccountSetupRequest, signal?: AbortSignal): Promise<ImAccountView>
   /** @param request - guarded account pause mutation. @returns its durable outcome. */
   setAccountPaused(request: ImSetAccountPausedRequest): Promise<ImAccountMutationResult>
+  /** @param request - guarded persistent disconnect intent. @returns its durable outcome. */
+  disconnectAccount(request: ImAccountLifecycleRequest): Promise<ImAccountMutationResult>
+  /** @param request - guarded persistent reconnect intent. @returns its durable outcome. */
+  reconnectAccount(request: ImAccountLifecycleRequest): Promise<ImAccountMutationResult>
+  /** @param request - guarded provider authorization refresh. @param signal - caller lifetime. @returns its durable outcome. */
+  refreshAccount(request: ImAccountLifecycleRequest, signal?: AbortSignal): Promise<ImAccountMutationResult>
   /** @param request - new route tuple and workspace owner. @returns its durable outcome. */
   createRoute(request: ImCreateRouteRequest): Promise<ImRouteMutationResult>
   /** @param request - guarded non-ownership route edit. @returns its durable outcome. */

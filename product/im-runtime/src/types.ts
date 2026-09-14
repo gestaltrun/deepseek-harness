@@ -83,6 +83,9 @@ export type ImAccountAuthorization =
   | { readonly state: 'required'; readonly reason: 'missing' | 'expired' | 'revoked'; readonly checkedAt?: string }
   | { readonly state: 'failed'; readonly code: string; readonly message: string; readonly checkedAt: string }
 
+/** Durable operator intent; process listener facts are projected separately. */
+export type ImAccountConnectionIntent = 'connected' | 'disconnected'
+
 /** Process listener state projected separately from authorization. */
 export type ImAccountListener =
   | { readonly state: 'stopped'; readonly reason: 'no-enabled-route' | 'account-paused' | 'disconnected' | 'manual' }
@@ -100,6 +103,7 @@ export interface ImAccountView {
   readonly credentialKey?: CredentialKey
   readonly authorization: ImAccountAuthorization
   readonly listener: ImAccountListener
+  readonly connectionIntent: ImAccountConnectionIntent
   readonly paused: boolean
   readonly revision: ImRevision
   readonly createdAt: string
@@ -196,6 +200,13 @@ export interface ImSetAccountPausedRequest {
   readonly accountId: ImAccountId
   readonly observedRevision: ImRevision
   readonly paused: boolean
+}
+
+/** Guarded disconnect, reconnect, or refresh account request. */
+export interface ImAccountLifecycleRequest {
+  readonly operationId: ImOperationId
+  readonly accountId: ImAccountId
+  readonly observedRevision: ImRevision
 }
 
 /** Stable account mutation outcome. */

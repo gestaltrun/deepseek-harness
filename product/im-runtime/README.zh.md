@@ -49,7 +49,7 @@ runtime 没有部署配置字段。StorageDomain 选择持久后端，Credential
 - name: '@gestaltrun/dsh-im-runtime'
 ```
 
-`listAccountCandidates` 从已注册 transport 返回已安装的钉钉 profile 或已准入的旺旺商家。UI 从中选择标识，不虚构默认 profile、商家 ID 或 endpoint。transport 随后校验只写的接入输入，并返回安全身份事实与可选凭据记录。runtime 先通过 `ctx.credentials` 保存凭据记录，再发布账号。授权状态与监听状态分别展示，不推导 `connected` 标记。
+`listAccountCandidates` 从已注册 transport 返回已安装的钉钉 profile 或已准入的旺旺商家。UI 从中选择标识，不虚构默认 profile、商家 ID 或 endpoint。transport 随后校验只写的接入输入，并返回安全身份事实与可选凭据记录。`inspectAccount` 和 `refreshAccount` 报告提供方观察到的授权事实，不改变账号身份。runtime 通过 `ctx.credentials` 保存凭据。连接意图、授权状态和监听状态是三个独立事实。
 
 每条路由包含平台、账号、会话类型、`all` 或 `specific` 目标以及工作区归属。指定会话路由始终优先于全量路由，包括指定路由被停用时。私聊路由拒绝群触发设置；群聊路由必须至少配置 `mention`、正整数 `everyN` 或正整数 `fixedIntervalSeconds` 之一。
 
@@ -57,11 +57,11 @@ runtime 没有部署配置字段。StorageDomain 选择持久后端，Credential
 
 `ingestInboundPage` 持久保存一个完整会话页面，并按完整 scope 与平台消息标识去重。JSONL 导入只进入查询历史，不进入待处理 Agent 投递。使用 `sessionUserMessage` 创建标识稳定的 `user/message`；该 Session 日志持久后再调用 `markSubmitted`。崩溃后，`reconcileSession` 扫描 `SessionPersistence` 并确认匹配的稳定来源。这些是独立持久写入，不声称投递领域与 Session 日志之间存在事务。
 
-提供方轮询游标由明确的平台账号与 stream 共同拥有。提供方先提交每个会话页面，再把全部页面 operation 收据传给 `commitProviderCursor`。如果进程在两步之间停止，重启后仍读取旧提供方游标，并通过持久去重安全重放页面。因此一个旺旺商家页面可以覆盖多个会话，不会把商家游标错误归给某个会话。
+提供方轮询游标由明确的平台账号与 stream 共同拥有。runtime 拥有的监听 sink 接收一个带稳定逐会话 operation id 的提供方页面。它先提交每个会话分组，再带全部页面收据提交提供方游标。如果进程在这些写入之间停止，或后续分组失败，重启后仍读取旧提供方游标，并通过持久去重安全重放各分组。因此一个旺旺商家页面可以覆盖多个会话，不会把商家游标错误归给某个会话。
 
 `registerOutbound` 在任何平台调用前保存意图。`beginOutboundAttempt` 只授予一次尝试；调度结果未决时重启或重复 begin 会记录 `result-unknown`，调用者随后查询或确认，不盲目重试。自动意图冻结路由与账号 generation。账号或路由暂停时，DSH 人工发送和模拟发送仍可用；暂停或路由变更前的自动意图不能在恢复后继续发送。
 
-提供方把参与者和回显事实传给 `classifyInboundSender`。匹配已发送自动 outbox 时返回 `ai`，匹配已发送人工 outbox 时返回 `human-dsh`，明确的平台原生操作证据返回 `human-native`。无法匹配的已配置账号观察仍为 `unknown`；文本相等不会改变发送者归因。
+提供方把参与者和回显事实传给 `classifyInboundSender`。匹配已发送自动 outbox 时返回 `ai`，匹配已发送人工 outbox 时返回 `human-dsh`，明确的平台原生操作证据返回 `human-native`。无法匹配的已配置账号观察仍为 `unknown`；文本相等不会改变发送者归因。mention 触发只使用随消息持久保存的提供方明确 mention 元数据。
 
 -----
 
@@ -73,7 +73,7 @@ runtime 没有部署配置字段。StorageDomain 选择持久后端，Credential
 
 `gestaltrun_im_runtime` StorageDomain 为每个账号聚合保存一条记录，并为每个工作区模拟目标保存一条记录。独立的 `gestaltrun_im_delivery` 领域为每个完整会话 scope 保存一个聚合，并另存提供方拥有的游标记录。会话聚合在一次持久写入中保存入站消息、去重键、操作收据、提交证据和 outbox。提供方游标只在引用的页面收据都存在后提交。任何操作都不声称在凭据、配置、投递、提供方游标或 Session 记录之间提供原子事务。
 
-`ImTransports` 为每个平台保留一个存活的提供方，并随注册方 Cordis fiber 释放。`ctx.imRuntime.subscribe` 和类型化 `imRuntime/changed` 事件在对应持久写入后触发。snapshot revision 只在当前进程 generation 内排序；持久 operation id 与记录 revision 跨重启保留。
+`ImTransports` 为每个平台保留一个存活的提供方，并随注册方 Cordis fiber 释放。当连接意图为连接、账号未暂停且存在启用的路由时，runtime 启动监听器；这些事实不再满足时，runtime 停止监听器。`ctx.imRuntime.subscribe` 和类型化 `imRuntime/changed` 事件在对应持久写入后触发。snapshot revision 只在当前进程 generation 内排序；持久 operation id 与记录 revision 跨重启保留。
 
 | 源文件 | 用途 |
 |---|---|
@@ -113,7 +113,7 @@ runtime 没有部署配置字段。StorageDomain 选择持久后端，Credential
 ## 已知限制与后续工作
 
 - 提供方包负责在线身份检查、会话发现、监听器、出站发送和回执确认。
-- Agent 准入、自动回复 pump、提供方连接控制和双 Session 模拟生命周期属于后续产品切片。
+- Agent 准入、自动回复 pump 和双 Session 模拟生命周期属于后续产品切片。
 - operation 收据不会自动清理，因为清理后无法区分旧操作与从未收到的操作。
 - 凭据和配置使用不同的持久化服务。账号写入失败时会尝试回滚凭据；若回滚也失败，则同时报告两个错误，不声称存在跨服务事务。
 
