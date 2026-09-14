@@ -31,7 +31,7 @@ kind: "package-bundle"
 <a id="layer-behavior"></a>
 ## 配置层行为
 
-[补丁](cordis.patch.yml) 各插入一次 `gestaltrun-im-runtime`、`gestaltrun-im-api` 和 `gestaltrun-im-ui`。底层 base 提供存储、凭据和 Typert 服务。[运行时](../im-runtime/README.zh.md) 定义持久化配置，[API](../api-im/README.zh.md) 定义安全 Remote 命令和 Client 对象，[UI](../ui-im/README.zh.md) 定义账号和选定 Workspace 的控件。UI 使用浏览器目录选择器；Desktop 组合可以把其 `directoryPicker` 设为 `native`。后续 profile 补丁可以按正常的有序补丁规则配置这些具名行。bundle 自身没有运行时入口或服务。
+[补丁](cordis.patch.yml) 各插入一次 `gestaltrun-im-runtime`、`gestaltrun-im-api` 和 `gestaltrun-im-ui`，并选择公开的 browse 目录 Host 和匹配的 UI 配置。底层 base 提供存储、凭据和 Typert 服务。[运行时](../im-runtime/README.zh.md) 定义持久化配置，[API](../api-im/README.zh.md) 定义安全 Remote 命令和 Client 对象，[UI](../ui-im/README.zh.md) 定义账号和选定 Workspace 的控件。已导出的 [Web overlay](web.patch.yml) 再次明确浏览器搭配。[Desktop overlay](desktop.patch.yml) 禁用产品 browse 行并选择原生 UI 交互；Desktop Host 在 profile 配置层之后应用其既有原生适配器补丁。在该最终 Desktop 配置层之前，将产品 Desktop overlay 应用于 profile。bundle 自身没有运行时入口或服务。
 
 <a id="model-experience"></a>
 ## 模型体验

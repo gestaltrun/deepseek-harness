@@ -31,7 +31,7 @@ The repeatable installation check uses an isolated, already-installed `@deepseek
 <a id="layer-behavior"></a>
 ## Layer behavior
 
-The [patch](cordis.patch.yml) inserts `gestaltrun-im-runtime`, `gestaltrun-im-api`, and `gestaltrun-im-ui` once. The underlying base supplies storage, credentials, and Typert services. [Runtime](../im-runtime/README.md) owns durable configuration, [API](../api-im/README.md) owns safe Remote commands and Client objects, and [UI](../ui-im/README.md) owns account and selected-Workspace controls. The UI uses the browser directory picker; a Desktop composition can set its `directoryPicker` to `native`. A later profile patch may configure these named rows through the normal ordered patch rules. The bundle has no runtime entry or service of its own.
+The [patch](cordis.patch.yml) inserts `gestaltrun-im-runtime`, `gestaltrun-im-api`, and `gestaltrun-im-ui` once and selects the public browse directory Host with matching UI configuration. The underlying base supplies storage, credentials, and Typert services. [Runtime](../im-runtime/README.md) owns durable configuration, [API](../api-im/README.md) owns safe Remote commands and Client objects, and [UI](../ui-im/README.md) owns account and selected-Workspace controls. The exported [Web overlay](web.patch.yml) repeats the explicit browser pairing. The [Desktop overlay](desktop.patch.yml) disables the product browse row and selects native UI interaction; the Desktop Host applies its existing native-provider patch after the profile layers. Apply the product Desktop overlay in the profile before that final Desktop layer. The bundle has no runtime entry or service of its own.
 
 <a id="model-experience"></a>
 ## Model Experience
