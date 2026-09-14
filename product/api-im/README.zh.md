@@ -15,6 +15,7 @@ kind: "package-plugin"
 
 - [Configuration API](#configuration-api)
 - [Client state](#client-state)
+- [Delivery reads](#delivery-reads)
 - [Build inputs](#build-inputs)
 - [Model Experience](#model-experience)
 - [Dev Note](#dev-note)
@@ -30,6 +31,12 @@ Host 入口依赖 `imRuntime`，提供 `im` Remote 命名空间。账号接入�
 Client 入口通过公开 Gateway 挂载自身生成的 contribution。每个 follow 代次先发送完整基线，再发送有序的完整替换。慢读者合并失效通知。重连保留最后可用配置，直到新基线到达。一元响应返回操作结果，不能覆盖更新的流数据。
 
 可观察对象保持稳定身份，批量发送结构变更通知，并在销毁时移除观察者。连接取消关闭 Host 订阅。候选发现为每个平台保留独立 Client 对象；已取消或已被替代的读取不能覆盖更新的选项。UI 草稿与选择由消费本包的 UI 插件持有。
+
+## Delivery reads
+
+只读的历史、outbox 和投递 follow 方法要求完整的真实或模拟 scope。Client reader 在整个生命周期中固定该 scope 及入站、出站分页游标。每个代次发布完整的有界窗口；匹配的持久变更刷新该窗口。导航在绑定其他 scope 前销毁当前 reader。分页游标是独立的数值序号，结果未知的发送保持 `result-unknown`。
+
+供应方入站、游标提交、提交标记、发信尝试和回执结算不是 Remote 方法。这些动作由运行时与可信 Provider 持有。构建后的 smoke 使用持久测试输入，不联系供应方；它通过生成 Gateway 验证实时页面、scope 隔离、非法输入和 reader 销毁。
 
 ## Build inputs
 

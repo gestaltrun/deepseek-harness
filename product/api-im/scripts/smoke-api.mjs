@@ -8,6 +8,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createContext, runInContext } from 'node:vm'
 import { loadSmokeModules } from './smoke-modules.mjs'
+import { exerciseDelivery } from './delivery-scenario.mjs'
 
 const { Cordis, ClientStore, Storage, StorageJson, StorageDomain, Credentials, TypertRegistry, Gateway, ImRuntime, ImApi, Typert, require, apiRoot } = await loadSmokeModules()
 const { TYPERT } = Typert
@@ -176,6 +177,7 @@ try {
   assert(setup.ok)
   assert.equal(setup.value.authorization.state, 'unchecked')
   const accountId = setup.value.id
+  const delivery = await exerciseDelivery(host, client, accountId, waitFor)
   const operations = ['first', 'second'].map(id => ({
     kind: 'create', request: { operationId: id, accountId, workspaceId: 'workspace-a', conversationKind: 'direct', target: { kind: 'specific', conversationId: id }, enabled: false },
   }))
@@ -245,14 +247,14 @@ try {
   assert.equal(client.get('im'), undefined)
   assert.equal(client.get('remote.im'), undefined)
   assert.equal(retained.getSnapshot().value.routes.length, 2)
-  assert.equal(TYPERT.invocations.length, 14)
+  assert.equal(TYPERT.invocations.length, 17)
   await client.fiber.dispose()
   await host.fiber.dispose()
   const recovered = JSON.parse(execFileSync(process.execPath, [fileURLToPath(new URL('./read-configuration.mjs', import.meta.url)), directory], {
     encoding: 'utf8', timeout: 15000, maxBuffer: 65536,
   }))
   assert.deepEqual(recovered, { accounts: 1, routes: 2, rebound: 'workspace-b' })
-  console.log(JSON.stringify({ methods: 14, builtHost: true, builtClient: true, realGateway: true, durableRuntime: 'json', freshProcessRecovery: recovered, provider: 'configuration fixture, no delivery', targetsRetained: 2, staleRebind: 'conflict', ordinarySaveRetainsOwner: true, invalidInputRejected: true, lostResponseReconciled: true, lateUnaryIsolated: true, reconnectBaseline: true, secretInClientState: false, disposed: true, calls: [...new Set(calls)] }))
+  console.log(JSON.stringify({ methods: 17, builtHost: true, builtClient: true, realGateway: true, durableRuntime: 'json', freshProcessRecovery: recovered, provider: 'configuration fixture, no provider calls', delivery, targetsRetained: 2, staleRebind: 'conflict', ordinarySaveRetainsOwner: true, invalidInputRejected: true, lostResponseReconciled: true, lateUnaryIsolated: true, reconnectBaseline: true, secretInClientState: false, disposed: true, calls: [...new Set(calls)] }))
 } finally {
   heldPause.release.resolve()
   await client.fiber.dispose()
