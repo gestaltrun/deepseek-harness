@@ -54,7 +54,7 @@ The [accepted architecture](../../../.agents/notes/proposed/architecture/2026-09
 
 The independent `product/` workspace installs exact published DSH dependencies. Its normal compiler configurations contain no repository source aliases. Product build, typecheck, and pack commands run the scope check against the verified base recorded in `UPSTREAM.json`; an intentional new base must be supplied explicitly and reviewed.
 
-The product build creates the Host entry, generates nonempty strict Remote contributions, and compiles the Client module-loader factory. Engine compilation is separate from Node compilation. The engine builder verifies its Git identity, compiles with Go module changes disabled, and emits source/platform/architecture/filename/SHA-256 metadata. Package preparation builds the selected host target and places its npm archive in `product/dist`.
+The product build creates the Host entry, generates nonempty strict Remote contributions, and compiles the Client module-loader factory. Engine compilation is separate from Node compilation. The engine builder verifies its Git identity, compiles with Go module changes disabled, and emits source/platform/architecture/filename/SHA-256 metadata. The package declares `publishConfig.executableFiles` so pnpm preserves executable permissions for these resources without exposing a package bin. Package preparation builds the selected host target and places its npm archive in `product/dist`.
 
 Native Desktop interaction, authenticated provider inference, local TLS/SSE tests, and unit fixtures are separate evidence lanes. A fake GLM key can verify persistence and management without proving provider authentication.
 

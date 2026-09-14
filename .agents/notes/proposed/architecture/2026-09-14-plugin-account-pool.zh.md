@@ -24,15 +24,15 @@ Desktop 默认包含该组合。Web 可以显式选择同一 bundle。账号池 
 
 产品包内部声明 `ctx.accountPool`，拥有 CLIProxyAPI 实现、`accountPool` Remote 命名空间和共享 Client。[交付记录](../../../../docs/scratch/2026-09-14-account-pool-migration.zh.md)拥有冻结来源标识、保留草稿和验证状态。已有未提交的上游工作区脚手架保留，但排除在本方案及任何提交之外。
 
-公共 Typert 生成器只发现其自身根目录下 `packages` 中由编译面引用的包。因此 product 工作区只增加自己的 Host/Client 汇总配置和 `packages/account-pool` 工作区成员；既有模型中心原位保留。公开 `typertPlugin` 的 package 模式生成产品自己的 `./typert` 和 `./remote` 导出。正常 Typert loader 注册 Host 贡献，产品 Client 装配则通过 `ctx.remote.$mount` 挂载自己的贡献。Client 使用既有公共 module-loader factory。上游包保持精确版本的 peer 和开发依赖；不修改上游 Remote 汇总，也不复制私有协议实现。
+公共 Typert 生成器只发现其自身根目录下 `packages` 中由编译面引用的包。独立 product 工作区拥有这些汇总配置和 `packages/account-pool` 成员。已发布生成器在分析时需要可识别的协议声明，因此产品构建汇总精确版本的公共协议类型，并使用正常 TypeScript AMD 声明输出。两个独立严格程序比较全部导出名称和声明闭包，然后隔离分析配置仅把该协议模块映射到生成声明。正常 Host/Client 编译和运行时解析未修改的 npm 包，不含分析映射，也不跳过库检查。原样公共生成器输出十六个严格 Host 和 Client 操作；方法缺失、非严格 codec 或声明漂移均使构建失败。已发布协议或编译器变化时必须重新验证该适配，临时输入不进入产物。正常 Typert 装载注册 Host 贡献，Client 通过公共 API 挂载自己的生成 Remote 贡献。
 
-产品构建把 core 二进制、许可证和身份清单放入自己的 `resources`，通过 `import.meta.url` 相对自身安装模块解析。既有 Desktop 包闭包、准备和运行时文件策略已经消费产品产物及资源；它们的实现不属于允许修改的范围。规划中的产品自有本地/CI 范围检查，对照已核验基线，把每个已跟踪的新增、修改、删除和重命名与允许清单比较，无条件拒绝根 `packages/**` 和 `vendor/**`，并拒绝产品依赖补丁、上游替换 override 或本地/上游源码导入。允许清单包含 `product/**`、上述四个 fork 自有 Desktop 胶水/测试文件，以及本提案和交付记录的两组三文件。通用 app loader、IPC、`prepare-dsh`、`prepare-package-set` 和运行时策略保持不变。若所需公共能力不可用，该实施路径停止并报告缺口；实施者不能扩大允许清单。该检查是计划中的验收要求，尚未实现。
+产品构建把 core 二进制、许可证和身份清单放入自己的 `resources`，通过公共 `import.meta.resolve` 解析安装包。既有 Desktop 准备和运行时文件策略原样消费产品产物及资源。已执行的产品范围检查对照已核验基线允许清单比较已跟踪新增、修改、删除和重命名，并拒绝上游路径、依赖补丁、替换 override 和私有源码导入。产品构建、类型检查和打包调用该检查，反例验证拒绝行为。唯一分析映射是上述隔离的生成协议输入。公共能力缺失不能扩大允许清单。
 
-独立可行性探测已在不修改上游的条件下验证下述公共推理组合。本提议设计可供用户审阅，实施和 Go 构建保持暂停，直到用户确认修订方案。
+用户已批准实施本纯产品包方案。交付记录区分已完成的源码/构建检查、真实 Desktop 观测和依赖账号的验收。
 
 ### 公共操作
 
-领域品牌包括对应 core `auth_index` 的 `AccountPoolAccountRef`、对应 core 文件名的 `AccountPoolAccountName`，以及对应不透明登录操作的 `AccountPoolLoginState`。它们是不同的 `Branded` 值。`AccountPoolLoginKind` 是 `anthropic | codex | antigravity | kimi | xai | glm`；`AccountPoolPhase` 是 `starting | ready | error`。领域 DTO 为 `AccountPoolSnapshot`、`AccountPoolAccount`、`AccountPoolLoginStart`、`AccountPoolQuotaWindow`、`AccountPoolEditableFields`、`AccountPoolFieldPatch` 和 `AccountPoolModel`，从冻结来源的对应桌面类型投影。快照保留配额状态、观测时间、最后有效采样及单独的失败/过期信息，不包含原始凭据或代次端点。
+领域品牌包括表示不透明产品身份的 `AccountPoolAccountRef`、用于凭据文件操作的 `AccountPoolAccountName`，以及表示不透明登录操作的 `AccountPoolLoginState`。Core 认证索引保留在实现内部。`AccountPoolCapabilities` 区分账号/供应商模型范围、配额可用性、导出种类和支持的编辑字段。不可用计数保持缺省。其余公共 DTO 由包的纯类型 `./types` 导出定义；快照保留配额状态、观测时间、最后有效采样和独立的失败/过期信息，不含凭据或代次端点。
 
 每个异步服务操作最后接收可选的 `AbortSignal`。下表冻结十七个服务操作；表中 `Snapshot` 表示 `AccountPoolSnapshot`，全部异步结果均为 `Promise` 值。
 
@@ -64,7 +64,7 @@ Remote 暴露管理操作，以 `watch(signal?)` 取代 `subscribe`，先发送�
 
 产品自有 `resolve(config)` 通过 `import.meta.url` 取得安装资源目录，并从产品来源记录/manifest 取得固定来源 SHA。Provider Config 校验私有 `stateRoot` 和部署选项；普通 Desktop 启动不需要新增环境变量或资源路径 API。Bundle 默认值为 `startupTimeoutMs=15000`、`restartLimit=2`、`stopGraceMs=2000`、`readinessIntervalMs=50`、`requestTimeoutMs=15000`、`maxResponseBytes=1048576`、`catalogRefreshIntervalMs=2000` 和 `quotaConcurrency=4`。凭据、端口和证书属于私有运行时状态。Desktop 选择 `$DSH_HOME/desktop/account-pool`，显式启用的 Web profile 选择自己的根目录。
 
-根目录排他锁拒绝并发所有者。`stateRoot/auth/` 存放 core 拥有的 OAuth 文件；`stateRoot/config.yaml` 保留已验证的 core 账号配置，包括 GLM 管理写入。在支持的平台上，私有目录权限为 0700，文件权限为 0600。停止代次的运行时字段在启动前替换，账号字段保留。仅删除 `stateRoot/generations/` 下已终止代次的随机目录；稳定配置及无关数据保留。不读取用户默认 CLIProxyAPI home。
+根目录排他锁拒绝并发所有者。`stateRoot/auth/` 存放 core 拥有的 OAuth 文件。产品 `glm-accounts.json` 是 GLM 凭据、启停状态和支持字段的权威，core 只接收活动子集投影。Journal 在 core 更新及 ledger 原子提交之前记录每次变更。失败或重启在就绪前恢复已提交 ledger 的投影。GLM 支持备注、前缀、代理 URL、优先级和权重，其余账号字段明确不支持。其导出为产品凭据 JSON，模型目录属于供应商级别，不合成不可用的配额、健康状态和请求计数。在支持的平台上，私有目录权限为 0700，文件权限为 0600。清理仅删除 `stateRoot/generations/` 下已终止代次的随机目录；稳定凭据及无关数据保留。不读取用户默认 CLIProxyAPI home。
 
 Provider 拥有 `ctx.subprocess` 启动、环境清理、有界诊断、终止和 `waitForExit`。Bundle 显式组合隔离的本地 subprocess 实现，使二进制、TLS 探测和子进程处于同一本地执行环境；不增加执行环境探测 API。二进制 manifest（元数据清单）绑定来源 SHA、平台、架构、文件名和 SHA-256；缺失或不匹配的资源在 spawn 前失败。启动既不搜索 PATH，也不下载代码。维护中的 X509 库生成证书，不要求用户安装 Go 或 openssl。
 

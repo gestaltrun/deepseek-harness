@@ -54,7 +54,7 @@ Client 使用类型化操作和拥有 watch 取消及命令生命周期的控制
 
 独立的 `product/` 工作区安装精确发布版 DSH 依赖。正常编译配置不包含仓库源码别名。产品构建、类型检查和打包命令对照 `UPSTREAM.json` 中记录的已核验基线运行范围检查；有意采用新基线必须显式提供并审阅。
 
-产品构建生成 Host 入口、非空严格 Remote 贡献，并编译 Client module-loader factory。引擎编译与 Node 编译分开。引擎构建器校验 Git 身份，在禁止修改 Go module 的条件下编译，并输出来源/平台/架构/文件名/SHA-256 元数据。包准备构建所选主机目标，并把 npm 产物放入 `product/dist`。
+产品构建生成 Host 入口、非空严格 Remote 贡献，并编译 Client module-loader factory。引擎编译与 Node 编译分开。引擎构建器校验 Git 身份，在禁止修改 Go module 的条件下编译，并输出来源/平台/架构/文件名/SHA-256 元数据。包声明 `publishConfig.executableFiles`，让 pnpm 保留资源的执行权限，不暴露 package bin。包准备构建所选主机目标，并把 npm 产物放入 `product/dist`。
 
 原生 Desktop 交互、已认证供应商推理、本地 TLS/SSE 测试和单元 fixture（测试前置数据）属于不同证据路径。假 GLM key 可以验证持久化和管理，不能证明供应商认证。
 

@@ -33,13 +33,13 @@ The source remains read-only. The migration excludes unrelated fork capabilities
 
 ## Delivery ownership
 
-One end-to-end migration ticket owns the complete account-management and model-use path. Implementation is paused for the user's review of the revised product-only plan; no owner is ready to implement. The existing worktrees and uncommitted scaffolds are retained without moving or deleting them.
+One end-to-end migration ticket owns the complete account-management and model-use path. The user approved the revised product-only plan and requested implementation. Integration and both writers use clean worktrees; the excluded upstream scaffolds remain untouched in the original worktrees.
 
-| Responsibility | Owner | Authorized future implementation scope | Current state | Next check |
+| Responsibility | Owner | Implementation scope | Current state | Next check |
 | --- | --- | --- | --- | --- |
-| Domain, runtime and RPC | Backend owner | Internal modules of `product/packages/account-pool` only | Paused; old new-package scaffolds excluded | Published adapter/transport feasibility verified; wait for user plan review. |
-| Shared Settings UI | UI owner | Product package Client, controller, locales and tests | Paused; old upstream-client scaffold excluded | Public package-mode Remote and Client loading plan verified; wait for user review. |
-| Product artifact and integration | Delivery/environment owner | Product-owned source pin, Go resources/build, independent product lock/build, the two allowed Desktop product glue files and their tests | Planning revision in progress; no Go build or packaging authorized this round | Publish the complete revised ownership and public-API design for user review. |
+| Domain, runtime and RPC | Backend owner | Internal modules of `product/packages/account-pool` only | Integrated; real core, profile Loader, TLS, lifecycle and Session replay checks pass | Review combined product behavior. |
+| Shared Settings UI | UI owner | Product Client, controller, locales and tests | Integrated; real Gateway injection regression, focused interactions, public Client build and native entry checks pass | Account-dependent card and login-completion acceptance. |
+| Product artifact and integration | Delivery/environment owner | Product pin, Go resources, independent lock/build and four permitted Desktop glue/test files | Build, pack, scope rejection tests, installed consumer and native empty pool pass | Publish the candidate and retain live-account acceptance as pending. |
 
 The hard constraint excludes all `packages/**` and `vendor/**` implementation changes, root workspace/compiler/dependency additions, upstream `patchedDependencies` or postinstall patches, edited upstream `node_modules`, and upstream `/src` imports. CLIProxyAPI code and resources belong to `product/packages/account-pool`; no upstream application owns its business logic or build tools.
 
@@ -49,14 +49,14 @@ At the scope audit, integration, backend, and UI worktrees all remained at plann
 
 ## Evidence and handoff
 
-The preparation check observed Node `24.18.0`, pnpm `11.7.0`, Go `1.26.0` on macOS arm64, Xcode `26.4`, and an existing Electron `44.0.0` executable. Both frozen-lockfile installations completed; the second matched the advanced baseline. Native CUA successfully read a running DSH application's `dsh-app://` accessibility tree. This establishes a callable driver, not acceptance of the migration.
+The preparation check observed Node `24.18.0`, pnpm `11.7.0`, Go `1.26.0` on macOS arm64, Xcode `26.4`, and Electron `44.0.0`. Product Host/Client compilation passes with normal npm resolution and strict library checking. The generated Remote contains sixteen strict operations per face. The darwin-arm64 core binary has SHA-256 `cd869d0aecfd3e54b7dc4800d6c96ee3dfa12846b5457f64786c27c483b8bbf0`. The independent installed tarball passes normal public typing, Host imports, Client factory admission, descriptor checks, and resource identity verification.
 
 No `DEEPSEEK_API_KEY` is present in the task environment, and neither this checkout nor the normal Harness home has a `.env` file. No personal credential storage was read or copied. An isolated supported Desktop development launch can verify the real engine's empty-pool and OAuth starting states. Authenticated model inference requires an authorized account environment. Signing, notarization, and formal release publication remain separate from this migration's development acceptance.
 
-Verification records must name the exact candidate, launch mode, private state roots, actions, visible results, and retained evidence. Unit fixtures do not establish native product acceptance. The frozen acceptance checkout remains separate from implementation and local CI.
+The native source composition uses the existing Desktop preparation and Electron launch steps with an explicit private base/Web/model-center/account-pool profile. Real `dsh-app://` interaction verifies the running empty pool, six-provider chooser, empty GLM form with disabled save, and Codex PKCE initiation and cancellation. The product's explicit executable-file declaration preserves Go resource permissions through normal pnpm packaging and installation. Private project, home, user data, ports, process logs and screenshots remain in the acceptance checkout's `.desktop-build/development` directory. These are partial native UI observations; they do not establish authenticated inference, populated cards, credential download, the stock development default, or signed release.
 
 <a id="execution-scratch"></a>
 
 ## Dev Note
 
-Non-authoritative planning scratch: the public inference composition passed an isolated TLS/SSE feasibility probe without a real provider account or upstream changes. The published prior plan is superseded as implementation guidance. The PR remains draft, issue readiness is removed, and this round authorizes only plan revision and its documentation checks/publication after review.
+Non-authoritative execution scratch: the implementation is active and the PR remains draft pending native acceptance and review. The combined product tests passed 169 cases; after refreshing the declared SDK installation, the final recorded-Session case passed separately. The Session recording contains eighteen durable records covering model selection, image admission, reasoning, actual tool execution, and tool results through the public SDK/profile with a local TLS/SSE fixture. It does not prove provider authentication.
