@@ -1,0 +1,93 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+.labelRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 12px;
+  gap: 12px;
+}
+.metricName {
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.metaGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.percentText {
+  font-weight: 700;
+  font-feature-settings: 'tnum';
+}
+.resetTime {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+}
+.track {
+  position: relative;
+  width: 100%;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--dsw-alias-bg-skeleton);
+  overflow: visible;
+}
+.quotaFill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease, background-color 0.3s ease;
+}
+.timelineMarker {
+  position: absolute;
+  top: -6px;
+  bottom: -6px;
+  width: 2px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 2;
+}
+.needleArrow {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid var(--dsw-alias-state-success-primary);
+}
+.needleLine {
+  position: absolute;
+  top: 4px;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  background: var(--dsw-alias-state-success-primary);
+}
+.refreshing .quotaFill {
+  opacity: 0.72;
+}
+@media (prefers-reduced-motion: reduce) {
+  .quotaFill {
+    transition: none;
+  }
+}
+.container[data-quota-tone="unknown"] { --quota-tone: var(--dsw-alias-label-tertiary); }
+.container[data-quota-tone="low"] { --quota-tone: var(--dsw-alias-state-error-primary); }
+.container[data-quota-tone="medium"] { --quota-tone: var(--dsw-alias-state-warn-primary); }
+.container[data-quota-tone="high"] { --quota-tone: var(--dsw-alias-state-success-primary); }
+.percentText { color: var(--quota-tone); }
+.quotaFill { width: var(--quota-fill); background: var(--quota-tone); }
+.timelineMarker { left: var(--quota-time); }
+.needleArrow { border-top-color: var(--quota-tone); }
+.needleLine { background: var(--quota-tone); }
