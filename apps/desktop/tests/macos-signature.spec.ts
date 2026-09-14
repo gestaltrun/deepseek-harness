@@ -167,7 +167,7 @@ describe('desktop macOS release signature', () => {
       mkdirSync(resources, { recursive: true })
       runtimeFixture(join(resources, 'dsh'))
 
-      const { createElectronBuilderConfig } = await import('../electron-builder.config.mjs')
+      const { createElectronBuilderConfig, writeDesktopAppUpdateConfig } = await import('../electron-builder.config.mjs')
       const config = createElectronBuilderConfig(RELEASE_ENVIRONMENT, 'darwin', 'arm64')
       const appInfo = {
         channel: 'rc',
@@ -183,14 +183,16 @@ describe('desktop macOS release signature', () => {
         platform: Platform.MAC,
         platformSpecificBuildOptions: config.mac,
       }
-      await config.afterPack({
+      const context = {
         appOutDir,
         arch: Arch.arm64,
         electronPlatformName: 'darwin',
         outDir: root,
         packager,
         targets: [],
-      } as unknown as AfterPackContext)
+      } as unknown as AfterPackContext
+      expect(config.afterPack.toString()).toContain('writeDesktopAppUpdateConfig(context)')
+      await writeDesktopAppUpdateConfig(context)
 
       expect(load(readFileSync(join(resources, 'app-update.yml'), 'utf8'))).toEqual({
         provider: 'generic',
