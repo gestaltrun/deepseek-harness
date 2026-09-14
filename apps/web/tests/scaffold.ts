@@ -300,6 +300,8 @@ export interface LaunchOptions {
    * profile layers named by {@link extraOverlayPath}.
    */
   extraInstallAnchors?: string[]
+  /** Scenario-owned opaque-value correspondences applied before the shared Session normalizer. */
+  replayFixtureReplacements?: (fresh: string, existing: string) => readonly { from: string; to: string }[]
   /**
    * Replay fixture (session.jsonl) served by the inserted dsh-llm-replay row
    * in replay/refresh modes; ignored in record mode (the real adapter
@@ -848,6 +850,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
             mode,
             `http://${browserHost}:${port}`,
             harnessHome,
+            options.replayFixtureReplacements,
           )
         } catch (error) {
           failures.push(error)
@@ -1001,13 +1004,14 @@ function stableSessionFixture(
   existing: string,
   workspaceCwd: string,
   harnessHome: string,
+  replacements: readonly { from: string; to: string }[] = [],
 ): string {
   const prepared = prepareSessionSnapshotFixtureForComparison(
     normalizeWebSessionVolatiles(rawSessionLog(session), workspaceCwd),
   )
   const stabilized = existing === ''
     ? prepared
-    : stabilizeRefreshLog(prepared, existing, [], {
+    : stabilizeRefreshLog(prepared, existing, [...replacements], {
       sessionIds: [String(session.id)],
       cwd: workspaceCwd,
     })
@@ -1025,6 +1029,7 @@ async function assertReplaySession(
   mode: WebSnapshotMode,
   webUrl: string,
   harnessHome: string,
+  replayFixtureReplacements?: (fresh: string, existing: string) => readonly { from: string; to: string }[],
 ): Promise<void> {
   let expected = await readFile(fixturePath, 'utf8')
   const fixtureDir = dirname(fixturePath)
@@ -1046,8 +1051,9 @@ async function assertReplaySession(
   const sessionCwd = session.header.cwd
   if (sessionCwd === undefined) throw new Error(`${fixturePath}: replayed session has no cwd`)
   const actual = rawSessionLog(session)
+  const replacements = replayFixtureReplacements?.(actual, expected) ?? []
   if (mode === 'refresh' && writesCurrentSessionFixtures(manifest, mode)) {
-    expected = stableSessionFixture(session, expected, sessionCwd, harnessHome)
+    expected = stableSessionFixture(session, expected, sessionCwd, harnessHome, replacements)
     expectedPath = recordedSessionFixturePath(fixturePath, session.header.version)
     await writeFile(expectedPath, expected)
   }
@@ -1060,7 +1066,10 @@ async function assertReplaySession(
     sessionIds: typeof expectedHeader.id === 'string' ? [expectedHeader.id] : [],
     cwd: typeof expectedHeader.cwd === 'string' ? expectedHeader.cwd : '\0no-cwd\0',
   }
-  const actualSnapshot = normalizeSessionSnapshots([normalizeWebSessionVolatiles(actual)], actualContext)[0]
+  const comparableActual = replacements.length === 0
+    ? actual
+    : stabilizeRefreshLog(actual, expected, [...replacements], actualContext)
+  const actualSnapshot = normalizeSessionSnapshots([normalizeWebSessionVolatiles(comparableActual)], actualContext)[0]
     ?.split(harnessHome).join('{{harnessHome}}')
   const expectedSnapshot = normalizeSessionSnapshots([normalizeWebSessionVolatiles(expected)], expectedContext)[0]
     ?.split(harnessHome).join('{{harnessHome}}')

@@ -26,6 +26,8 @@
 
 `DSH_IM_SMOKE_INSTALL_ROOT=<installed-consumer> pnpm --dir product run smoke:im-agent-profile` 使用公开 `dsh` CLI 创建私有且基于 base 的 profile，安装已构建的运行时归档，并通过随附的 `standard` preset 运行一次确定性 IM 准入。检查会匹配归档、已安装运行时与消费者入口的哈希，并使用合成 Provider 与脚本 LLM 验证自动创建 Agent、历史与发送工具、Session 持久化及一个已结算的 outbox 项。它是离线的已安装 profile smoke，不是录制的 Session replay，也不是真实账号或模型证据。
 
+仓库 snapshot corpus 包含同一运行时自主准入路径的 Web authored replay。合成 transport 仅通过 `receivePage` 提交一页消息；产品运行时创建唯一根 Session，随附的 `standard` preset 使用三次脚本模型响应，依次执行历史查询、发送和最终回复。adapter 比较完整 Session、system prompt 与工具 schema，并单独检查已发送的 outbox 项。这个无密钥场景不使用真实账号或模型。
+
 固定版本 `@deepseek-ai/dsh-typert-generator@0.1.5-rc.2` 要求项目位于 `packages` 目录，并注册协议声明项目。构建辅助程序把未修改的产品源码和已发布的协议声明复制到私有临时编译工作区。它只生成 IM API 包，保留正式包导入和相对于包的声明映射，拒绝空输出或私有绝对路径，并在生成后删除编译工作区。生成的诊断源码位置使用该编译工作区内的相对包路径。运行时包不包含生成器或复制的协议声明。
 
 <a id="dev-note"></a>

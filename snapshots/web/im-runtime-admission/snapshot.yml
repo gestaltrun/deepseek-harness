@@ -1,0 +1,8 @@
+version: 1
+scenario: im-runtime-admission
+profile: web
+composition: web-im-runtime-admission
+recording: authored
+header:
+  class: web-im-runtime-admission
+  pin: true
