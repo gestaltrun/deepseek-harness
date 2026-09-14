@@ -453,7 +453,7 @@ async function main(): Promise<void> {
       },
       { label: messages.checkUpdatesMenu, click: () => { void checkAndPrompt(true) } },
       { type: 'separator' },
-      { role: 'quit' },
+      { label: messages.quitApplication, role: 'quit' },
     ],
   }]))
 

@@ -161,8 +161,14 @@ describe('desktop main startup', () => {
   it('uses the localized product name for the application menu', async () => {
     await import('../src/main.ts')
     await harness.preparing.promise
-    expect(harness.buildMenu).toHaveBeenCalledWith(expect.arrayContaining([
-      expect.objectContaining({ label: 'DeepSeek Gestalt' }),
+    const template = harness.buildMenu.mock.lastCall?.[0] as readonly {
+      readonly label?: string
+      readonly submenu?: readonly { readonly label?: string; readonly role?: string }[]
+    }[]
+    const applicationMenu = template.find(item => item.label === 'DeepSeek Gestalt')
+    expect(applicationMenu).toBeDefined()
+    expect(applicationMenu?.submenu).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: 'Quit DeepSeek Gestalt', role: 'quit' }),
     ]))
   })
 
