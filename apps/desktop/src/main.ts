@@ -22,6 +22,7 @@ import { claimDesktopSingleInstance } from './single-instance.ts'
 import { DesktopUpdateCoordinator } from './update-coordinator.ts'
 import { desktopErrorState } from './startup-error.ts'
 import { startupFailureDocument } from './startup-document.ts'
+import { desktopIconOptions } from './app-icon.ts'
 
 const SCHEME = 'dsh-app'
 let focusPrimaryWindow = (): void => {}
@@ -89,6 +90,13 @@ function developmentHostInspectPort(enabled: boolean): number | undefined {
 
 function createWindow(preload: string, show = false): BrowserWindow {
   const window = new BrowserWindow({
+    ...desktopIconOptions({
+      platform: process.platform,
+      packaged: app.isPackaged,
+      appPath: app.getAppPath(),
+      resourcesPath: process.resourcesPath,
+      setDockIcon: (path) => { app.dock?.setIcon(path) },
+    }),
     width: 1280,
     height: 840,
     minWidth: 880,

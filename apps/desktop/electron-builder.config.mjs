@@ -54,8 +54,7 @@ export function createElectronBuilderConfig(
   const buildPaths = desktopTargetBuildPaths(resolveDesktopBuildTarget(env, hostPlatform, hostArch))
   return {
     appId,
-    productName: 'DeepSeek Harness',
-    artifactName: 'deepseek-harness-${version}-${os}-${arch}.${ext}',
+    productName: 'DeepSeek Gestalt',
     directories: { output: unsigned ? join(buildPaths.root, 'unsigned-artifacts') : buildPaths.artifacts },
     asar: true,
     files: [
@@ -69,9 +68,12 @@ export function createElectronBuilderConfig(
       { from: buildPaths.dsh, to: 'dsh' },
       // electron-builder excludes a source directory's root node_modules.
       { from: join(buildPaths.dsh, 'node_modules'), to: 'dsh/node_modules' },
+      { from: fileURLToPath(new URL('./build/icon.png', import.meta.url)), to: 'icon.png' },
     ],
     mac: {
       category: 'public.app-category.developer-tools',
+      icon: fileURLToPath(new URL('./build/icon.icns', import.meta.url)),
+      artifactName: 'DeepSeek-Gestalt-${version}-${arch}.${ext}',
       identity: macOSSigning?.signingIdentity,
       forceCodeSigning: true,
       hardenedRuntime: true,
@@ -105,6 +107,8 @@ export function createElectronBuilderConfig(
       )
     },
     win: {
+      icon: fileURLToPath(new URL('./build/icon.ico', import.meta.url)),
+      artifactName: 'DeepSeekGestalt-Setup-${version}-${arch}.${ext}',
       forceCodeSigning: !unsigned,
       signtoolOptions: {
         sign: windowsSigner,

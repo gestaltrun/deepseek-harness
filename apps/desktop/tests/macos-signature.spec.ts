@@ -32,7 +32,7 @@ const RELEASE_ENVIRONMENT = {
   APPLE_API_KEY: '/private/credentials/AuthKey_TEST123456.p8',
   APPLE_API_KEY_ID: 'TEST123456',
   APPLE_API_ISSUER: '11111111-2222-3333-4444-555555555555',
-  DOWNLOAD_TEST_ORIGIN: 'https://desktop-updates.example.com',
+  DESKTOP_RELEASE_TEST_FEED_URL: 'https://desktop-updates.example.com/desktop/test',
 }
 
 function portablePath(value: string): string {
@@ -52,14 +52,16 @@ describe('desktop macOS release signature', () => {
     const { createElectronBuilderConfig } = await import('../electron-builder.config.mjs')
     const config = createElectronBuilderConfig(RELEASE_ENVIRONMENT, 'darwin', 'arm64')
     expect(portablePath(config.directories.output)).toContain('/.desktop-build/targets/mac-arm64/artifacts')
-    expect(config.extraResources).toHaveLength(3)
+    expect(config.extraResources).toHaveLength(4)
     expect(config.extraResources[0]?.to).toBe('runtime')
     expect(config.extraResources[1]?.to).toBe('dsh')
     expect(portablePath(config.extraResources[0]?.from ?? '')).toContain('/.desktop-build/targets/mac-arm64/runtime')
     expect(portablePath(config.extraResources[1]?.from ?? '')).toContain('/.desktop-build/targets/mac-arm64/dsh')
     expect(config).toMatchObject({
       appId: RELEASE_ENVIRONMENT.DSH_DESKTOP_APP_ID,
+      productName: 'DeepSeek Gestalt',
       mac: {
+        artifactName: 'DeepSeek-Gestalt-${version}-${arch}.${ext}',
         identity: RELEASE_ENVIRONMENT.DSH_DESKTOP_MACOS_SIGNING_IDENTITY,
         forceCodeSigning: true,
         notarize: true,
@@ -71,7 +73,7 @@ describe('desktop macOS release signature', () => {
       },
       publish: [{
         provider: 'generic',
-        url: 'https://desktop-updates.example.com/_/harness/desktop/stable/mac-arm64/',
+        url: 'https://desktop-updates.example.com/desktop/test/mac-arm64/',
       }],
     })
     expect(typeof config.artifactBuildCompleted).toBe('function')
