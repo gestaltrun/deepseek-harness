@@ -77,6 +77,21 @@ describe('DWS public protocol', () => {
       .toThrowError(expect.objectContaining({ code: 'DINGTALK_EVENT_INVALID' }))
   })
 
+  it('carries provider quote context only when quoted content is present', () => {
+    const base = {
+      event_id: 'event-1', timestamp: 1_726_000_000_000, subscribe_id: 'sub-1',
+      message_id: 'message-1', conversation_id: 'cid-group', sender: '买家',
+      sender_open_dingtalk_id: 'D-peer', content: '看下这个', create_time: '2026-09-14 00:00:00',
+      event_time: 1_726_000_000_000, type: 'user_im_message_receive_group_all',
+    }
+    expect(parseDwsInboundEvent(JSON.stringify({
+      ...base,
+      quoted_message: { content: '昨晚超时两次', sender: '张伟', message_id: 'message-0' },
+    })).quote).toEqual({ text: '昨晚超时两次', senderDisplayName: '张伟', externalMessageId: 'message-0' })
+    expect(parseDwsInboundEvent(JSON.stringify(base))).not.toHaveProperty('quote')
+    expect(parseDwsInboundEvent(JSON.stringify({ ...base, quoted_message: { sender: '张伟' } }))).not.toHaveProperty('quote')
+  })
+
   it('keeps asynchronous sends unknown until status supplies a final message ID', () => {
     expect(parseDwsSendResult(JSON.stringify({ success: true, result: { openTaskId: 'task-1' } })))
       .toEqual({ state: 'unknown', externalMessageId: 'task-1' })

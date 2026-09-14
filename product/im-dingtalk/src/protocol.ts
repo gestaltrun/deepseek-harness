@@ -1,5 +1,5 @@
 /** Strict public DWS JSON and NDJSON protocol parsing. */
-import type { ImAccountAuthorization, ImConversationKind, ImTransportSendResult } from '@gestaltrun/dsh-im-runtime'
+import type { ImAccountAuthorization, ImConversationKind, ImMessageQuote, ImTransportSendResult } from '@gestaltrun/dsh-im-runtime'
 import { z } from 'zod'
 
 /** Minimum DWS release that publishes the reviewed IM listener facade. */
@@ -203,6 +203,11 @@ const eventSchema = z.object({
   sender: z.string(),
   sender_open_dingtalk_id: z.string().min(1),
   content: z.string(),
+  quoted_message: z.object({
+    content: z.string().optional(),
+    sender: z.string().optional(),
+    message_id: z.string().optional(),
+  }).passthrough().optional(),
   create_time: z.string(),
   event_time: z.number().int().nonnegative(),
 }).passthrough()
@@ -218,6 +223,7 @@ export interface DwsInboundEvent {
   readonly senderName?: string
   readonly directRecipientId?: string
   readonly text: string
+  readonly quote?: ImMessageQuote
   readonly occurredAt: string
   readonly mentionedConfiguredAccount?: true
 }
@@ -242,6 +248,13 @@ export function parseDwsInboundEvent(line: string): DwsInboundEvent {
     ...(event.sender.length === 0 ? {} : { senderName: event.sender }),
     ...(direct ? { directRecipientId: event.sender_open_dingtalk_id } : {}),
     text: event.content,
+    ...(event.quoted_message?.content === undefined
+      ? {}
+      : { quote: {
+        text: event.quoted_message.content,
+        ...(event.quoted_message.sender === undefined ? {} : { senderDisplayName: event.quoted_message.sender }),
+        ...(event.quoted_message.message_id === undefined ? {} : { externalMessageId: event.quoted_message.message_id }),
+      } }),
     occurredAt: new Date(event.event_time).toISOString(),
     ...(event.type === DWS_EVENT_MENTION ? { mentionedConfiguredAccount: true as const } : {}),
   }
