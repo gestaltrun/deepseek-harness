@@ -29,7 +29,7 @@ Mount Storage, a KV backend, StorageDomain, Credentials, this runtime, and at le
 
 ### When to choose it
 
-Choose this package for the product IM configuration authority shared by Host providers and the IM BFF. Consumers that only need wire DTOs should import `@gestaltrun/dsh-im-runtime/types`; Host code imports the root entry for `ImRuntimeService`, `ImRuntimeError`, and `ImTransports`.
+Choose this package for the product IM configuration authority shared by Host providers and the IM BFF. Consumers that need wire DTOs or write-only account setup request types should import `@gestaltrun/dsh-im-runtime/types`; Host code imports the root entry for `ImRuntimeService`, `ImRuntimeError`, and `ImTransports`.
 
 ### Minimal configuration
 

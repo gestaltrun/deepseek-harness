@@ -29,7 +29,7 @@ kind: "package-reference"
 
 ### 适用条件
 
-产品 Host 提供方与 IM BFF 共享 IM 配置权威时使用此包。只需要 wire DTO 的使用方应导入 `@gestaltrun/dsh-im-runtime/types`；Host 代码从根入口导入 `ImRuntimeService`、`ImRuntimeError` 和 `ImTransports`。
+产品 Host 提供方与 IM BFF 共享 IM 配置权威时使用此包。需要 wire DTO 或只写账号接入请求类型的使用方应导入 `@gestaltrun/dsh-im-runtime/types`；Host 代码从根入口导入 `ImRuntimeService`、`ImRuntimeError` 和 `ImTransports`。
 
 ### 最小配置
 

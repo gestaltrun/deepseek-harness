@@ -1,13 +1,7 @@
 /** Provider-facing IM transport capability registered with the runtime. */
 import type { CredentialRecord } from '@deepseek-ai/dsh-credentials'
-import type { ImAccountCandidate, ImAccountIdentity, ImAccountView, ImConversationKind, ImPlatform } from './types.ts'
-
-/** DingTalk employee-profile setup input. */
-export interface ImDingTalkAccountSetupRequest { readonly platform: 'dingtalk'; readonly profile: string; readonly displayName?: string }
-/** Wangwang application credential setup input. Secret fields are write-only. */
-export interface ImWangwangAccountSetupRequest { readonly platform: 'wangwang'; readonly candidateId: string; readonly accessKeyId: string; readonly accessKeySecret: string; readonly displayName?: string }
-/** Account setup union dispatched by platform. */
-export type ImAccountSetupRequest = ImDingTalkAccountSetupRequest | ImWangwangAccountSetupRequest
+import type { ImAccountCandidate, ImAccountIdentity, ImAccountSetupRequest, ImAccountView, ImConversationKind, ImPlatform } from './types.ts'
+export type { ImAccountSetupRequest, ImDingTalkAccountSetupRequest, ImWangwangAccountSetupRequest } from './types.ts'
 
 /** Safe provider result plus an optional opaque credential record for durable storage. */
 export interface ImPreparedAccount { readonly displayName: string; readonly identity: ImAccountIdentity; readonly authorization: ImAccountView['authorization']; readonly credentialRecord?: CredentialRecord }

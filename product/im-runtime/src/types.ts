@@ -35,6 +35,25 @@ export interface ImWangwangAccountCandidate {
 /** Safe provider-discovered account candidate. */
 export type ImAccountCandidate = ImDingTalkAccountCandidate | ImWangwangAccountCandidate
 
+/** DingTalk employee-profile setup input. */
+export interface ImDingTalkAccountSetupRequest {
+  readonly platform: 'dingtalk'
+  readonly profile: string
+  readonly displayName?: string
+}
+
+/** Wangwang admitted-candidate setup input. Secret fields are write-only. */
+export interface ImWangwangAccountSetupRequest {
+  readonly platform: 'wangwang'
+  readonly candidateId: string
+  readonly accessKeyId: string
+  readonly accessKeySecret: string
+  readonly displayName?: string
+}
+
+/** Client-safe account setup union dispatched by platform. */
+export type ImAccountSetupRequest = ImDingTalkAccountSetupRequest | ImWangwangAccountSetupRequest
+
 /** Safe DingTalk employee identity returned by the registered transport. */
 export interface ImDingTalkIdentity {
   readonly platform: 'dingtalk'

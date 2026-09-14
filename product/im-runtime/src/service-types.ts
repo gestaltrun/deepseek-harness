@@ -1,10 +1,10 @@
 /** Host service and event declarations kept out of the client-safe DTO entry. */
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace'
-import type { ImAccountSetupRequest } from './transport.ts'
 import type {
   ImAccountId,
   ImAccountCandidate,
   ImAccountMutationResult,
+  ImAccountSetupRequest,
   ImAccountView,
   ImConversationKind,
   ImCreateRouteRequest,
