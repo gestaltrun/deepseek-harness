@@ -2,7 +2,7 @@
 import { Context, Service } from '@deepseek-ai/cordis'
 import type { Branded } from '@deepseek-ai/dsh-brand'
 
-/** Opaque account reference used for quota correlation; distinct from its filename. */
+/** Opaque product account reference; core authentication identifiers remain provider-private. */
 export type AccountPoolAccountRef = Branded<'AccountPoolAccountRef'>
 /** Provider-owned credential filename. */
 export type AccountPoolAccountName = Branded<'AccountPoolAccountName'>
@@ -95,9 +95,21 @@ export interface AccountPoolFieldPatch extends AccountPoolScalarFields {
   readonly headers?: Readonly<Record<string, AccountPoolSecretEdit>>
 }
 
+/** Editable field names understood by account settings. */
+export type AccountPoolEditableFieldName = 'note' | 'prefix' | 'proxyUrl' | 'priority' | 'weight'
+  | 'disableCooling' | 'websockets' | 'excludedModels' | 'headers'
+
+/** Supported actions distinguish credential files from product-managed account configuration. */
+export interface AccountPoolCapabilities {
+  readonly models: 'account' | 'provider' | 'none'
+  readonly quota: boolean
+  readonly export: 'auth-file' | 'glm-credential' | 'none'
+  readonly editableFields: readonly AccountPoolEditableFieldName[]
+}
+
 /** Redacted account card with separately observable quota freshness and failure. */
 export interface AccountPoolAccount extends AccountPoolFieldValues {
-  readonly authIndex: AccountPoolAccountRef
+  readonly ref: AccountPoolAccountRef
   readonly name: AccountPoolAccountName
   readonly provider: string
   readonly label: string
@@ -105,8 +117,8 @@ export interface AccountPoolAccount extends AccountPoolFieldValues {
   readonly status: string
   readonly statusMessage?: string
   readonly enabled: boolean
-  readonly successCount: number
-  readonly failCount: number
+  readonly successCount?: number
+  readonly failCount?: number
   readonly createdAt?: string
   readonly modifiedAt?: string
   readonly sizeBytes?: number
@@ -116,6 +128,7 @@ export interface AccountPoolAccount extends AccountPoolFieldValues {
   readonly resetCreditsAvailable?: number
   readonly quota: readonly AccountPoolQuotaWindow[]
   readonly quotaState: AccountPoolQuotaState
+  readonly capabilities: AccountPoolCapabilities
 }
 
 /** Allowlisted information and editable fields for the named account. */
