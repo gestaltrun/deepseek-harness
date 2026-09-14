@@ -11,5 +11,5 @@ export default defineConfig({
     'react-dom': dirname(require.resolve('react-dom/package.json')),
   } },
   plugins: [typertPlugin({ mode: 'package', faces: ['host'] })],
-  test: { include: ['tests/**/*.spec.ts', 'tests/**/*.spec.tsx'], testTimeout: 15000 },
+  test: { server: { deps: { inline: [/^@deepseek-ai\/dsh-client-ui-primitives/u] } }, include: ['tests/**/*.spec.ts', 'tests/**/*.spec.tsx'], testTimeout: 15000 },
 })
