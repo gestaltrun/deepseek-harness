@@ -8,6 +8,8 @@ profile 修改与恢复遵循[直接修改 profile 决策](2026-09-09-desktop-in
 
 Gestaltrun OSS 和 GitHub Release 流程遵循 [Gestaltrun Desktop 发布决策](../process/2026-09-14-gestaltrun-desktop-release.zh.md)。
 
+发布环境保存 electron-builder 使用的证书 qualifier，不包含 `Developer ID Application:` 前缀。直接调用 `codesign` 时会将其展开为完整的 Developer ID Application 身份，避免同 qualifier 的其他证书造成选择歧义。
+
 ## 问题
 
 DeepSeek Harness 需要一个复用 Web UI 的 Electron 桌面应用。该应用无需系统 Node.js 或 pnpm 即可工作，通过应用内置 pnpm 安装 dsh 与桌面插件，并通过一个面向用户的流程更新完整桌面发布。

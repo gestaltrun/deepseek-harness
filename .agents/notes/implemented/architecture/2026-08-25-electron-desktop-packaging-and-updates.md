@@ -8,6 +8,8 @@ Profile mutation and recovery follow the [in-place profile decision](2026-09-09-
 
 The Gestaltrun OSS and GitHub Release process follows the [Gestaltrun Desktop release decision](../process/2026-09-14-gestaltrun-desktop-release.md).
 
+The release environment stores electron-builder's certificate qualifier without the `Developer ID Application:` prefix. Direct `codesign` calls expand it to the complete Developer ID Application identity so another certificate with the same qualifier cannot make selection ambiguous.
+
 ## Problem
 
 DeepSeek Harness needs an Electron desktop application that reuses the Web UI, works without system Node.js or pnpm, installs dsh and desktop plugins through an application-bundled pnpm, and updates the complete desktop release through one user-facing flow.

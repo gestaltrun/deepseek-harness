@@ -17,6 +17,7 @@ import { notarizeMacOSDiskImageArtifact } from '../scripts/notarize-macos-disk-i
 import {
   assertMacOSRuntimeSignatureDetails,
   assertMacOSSignatureDetails,
+  developerIdApplicationIdentity,
 } from '../scripts/verify-macos-signature.mjs'
 
 // app-builder-lib omits this internal copier from its declarations; the regression exercises its actual file filter.
@@ -157,6 +158,8 @@ describe('desktop macOS release signature', () => {
 
   it('accepts the configured authority and team', () => {
     const expected = resolveMacOSSigningEnvironment(RELEASE_ENVIRONMENT)
+    expect(developerIdApplicationIdentity(expected))
+      .toBe(`Developer ID Application: ${expected.signingIdentity}`)
     expect(() => {
       assertMacOSSignatureDetails([
         `Authority=Developer ID Application: ${expected.signingIdentity}`,
