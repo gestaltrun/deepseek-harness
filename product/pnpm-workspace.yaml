@@ -1,6 +1,13 @@
 packages:
   - model-center
+  - packages/account-pool
 autoInstallPeers: false
 nodeLinker: hoisted
 allowBuilds:
   esbuild: true
+  # Published native/runtime installation steps; no product patch runs against dependencies.
+  node-pty: true
+  koffi: true
+  '@deepseek-ai/dsh-subprocess-local@0.1.5-rc.2': true
+  '@google/genai': false
+  protobufjs: false

@@ -1,0 +1,4 @@
+lib/
+resources/
+.build/
+*.tsbuildinfo
