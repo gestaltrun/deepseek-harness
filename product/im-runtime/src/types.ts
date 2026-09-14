@@ -3,6 +3,8 @@ import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { CredentialKey } from '@deepseek-ai/dsh-credentials/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 
+export type * from './delivery-types.ts'
+
 /** Identifier minted by the Host for one configured account. */
 export type ImAccountId = Branded<'ImAccountId'>
 /** Identifier minted by the Host for one route lifecycle. */
