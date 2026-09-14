@@ -1,0 +1,10 @@
+[
+  {
+    "name": "@gestaltrun/dsh-model-center",
+    "directory": "model-center"
+  },
+  {
+    "name": "@gestaltrun/dsh-account-pool",
+    "directory": "packages/account-pool"
+  }
+]
