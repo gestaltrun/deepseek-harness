@@ -37,6 +37,7 @@ await new Promise((resolve, reject) => {
 })
 const address = server.address()
 if (address === null || typeof address === 'string') throw new Error('loopback fixture address is unavailable')
+const endpoint = `http://127.0.0.1:${String(address.port)}`
 
 const configPath = join(root, 'cordis.yml')
 const moduleUrls = [
@@ -64,7 +65,7 @@ const lines = [
   '  config:',
   '    admittedMerchants:',
   "      - candidateId: 'fixture-store'",
-  `        endpoint: 'http://127.0.0.1:${String(address.port)}'`,
+  `        endpoint: '${endpoint}'`,
   "        merchantId: 'fixture-merchant'",
   "        displayName: 'Fixture Store'",
   "        mainServiceAccountId: 'fixture-service'",
@@ -87,15 +88,21 @@ try {
   const runtime = ctx.get('imRuntime')
   if (runtime === undefined) throw new Error('Loader did not publish ctx.imRuntime')
   const candidates = await runtime.listAccountCandidates('wangwang')
-  if (candidates.length !== 1 || candidates[0]?.platform !== 'wangwang' || candidates[0].candidateId !== 'fixture-store') {
+  if (candidates.length !== 1 || candidates[0]?.platform !== 'wangwang' || candidates[0].candidateId !== 'fixture-store' || candidates[0].endpoint !== endpoint) {
     throw new Error('Loader did not register the admitted Wangwang candidate')
   }
-  const account = await runtime.addAccount({
-    platform: 'wangwang', candidateId: 'fixture-store', accessKeyId: 'fixture-access', accessKeySecret: 'fixture-secret',
+  const preview = await runtime.previewAccountSetup({
+    platform: 'wangwang', candidateId: 'fixture-store', endpoint, accessKeyId: 'fixture-access', accessKeySecret: 'fixture-secret',
   })
-  if (account.authorization.state !== 'ready' || account.identity.platform !== 'wangwang' || account.identity.merchantId !== 'fixture-merchant') {
-    throw new Error('runtime did not persist provider-verified Wangwang identity')
+  if (preview.authorization.state !== 'ready' || preview.identity.platform !== 'wangwang' || preview.identity.merchantId !== 'fixture-merchant') {
+    throw new Error('runtime did not preview the provider-verified Wangwang identity')
   }
+  if (runtime.snapshot().accounts.length !== 0 || JSON.stringify(preview).includes('fixture-secret')) {
+    throw new Error('runtime exposed or persisted the unconfirmed Wangwang setup')
+  }
+  const confirmed = await runtime.confirmAccountSetup({ setupId: preview.setupId, operationId: 'fixture-confirm-account' })
+  if (confirmed.status !== 'applied') throw new Error(`runtime did not confirm the Wangwang account: ${confirmed.status}`)
+  const account = confirmed.account
   if (JSON.stringify(runtime.snapshot()).includes('fixture-secret')) throw new Error('runtime snapshot exposed Wangwang credentials')
   const record = await ctx.credentials.readRecord(account.credentialKey)
   if (record?.kind !== 'grant') throw new Error('runtime did not store the Wangwang credential record')

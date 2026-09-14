@@ -25,7 +25,7 @@ Use this package to connect an admitted Wangwang merchant to the product IM runt
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount StorageDomain, Credentials, `@gestaltrun/dsh-im-runtime`, and this package in that order. The admitted catalog belongs to deployment configuration; a UI must select `candidateId` from `listAccountCandidates` and must not accept an arbitrary merchant id or endpoint.
+Mount StorageDomain, Credentials, `@gestaltrun/dsh-im-runtime`, and this package in that order. The admitted catalog belongs to deployment configuration. `listAccountCandidates` returns each admitted `candidateId` with its safe endpoint; a UI must submit both values unchanged and must not accept an arbitrary merchant id or endpoint. The Host rejects a setup endpoint that differs from the selected candidate.
 
 ### When to choose it
 
@@ -55,7 +55,7 @@ Choose this package for direct buyer conversations served by a statically admitt
 | `pollLimit` | `50` | Page size from 1 through 100. |
 | `pollWaitSeconds` | `15` | Provider long-poll wait from 0 through 30 seconds. |
 
-Account setup accepts `accessKeyId` and `accessKeySecret` only in the write request. The provider validates those values against the selected merchant, then returns a Credentials grant to the runtime. Every inspect, discovery, listener, send, and confirmation operation reads that grant again, so credential rotation reaches the next operation without restarting the plugin.
+Account setup submits the selected `candidateId` and endpoint with `accessKeyId` and `accessKeySecret`; only the access-key fields are secret. The provider checks those credentials through the configured endpoint and returns the observed authorization fact plus a Credentials grant to the runtime. During interactive setup, the Host keeps that grant in memory after `previewAccountSetup` and stores it only through `confirmAccountSetup`; cancellation, expiration, and shutdown release an unconfirmed grant. Every inspect, discovery, listener, send, and confirmation operation reads the stored grant again, so credential rotation reaches the next operation without restarting the plugin.
 
 Authorization and listener facts remain separate. A generic HTTP 401 or 403 is a failed check; only an explicit provider expiry or revocation code becomes `required`. Listener readiness follows a successful provider page request and durable runtime receipt, rather than timer creation.
 

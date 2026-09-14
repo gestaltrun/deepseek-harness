@@ -168,6 +168,7 @@ export class WangwangTransport implements ImTransport {
     return Promise.resolve(this.config.admittedMerchants.map(candidate => ({
       platform: 'wangwang' as const,
       candidateId: candidate.candidateId,
+      endpoint: candidate.endpoint,
       displayName: candidate.displayName,
       merchantId: candidate.merchantId,
     })))

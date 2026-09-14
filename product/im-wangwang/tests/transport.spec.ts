@@ -91,10 +91,10 @@ describe('Wangwang transport', () => {
   it('lists only admitted merchants and returns write-only setup credentials with explicit authorization evidence', async () => {
     const { transport } = boot(async () => success({ events: [], nextSinceId: 0, hasMore: false }))
     await expect(transport.listAccountCandidates(new AbortController().signal)).resolves.toEqual([
-      { platform: 'wangwang', candidateId: 'travel-store', displayName: 'Travel Store', merchantId: 'merchant-1' },
+      { platform: 'wangwang', candidateId: 'travel-store', endpoint: 'https://wangwang.invalid', displayName: 'Travel Store', merchantId: 'merchant-1' },
     ])
     const prepared = await transport.prepareAccount({
-      platform: 'wangwang', candidateId: 'travel-store', accessKeyId: 'access-id', accessKeySecret: 'secret-value',
+      platform: 'wangwang', candidateId: 'travel-store', endpoint: 'https://wangwang.invalid', accessKeyId: 'access-id', accessKeySecret: 'secret-value',
     }, new AbortController().signal)
     expect(prepared).toMatchObject({
       displayName: 'Travel Store',
@@ -111,14 +111,14 @@ describe('Wangwang transport', () => {
       fetch: async () => new Response(JSON.stringify({ code: 'TOKEN_EXPIRED' }), { status: 200 }),
       now: () => Date.parse('2026-09-14T00:00:00.000Z'),
     })
-    await expect(explicit.prepareAccount({ platform: 'wangwang', candidateId: 'travel-store', accessKeyId: 'id', accessKeySecret: 'secret' }, new AbortController().signal))
+    await expect(explicit.prepareAccount({ platform: 'wangwang', candidateId: 'travel-store', endpoint: 'https://wangwang.invalid', accessKeyId: 'id', accessKeySecret: 'secret' }, new AbortController().signal))
       .resolves.toMatchObject({ authorization: { state: 'required', reason: 'expired' } })
 
     const generic = new WangwangTransport(expired.ctx, config, {
       fetch: async () => new Response('unauthorized', { status: 401 }),
       now: () => Date.parse('2026-09-14T00:00:00.000Z'),
     })
-    await expect(generic.prepareAccount({ platform: 'wangwang', candidateId: 'travel-store', accessKeyId: 'id', accessKeySecret: 'secret' }, new AbortController().signal))
+    await expect(generic.prepareAccount({ platform: 'wangwang', candidateId: 'travel-store', endpoint: 'https://wangwang.invalid', accessKeyId: 'id', accessKeySecret: 'secret' }, new AbortController().signal))
       .resolves.toMatchObject({ authorization: { state: 'failed', code: 'WANGWANG_HTTP_401' } })
   })
 
