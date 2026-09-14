@@ -34,7 +34,7 @@ import type {
 
 const time = (): string => new Date().toISOString()
 const instanceId = (): ImSimulationInstanceId => brandString<ImSimulationInstanceId>(`im-simulation:${randomUUID()}`)
-const testedSessionId = (): SessionId => SessionId(`im-simulation-tested:${randomUUID()}`)
+const testedSessionId = (): SessionId => SessionId(`im-simulation-tested-${randomUUID()}`)
 const deliveryOperationId = (kind: string): ImDeliveryOperationId => brandString<ImDeliveryOperationId>(`im-simulation-${kind}:${randomUUID()}`)
 
 /** Runtime-owned controller; durable state is authoritative and live handles are only execution resources. */

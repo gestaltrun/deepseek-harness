@@ -121,7 +121,7 @@ export function apply(ctx, config) {
       operationId: 'fixture-page', owner, observedCursor: ctx.imRuntime.getProviderCursor(owner).cursor, nextCursor: 'offline-cursor-1',
       conversations: [{ operationId: 'fixture-conversation', conversationKind: 'direct', conversationId: 'offline-buyer', messages: [{
         externalMessageId: 'offline-inbound-1', senderEvidence: { kind: 'external-actor', senderId: 'offline-buyer', senderDisplayName: 'Offline Buyer' },
-        text: 'Read the history and send an offline reply.', format: 'text', occurredAt: '2026-09-14T00:00:00.000Z',
+        content: { format: 'text', text: 'Read the history and send an offline reply.' }, occurredAt: '2026-09-14T00:00:00.000Z',
       }] }],
     }
     await assert.rejects(target.receivePage({ ...page, owner: { ...owner, accountId: 'another-account' } }), /owner|account|scope/i)

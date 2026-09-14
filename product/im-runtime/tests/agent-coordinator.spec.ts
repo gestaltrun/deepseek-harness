@@ -259,6 +259,7 @@ describe('IM Agent coordinator', () => {
     await expect.poll(() => bench.ctx.imRuntime.getConversationCursor(configured.scope).pendingCount).toBe(0)
     const task = bench.ctx.imRuntime.getAgentTask(configured.scope)
     expect(task).toMatchObject({ generation: 1, routeId: configured.route.id, workspaceId: configured.route.workspaceId })
+    expect(task?.sessionId).toMatch(/^[a-zA-Z0-9_-]+$/u)
     if (task === undefined) throw new Error('IM task was not created')
     const agent = bench.ctx.agents.get(task.sessionId)
     if (agent === undefined) throw new Error('IM Agent was not published')
@@ -660,6 +661,7 @@ describe('IM Agent coordinator', () => {
       target: { routeId: configured.route.id, workspaceId: configured.route.workspaceId, conversationId: 'buyer-1' },
     })
     expect(await bench.ctx.sessionPersistence.stat(instance.testedSessionId)).toBeDefined()
+    expect(instance.testedSessionId).toMatch(/^[a-zA-Z0-9_-]+$/u)
     expect(configured.route.workspaceId === simUser.workspace.id).toBe(false)
     const scope = bench.ctx.imRuntime.scopeForSession(instance.testedSessionId)?.deliveryScope
     if (scope === undefined) throw new Error('tested Session has no authoritative simulation scope')

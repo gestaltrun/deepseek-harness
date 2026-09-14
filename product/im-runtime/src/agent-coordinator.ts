@@ -86,8 +86,8 @@ export class ImAgentCoordinator {
     const prior = this.tails.get(id) ?? Promise.resolve()
     const next = this.ctx.agents.withoutInitiator(() => prior.then(() => this.drive(scope)))
     this.tails.set(id, next.then(() => {}, () => {}))
-    void next.catch(() => {
-      if (!this.disposed && !this.closedScopes.has(id)) this.ctx.logger.warn(`IM Agent admission failed for scope '${id}'`)
+    void next.catch((reason: unknown) => {
+      if (!this.disposed && !this.closedScopes.has(id)) this.ctx.logger.warn(`IM Agent admission failed for scope '${id}': %o`, reason)
     })
   }
 
@@ -209,7 +209,7 @@ export class ImAgentCoordinator {
       generation: (tasks.at(-1)?.generation ?? 0) + 1,
       scope,
       scopeId,
-      sessionId: SessionId(`im-agent:${randomUUID()}`),
+      sessionId: SessionId(`im-agent-${randomUUID()}`),
       routeId: route.id,
       routeRevision: route.revision,
       accountRevision: account.revision,
