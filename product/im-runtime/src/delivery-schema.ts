@@ -61,7 +61,7 @@ const sender = z.discriminatedUnion('kind', [
     userId: z.string().min(1).optional(), openDingTalkId: z.string().min(1).optional(),
   }),
   z.object({ kind: z.literal('human-native'), accountId, providerActorId: z.string().min(1) }),
-  z.object({ kind: z.literal('human-dsh'), outboundRequestId }),
+  z.object({ kind: z.literal('human-dsh'), outboundRequestId, providerActorId: z.string().min(1).optional() }),
   z.object({ kind: z.literal('ai'), outboundRequestId }),
   z.object({
     kind: z.literal('unknown'),

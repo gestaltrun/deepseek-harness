@@ -115,3 +115,5 @@ export function registerImAgentTools(ctx: Context, runtime: ImRuntime, scope: Im
   ]
   return () => { for (const dispose of disposers.reverse()) dispose() }
 }
+
+export { registerSimulationTools } from './simulation-tools.ts'

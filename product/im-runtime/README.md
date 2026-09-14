@@ -68,7 +68,13 @@ Providers pass actor and echo facts to `classifyInboundSender`. A sent automated
 
 Durable live or simulation input automatically starts or resumes one ordinary Agent per route generation. Direct messages activate immediately. Group mention, `everyN`, and fixed interval conditions are OR-combined into one batch; the interval timer fires without another inbound event. The Session source records the scope, exact message identities, sender evidence, trigger reasons, route revision, account revision, and Workspace. A rebind leaves an in-flight Agent on its recorded Workspace and sends later input to a new task generation. New input for an unchanged generation uses `steer`, so it enters at the nearest safe step without cancelling active model or tool work.
 
-The `@gestaltrun/dsh-im-runtime/tools` entry registers `im_query_history` and `im_send_message` on a trusted Agent context. Neither tool accepts account, conversation, simulation instance, route, or Workspace arguments from the model. Automated sends use the task's recorded route and peer identity; if that generation is stale, the outbox records `route-changed` before any provider call.
+`createSimulationInstance` accepts one live simulated-user Session already owned by a Workspace with a configured target. It first persists `creating` with a Host-minted tested Session id, the exact target, both Workspace ids, route and account revisions, preset, trigger settings, and allowed participants. It then creates the tested Agent through the normal Agent and preset services, attaches its Session to the target Workspace, flushes both Session logs, and publishes `running`. A specific route fixes its conversation id; an `all` route requires the caller to name one. Target changes affect later instances only. Separate simulated-user Sessions can run isolated instances against the same target.
+
+Member and managed-human injection enter the same durable inbound store and Agent coordinator as provider messages. The Host derives the managed actor from the frozen account identity and checks member injections against the frozen allow-list. Tested-Agent replies use the same scoped outbox, settle locally, and return only to the paired simulated-user Session; no simulation path calls a platform transport. JSONL imports remain submitted history and never wake either Agent. `scopeForSession` returns the authoritative role, peer Session, Workspace pair, and delivery scope for Client navigation.
+
+`beginStopSimulation` first persists `stopping`, which rejects later input and reply delivery, and returns without waiting for a tool caller's current turn. `waitSimulationStopped` is the GUI terminal barrier. The controller cancels only the paired live activities and the selected scope's coordinator work, retains the simulated-user Session and both logs, and stores `stopped` only after quiescence. Calls are deduplicated across GUI and bound `im_sim_stop` orderings. A stopped instance never resumes; loading the runtime does not resume either running Session merely to display it.
+
+The `@gestaltrun/dsh-im-runtime/tools` entry registers `im_query_history` and `im_send_message` on a trusted tested-Agent context. Neither tool accepts account, conversation, simulation instance, route, or Workspace arguments from the model. Eligible simulated-user Agents receive `im_sim_create`; a running pair adds allow-listed member send, managed-human send, and `im_sim_stop`. These tools bind the actual calling Session and current instance rather than accepting those identities from model arguments. Automated real sends use the task's recorded route and peer identity; if that generation is stale, the outbox records `route-changed` before any provider call.
 
 -----
 
@@ -78,7 +84,7 @@ The `@gestaltrun/dsh-im-runtime/tools` entry registers `im_query_history` and `i
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The `gestaltrun_im_runtime` StorageDomain has one record per account aggregate and one record per Workspace simulation target. The separate `gestaltrun_im_delivery` domain has one aggregate per complete conversation scope, provider-owned cursor records, and route-bound Agent task generations. A conversation aggregate stores inbound messages, deduplication keys, operation receipts, submission evidence, and outbox rows in one durable write. Provider cursor commits happen only after referenced page receipts exist. No operation claims atomicity across credentials, configuration, delivery, provider cursor, Agent task, or Session records.
+The `gestaltrun_im_runtime` StorageDomain has one record per account aggregate, Workspace simulation target, and two-Session simulation instance. The separate `gestaltrun_im_delivery` domain has one aggregate per complete conversation scope, provider-owned cursor records, and route-bound Agent task generations. A conversation aggregate stores inbound messages, deduplication keys, operation receipts, submission evidence, and outbox rows in one durable write. Provider cursor commits happen only after referenced page receipts exist. No operation claims atomicity across credentials, configuration, delivery, provider cursor, Agent task, simulation instance, or Session records.
 
 `ImTransports` reserves one live provider per platform and releases it with the registering Cordis fiber. The runtime starts its listener when a connected, unpaused account has an enabled route and authorization is `ready` or `unchecked`; explicit `required` or `failed` authorization keeps it stopped. `unchecked` lets a provider without a separate identity probe verify its first real listen or poll and does not project a ready identity by itself. A provider `listen` resolves only after that listener is established and verified usable. Its returned `done` promise reports later clean termination or failure. An intentional stop aborts the signal, calls `dispose`, and waits for `done`; changing the enabled-route plan follows that sequence before starting its replacement. Terminal failures do not schedule an unbounded retry. `ctx.imRuntime.subscribe` and the typed `imRuntime/changed` event publish durable changes and later process listener transitions. Snapshot revisions order events within one process generation; durable operation ids and record revisions survive restart.
 
@@ -93,6 +99,8 @@ The `gestaltrun_im_runtime` StorageDomain has one record per account aggregate a
 | `src/delivery-schema.ts` | Durable conversation and provider-cursor aggregates |
 | `src/transports.ts` | Reversible platform-provider registry |
 | `src/agent-coordinator.ts` | Durable trigger evaluation and ordinary Agent create, resume, and steer lifecycle |
+| `src/simulation-controller.ts` | Persistent two-Session creation, isolated reply delivery, recovery, and terminal stop |
+| `src/simulation-tools.ts` | Trusted Session-bound simulation tool registration |
 | `src/tools.ts` | Scope-bound history and outbound Agent tools |
 
 </details>
@@ -112,7 +120,7 @@ The `gestaltrun_im_runtime` StorageDomain has one record per account aggregate a
 <a id="model-experience"></a>
 ## Model Experience
 
-Each admitted batch reaches the model as one identified user message assembled by the target Agent preset. Its source carries the complete durable evidence required for crash reconciliation. The two scope-bound IM tools expose only the admitted conversation's history and outbound path.
+Each admitted batch reaches the model as one identified user message assembled by the target Agent preset. Its source carries the complete durable evidence required for crash reconciliation. The scope-bound IM tools expose only the admitted conversation's history and outbound path. Simulation tools are present only for a configured simulated-user Workspace or an existing bound instance, and their instance identity comes from the live Agent Session.
 
 #### KV Cache effect
 
@@ -122,7 +130,7 @@ One unchanged route generation reuses its Agent Session and prompt cache. Rebind
 ## Known Limitations and Deferred Work
 
 - Provider packages own live identity checks, conversation discovery, listeners, outbound sends, and receipt confirmation.
-- The operator-facing two-Session simulation creation lifecycle is a later product slice; configured simulation input already uses the shared admission, history, and outbox path.
+- A failed partial simulation creation is retained as a safe `failed` record for diagnosis and a fresh retry; the runtime does not delete either user-owned Session log or claim a cross-domain rollback.
 - Operation receipts remain durable without automatic pruning because pruning would make an old operation indistinguishable from one never received.
 - Credentials and configuration use separate durable services. A failed account write attempts credential rollback and reports both failures if rollback also fails; it does not claim a cross-service transaction.
 

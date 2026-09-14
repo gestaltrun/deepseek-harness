@@ -47,6 +47,8 @@ export class ImAgentCoordinator {
   private readonly tails = new Map<ImScopeId, Promise<void>>()
   private readonly timers = new Map<ImScopeId, ReturnType<typeof setTimeout>>()
   private readonly handles = new Map<ImAgentTaskId, AgentHandle>()
+  private readonly closedScopes = new Set<ImScopeId>()
+  private readonly scopeClosures = new Map<ImScopeId, AbortController>()
   private readonly shutdown = new AbortController()
   private disposed = false
 
@@ -66,12 +68,34 @@ export class ImAgentCoordinator {
   notify(scope: ImDeliveryScope): void {
     if (this.disposed) return
     const id = encodeImScopeId(scope)
+    if (this.closedScopes.has(id)) return
     const prior = this.tails.get(id) ?? Promise.resolve()
     const next = this.ctx.agents.withoutInitiator(() => prior.then(() => this.drive(scope)))
     this.tails.set(id, next.then(() => {}, () => {}))
     void next.catch(() => {
-      if (!this.disposed) this.ctx.logger.warn(`IM Agent admission failed for scope '${id}'`)
+      if (!this.disposed && !this.closedScopes.has(id)) this.ctx.logger.warn(`IM Agent admission failed for scope '${id}'`)
     })
+  }
+
+  /** Close one simulation driver, cancel its Agent, and await only its derived work. */
+  async stopScope(scope: ImDeliveryScope): Promise<void> {
+    const id = encodeImScopeId(scope)
+    this.closedScopes.add(id)
+    const closure = this.scopeClosures.get(id) ?? new AbortController()
+    this.scopeClosures.set(id, closure)
+    closure.abort(new Error(`IM simulation scope '${id}' stopped`))
+    this.clearTimer(id)
+    const tail = this.tails.get(id)
+    const tasks = this.tasksForScope(id)
+    for (const task of tasks) this.ctx.agents.get(task.sessionId)?.cancel({ kind: 'user' })
+    await Promise.all(tasks.map(task => this.ctx.agents.get(task.sessionId)?.whenIdle() ?? Promise.resolve()))
+    if (tail !== undefined) await tail
+    for (const task of tasks) {
+      const handle = this.handles.get(task.taskId)
+      if (handle === undefined) continue
+      await handle.dispose()
+      this.handles.delete(task.taskId)
+    }
   }
 
   /** Stop timers, drain admission drivers, and dispose every Agent this coordinator owns. */
@@ -88,6 +112,10 @@ export class ImAgentCoordinator {
   /** Evaluate current durable input and submit one eligible batch. */
   private async drive(scope: ImDeliveryScope): Promise<void> {
     if (this.disposed) return
+    if (scope.kind === 'simulation' && !this.runtime.isSimulationScopeRunning(scope)) {
+      this.clearTimer(encodeImScopeId(scope))
+      return
+    }
     const pending = this.pending(scope)
     if (pending.length === 0) { this.clearTimer(encodeImScopeId(scope)); return }
     const scopeId = encodeImScopeId(scope)
@@ -125,7 +153,7 @@ export class ImAgentCoordinator {
     const messages = admission.messageIds.map(id => this.runtime.getInboundMessage(scope, id))
     const agent = await this.agentFor(task)
     const userMessage = this.admissionMessage(task, admission, messages)
-    await this.submit(agent, userMessage)
+    await this.submit(agent, userMessage, task.scopeId)
     await this.runtime.markSubmitted({ scope, messageIds: admission.messageIds, sessionId: task.sessionId })
     await this.clearAdmission(task.taskId, admission.admissionId)
     this.notify(scope)
@@ -134,6 +162,10 @@ export class ImAgentCoordinator {
   /** Resolve a route generation without storing it before a trigger admits input. */
   private taskForCurrentBinding(scope: ImDeliveryScope, pending: readonly ImInboundMessageView[]): ImExecutionAggregate | undefined {
     const scopeId = encodeImScopeId(scope)
+    if (scope.kind === 'simulation') {
+      if (!this.runtime.isSimulationScopeRunning(scope)) return undefined
+      return this.tasksForScope(scopeId).at(-1)
+    }
     const resolved = this.runtime.resolveRoute(scope.accountId, scope.conversationKind, scope.conversationId)
     if (resolved.state !== 'matched') return undefined
     const route = resolved.route
@@ -309,13 +341,18 @@ export class ImAgentCoordinator {
   }
 
   /** Await the exact Session append and its persistence barrier before returning. */
-  private async submit(agent: Agent, message: ReturnType<typeof createUserMessage>): Promise<void> {
+  private async submit(agent: Agent, message: ReturnType<typeof createUserMessage>, scopeId: ImScopeId): Promise<void> {
     const committed = Promise.withResolvers<void>()
     const dispose = agent.ctx.on('session/event', (session, event) => {
       if (session === agent.session && event.type === 'user/message' && event.data.id === message.id) committed.resolve()
     })
     const aborted = (): void => { committed.reject(this.shutdown.signal.reason) }
+    const scopeClosure = this.scopeClosures.get(scopeId) ?? new AbortController()
+    this.scopeClosures.set(scopeId, scopeClosure)
+    const scopeAborted = (): void => { committed.reject(scopeClosure.signal.reason) }
     this.shutdown.signal.addEventListener('abort', aborted, { once: true })
+    scopeClosure.signal.addEventListener('abort', scopeAborted, { once: true })
+    if (scopeClosure.signal.aborted) scopeAborted()
     try {
       agent.steer(message)
       await committed.promise
@@ -323,6 +360,7 @@ export class ImAgentCoordinator {
       if (!flushed) throw new Error(`IM Session '${agent.session.id}' has no persistence writer`)
     } finally {
       this.shutdown.signal.removeEventListener('abort', aborted)
+      scopeClosure.signal.removeEventListener('abort', scopeAborted)
       dispose()
     }
   }

@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-依次挂载 StorageDomain、Credentials、`@gestaltrun/dsh-im-runtime` 与本包。准入目录属于部署配置；UI 必须从 `listAccountCandidates` 选择 `candidateId`，不能接受任意 merchant id 或 endpoint。
+依次挂载 StorageDomain、Credentials、`@gestaltrun/dsh-im-runtime` 与本包。准入目录属于部署配置。`listAccountCandidates` 返回每个已准入 `candidateId` 及其安全 endpoint；UI 必须原样提交这两个值，不能接受任意 merchant id 或 endpoint。若设置请求中的 endpoint 与所选候选不一致，Host 会拒绝该请求。
 
 ### 适用场景
 
@@ -55,7 +55,7 @@ kind: "package-reference"
 | `pollLimit` | `50` | 1 到 100 的页面大小。 |
 | `pollWaitSeconds` | `15` | 0 到 30 秒的供应方长轮询等待时间。 |
 
-账号设置只在写请求中接受 `accessKeyId` 和 `accessKeySecret`。Provider 用这些值校验选定商家，再把 Credentials grant 返回给 runtime。每次检查、会话发现、监听、发送和确认操作都会重新读取该 grant，因此轮换后的凭据无需重启插件即可用于下一次操作。
+账号设置会同时提交所选 `candidateId`、endpoint、`accessKeyId` 和 `accessKeySecret`；只有两个 AccessKey 字段属于密钥。Provider 通过已配置 endpoint 检查这些凭据，并把观测到的授权事实与 Credentials grant 返回给 runtime。在交互式设置中，Host 会在 `previewAccountSetup` 后把该 grant 保留在内存中，只通过 `confirmAccountSetup` 持久化；取消、过期与关闭会释放未确认 grant。每次检查、会话发现、监听、发送和确认操作都会重新读取已存储 grant，因此轮换后的凭据无需重启插件即可用于下一次操作。
 
 授权事实与监听事实保持分离。通用 HTTP 401 或 403 属于检查失败；只有明确的供应方过期或撤销代码才变成 `required`。监听就绪要求一次供应方页面请求成功并取得 runtime 持久回执，不能由定时器创建代替。
 

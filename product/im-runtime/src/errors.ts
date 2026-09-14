@@ -16,6 +16,11 @@ export type ImRuntimeErrorCode =
   | 'IM_OUTBOUND_STATE_INVALID'
   | 'IM_ROUTE_INVALID'
   | 'IM_SESSION_PERSISTENCE_UNAVAILABLE'
+  | 'IM_SIMULATION_INSTANCE_ACTIVE'
+  | 'IM_SIMULATION_INSTANCE_NOT_FOUND'
+  | 'IM_SIMULATION_INSTANCE_NOT_RUNNING'
+  | 'IM_SIMULATION_SESSION_INVALID'
+  | 'IM_SIMULATION_TARGET_INVALID'
 
 /** Structured IM runtime failure for requests that cannot produce a durable receipt. */
 export class ImRuntimeError extends Error {

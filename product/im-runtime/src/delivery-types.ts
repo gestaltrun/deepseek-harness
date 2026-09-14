@@ -65,6 +65,8 @@ export interface ImHumanNativeSenderAttribution {
 export interface ImHumanDshSenderAttribution {
   readonly kind: 'human-dsh'
   readonly outboundRequestId: ImOutboundRequestId
+  /** Host-derived managed account actor when the provider exposes one. */
+  readonly providerActorId?: string
 }
 
 /** Durable outbox evidence that an Agent reply was sent. */

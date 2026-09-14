@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -6,25 +6,28 @@ import { Context } from '@deepseek-ai/cordis'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import AgentDefaultModel from '@deepseek-ai/dsh-agent-default-model'
+import type { AgentHandle } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import AgentPresets from '@deepseek-ai/dsh-agent-presets'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import LocalCredentialProvider from '@deepseek-ai/dsh-credentials-local'
 import { LlmAdapter, ToolCallId, type GenerateOptions, type LlmResolvedModelInfo, type StreamChunk } from '@deepseek-ai/dsh-llm'
+import { SessionId } from '@deepseek-ai/dsh-session'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import Storage from '@deepseek-ai/dsh-storage'
 import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
 import * as StorageJson from '@deepseek-ai/dsh-storage-json'
 import WorkspaceRegistry from '@deepseek-ai/dsh-workspace'
+import type { Workspace } from '@deepseek-ai/dsh-workspace'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ImRuntime, {
   type ImAccountId,
   type ImDeliveryOperationId,
   type ImDeliveryScope,
   type ImOperationId,
+  type ImOutboundRequestId,
   type ImRouteView,
-  type ImSimulationInstanceId,
   type ImTransport,
   type ImTransportSendRequest,
   type ImTransportSink,
@@ -110,6 +113,19 @@ interface Bench {
   readonly root: string
   sink(): ImTransportSink | undefined
   sent(): readonly ImTransportSendRequest[]
+}
+
+async function createSimUser(bench: Bench, workspacePath: string, id: string): Promise<{ handle: AgentHandle; workspace: Workspace }> {
+  await mkdir(workspacePath, { recursive: true })
+  const workspace = await bench.ctx.workspaceRegistry.create(workspacePath)
+  const handle = await bench.ctx.agents.create({
+    sessionId: SessionId(id), meta: { cwd: workspacePath, agentPreset: 'im-test' },
+    agentOptions: bench.ctx.agentDefaultModel.currentSelection(),
+    setup: async (agentCtx) => { await bench.ctx.agentPresets.mount(agentCtx, 'im-test') },
+  })
+  expect(await bench.ctx.sessions.flush(handle.agent.session)).toBe(true)
+  await workspace.attachSession(handle.agent.id)
+  return { handle, workspace }
 }
 
 async function mountAgentServices(ctx: Context, root: string, adapter: RecordingAdapter): Promise<void> {
@@ -390,28 +406,299 @@ describe('IM Agent coordinator', () => {
       .toMatchObject({ admission: { triggerReasons: ['fixed-interval'] } })
   })
 
-  it('admits configured simulation input through the same Agent path', async () => {
-    const adapter = new RecordingAdapter(['complete'])
+  it('creates a persisted pair and routes isolated input and replies through the shared delivery path', async () => {
+    const adapter = new RecordingAdapter(['complete', 'complete'])
     const bench = await boot(adapter)
-    const configured = await configure(bench, join(bench.root, 'workspace-a'))
+    const configured = await configure(bench, join(bench.root, 'tested-workspace'))
+    const simUserPath = join(bench.root, 'sim-user-workspace')
+    const simUser = await createSimUser(bench, simUserPath, 'sim-user-session')
+    expect(bench.ctx.tools.schemas(simUser.handle.agent).map(schema => schema.name).filter(name => name.startsWith('im_sim_'))).toEqual([])
     await bench.ctx.imRuntime.saveSimulationTarget({
-      operationId: operation('simulation-target'), workspaceId: configured.route.workspaceId,
+      operationId: operation('simulation-target'), workspaceId: simUser.workspace.id,
       observedRevision: null, accountId: configured.accountId, routeId: configured.route.id,
     })
-    const scope: ImDeliveryScope = {
-      kind: 'simulation', instanceId: brandString<ImSimulationInstanceId>('simulation-1'),
-      platform: 'wangwang', accountId: configured.accountId, conversationKind: 'direct', conversationId: 'buyer-1',
-    }
-    await bench.ctx.imRuntime.ingestInboundPage({
-      operationId: deliveryOperation('simulation-message'), scope, observedCursor: null, nextCursor: null,
-      messages: [{
-        externalMessageId: 'simulation-external', sender: { kind: 'external', senderId: 'sim-user' },
-        content: { text: 'simulation input', format: 'text' }, occurredAt: '2026-09-14T01:00:00.000Z',
-      }],
+    expect(bench.ctx.tools.schemas(simUser.handle.agent).map(schema => schema.name)).toContain('im_sim_create')
+
+    const instance = await bench.ctx.imRuntime.createSimulationInstance({
+      simUserSessionId: simUser.handle.agent.id,
+      speakingMembers: [{ actorId: 'buyer-1', displayName: 'Buyer' }],
     })
+    expect(instance).toMatchObject({
+      status: 'running', simUserSessionId: simUser.handle.agent.id,
+      simUserWorkspaceId: simUser.workspace.id,
+      target: { routeId: configured.route.id, workspaceId: configured.route.workspaceId, conversationId: 'buyer-1' },
+    })
+    expect(await bench.ctx.sessionPersistence.stat(instance.testedSessionId)).toBeDefined()
+    expect(configured.route.workspaceId === simUser.workspace.id).toBe(false)
+    const scope = bench.ctx.imRuntime.scopeForSession(instance.testedSessionId)?.deliveryScope
+    if (scope === undefined) throw new Error('tested Session has no authoritative simulation scope')
+    expect(bench.ctx.imRuntime.scopeForSession(simUser.handle.agent.id)).toMatchObject({
+      role: 'sim-user', peerSessionId: instance.testedSessionId, workspaceId: simUser.workspace.id,
+    })
+
+    await bench.ctx.imRuntime.importJsonlHistory({
+      operationId: deliveryOperation('simulation-history'), scope,
+      jsonl: `${JSON.stringify({
+        externalMessageId: 'historical-only', sender: { kind: 'external', senderId: 'historic-buyer' },
+        content: { text: 'historical context', format: 'text' }, occurredAt: '2026-09-14T00:00:00.000Z',
+      })}\n`,
+    })
+    await new Promise(resolve => setTimeout(resolve, 25))
+    expect(adapter.requests).toHaveLength(0)
+
+    await bench.ctx.imRuntime.injectSimulationMember({ instanceId: instance.instanceId, actorId: 'buyer-1', text: 'simulation input' })
     await expect.poll(() => bench.ctx.imRuntime.getConversationCursor(scope).pendingCount).toBe(0)
-    expect(bench.ctx.imRuntime.getAgentTask(scope)?.scope.kind).toBe('simulation')
+    expect(bench.ctx.imRuntime.getAgentTask(scope)).toMatchObject({ sessionId: instance.testedSessionId, scope: { kind: 'simulation', instanceId: instance.instanceId } })
     expect(adapter.requests).toHaveLength(1)
+    const tested = bench.ctx.agents.get(instance.testedSessionId)
+    if (tested === undefined) throw new Error('tested Agent was not created')
+    await bench.ctx.tools.execute({
+      signal: new AbortController().signal, callId: ToolCallId('simulation-reply'), name: 'im_send_message',
+      arguments: { text: 'isolated reply' }, agent: tested,
+    })
+    await expect.poll(() => adapter.requests.length).toBe(2)
+    await expect.poll(() => bench.ctx.imRuntime.getConversationCursor(scope).pendingCount).toBe(0)
+    expect(JSON.stringify(adapter.requests[1]?.messages)).toContain('isolated reply')
+    expect(bench.sent()).toEqual([])
+  })
+
+  it('freezes targets, isolates parallel instances, and stops only the selected pair', async () => {
+    const adapter = new RecordingAdapter(['complete', 'complete', 'complete'])
+    const bench = await boot(adapter)
+    const configured = await configure(bench, join(bench.root, 'shared-tested-workspace'))
+    const firstUser = await createSimUser(bench, join(bench.root, 'sim-users'), 'sim-user-a')
+    const secondHandle = await bench.ctx.agents.create({
+      sessionId: SessionId('sim-user-b'), meta: { cwd: firstUser.workspace.path, agentPreset: 'im-test' },
+      agentOptions: bench.ctx.agentDefaultModel.currentSelection(),
+      setup: async agentCtx => { await bench.ctx.agentPresets.mount(agentCtx, 'im-test') },
+    })
+    expect(await bench.ctx.sessions.flush(secondHandle.agent.session)).toBe(true)
+    await firstUser.workspace.attachSession(secondHandle.agent.id)
+    const target = await bench.ctx.imRuntime.saveSimulationTarget({
+      operationId: operation('parallel-target'), workspaceId: firstUser.workspace.id,
+      observedRevision: null, accountId: configured.accountId, routeId: configured.route.id,
+    })
+    const first = await bench.ctx.imRuntime.createSimulationInstance({ simUserSessionId: firstUser.handle.agent.id })
+    const second = await bench.ctx.imRuntime.createSimulationInstance({ simUserSessionId: secondHandle.agent.id })
+    expect(first.instanceId).not.toBe(second.instanceId)
+    expect(first.testedSessionId).not.toBe(second.testedSessionId)
+    expect(first.target).toEqual(second.target)
+    if (target.target === undefined) throw new Error('parallel target missing')
+    await bench.ctx.imRuntime.removeSimulationTarget({
+      operationId: operation('clear-parallel-target'), workspaceId: firstUser.workspace.id, observedRevision: target.target.revision,
+    })
+
+    await Promise.all([
+      bench.ctx.imRuntime.injectSimulationManagedHuman({ instanceId: first.instanceId, text: 'first isolated input' }),
+      bench.ctx.imRuntime.injectSimulationManagedHuman({ instanceId: second.instanceId, text: 'second isolated input' }),
+    ])
+    await expect.poll(() => adapter.requests.length).toBe(2)
+    const firstScope = bench.ctx.imRuntime.scopeForSession(first.testedSessionId)?.deliveryScope
+    const secondScope = bench.ctx.imRuntime.scopeForSession(second.testedSessionId)?.deliveryScope
+    if (firstScope === undefined || secondScope === undefined) throw new Error('parallel scopes missing')
+    expect(firstScope.instanceId).not.toBe(secondScope.instanceId)
+    expect(bench.ctx.imRuntime.queryHistory({ scope: firstScope, limit: 10 }).items.map(item => item.content.text)).toEqual(['first isolated input'])
+    expect(bench.ctx.imRuntime.queryHistory({ scope: secondScope, limit: 10 }).items.map(item => item.content.text)).toEqual(['second isolated input'])
+    expect(bench.ctx.imRuntime.queryHistory({ scope: firstScope, limit: 10 }).items[0]?.sender)
+      .toMatchObject({ kind: 'human-dsh', outboundRequestId: expect.any(String), providerActorId: 'merchant-1' })
+
+    expect((await bench.ctx.imRuntime.beginStopSimulation(first.instanceId)).status).toBe('stopping')
+    await bench.ctx.tools.execute({
+      signal: new AbortController().signal, callId: ToolCallId('deduplicated-stop-after-gui'),
+      name: 'im_sim_stop', arguments: {}, agent: firstUser.handle.agent,
+    })
+    const stopped = await bench.ctx.imRuntime.waitSimulationStopped(first.instanceId)
+    expect(stopped.status).toBe('stopped')
+    expect(bench.ctx.agents.get(first.simUserSessionId)).toBe(firstUser.handle.agent)
+    expect(bench.ctx.agents.get(first.testedSessionId)).toBeUndefined()
+    expect(bench.ctx.imRuntime.getSimulationInstance(second.instanceId)?.status).toBe('running')
+    await bench.ctx.imRuntime.injectSimulationManagedHuman({ instanceId: second.instanceId, text: 'second still running' })
+    await expect.poll(() => adapter.requests.length).toBe(3)
+    await expect(bench.ctx.imRuntime.injectSimulationManagedHuman({ instanceId: first.instanceId, text: 'late input' }))
+      .rejects.toMatchObject({ code: 'IM_SIMULATION_INSTANCE_NOT_RUNNING' })
+  })
+
+  it('returns stopping to the bound tool and lets GUI waiting observe true quiescence', async () => {
+    const adapter = new RecordingAdapter(['hold'])
+    const bench = await boot(adapter)
+    const configured = await configure(bench, join(bench.root, 'stop-tested-workspace'))
+    const simUser = await createSimUser(bench, join(bench.root, 'stop-sim-user'), 'stop-sim-user')
+    await bench.ctx.imRuntime.saveSimulationTarget({
+      operationId: operation('stop-target'), workspaceId: simUser.workspace.id,
+      observedRevision: null, accountId: configured.accountId, routeId: configured.route.id,
+    })
+    const instance = await bench.ctx.imRuntime.createSimulationInstance({ simUserSessionId: simUser.handle.agent.id })
+    await bench.ctx.imRuntime.injectSimulationManagedHuman({ instanceId: instance.instanceId, text: 'hold tested Agent' })
+    await expect.poll(() => adapter.requests.length).toBe(1)
+    const scope = bench.ctx.imRuntime.scopeForSession(instance.testedSessionId)?.deliveryScope
+    if (scope === undefined) throw new Error('stop scope missing')
+    const lateRequest = brandString<ImOutboundRequestId>('late-simulation-reply')
+    await bench.ctx.imRuntime.registerOutbound({
+      requestId: lateRequest, scope, intent: 'ai', content: { text: 'must not return after stop', format: 'text' },
+    })
+    expect(bench.ctx.tools.schemas(simUser.handle.agent).map(schema => schema.name)).toContain('im_sim_stop')
+    await bench.ctx.tools.execute({
+      signal: new AbortController().signal, callId: ToolCallId('simulation-stop'), name: 'im_sim_stop', arguments: {}, agent: simUser.handle.agent,
+    })
+    expect(bench.ctx.imRuntime.getSimulationInstance(instance.instanceId)?.status).toBe('stopping')
+    const waiting = bench.ctx.imRuntime.waitSimulationStopped(instance.instanceId)
+    let settled = false
+    void waiting.then(() => { settled = true })
+    await new Promise(resolve => setTimeout(resolve, 25))
+    expect(settled).toBe(false)
+    holds.shift()?.resolve()
+    await expect(waiting).resolves.toMatchObject({ status: 'stopped', stoppedAt: expect.any(String) })
+    await expect(bench.ctx.imRuntime.settleSimulationOutbound({ scope, requestId: lateRequest }))
+      .rejects.toMatchObject({ code: 'IM_OUTBOUND_STATE_INVALID' })
+    expect(bench.ctx.imRuntime.queryHistory({ scope, limit: 100 }).items.map(message => message.content.text))
+      .not.toContain('must not return after stop')
+    await expect(bench.ctx.imRuntime.beginStopSimulation(instance.instanceId)).resolves.toMatchObject({ status: 'stopped' })
+  })
+
+  it('persists stopping while creation is blocked and never publishes running afterward', async () => {
+    const bench = await boot(new RecordingAdapter([]))
+    const configured = await configure(bench, join(bench.root, 'creating-stop-tested'))
+    const simUser = await createSimUser(bench, join(bench.root, 'creating-stop-user'), 'creating-stop-user')
+    await bench.ctx.imRuntime.saveSimulationTarget({
+      operationId: operation('creating-stop-target'), workspaceId: simUser.workspace.id,
+      observedRevision: null, accountId: configured.accountId, routeId: configured.route.id,
+    })
+    const reachedFlush = Promise.withResolvers<void>()
+    const releaseFlush = Promise.withResolvers<void>()
+    const flush = bench.ctx.sessions.flush.bind(bench.ctx.sessions)
+    let hold = true
+    bench.ctx.sessions.flush = async (session) => {
+      if (hold && session.id === simUser.handle.agent.id) {
+        hold = false
+        reachedFlush.resolve()
+        await releaseFlush.promise
+      }
+      return flush(session)
+    }
+    const statuses: string[] = []
+    const dispose = bench.ctx.imRuntime.subscribe((change) => {
+      if (change.kind !== 'simulation-instance' || change.instanceId === undefined) return
+      const status = bench.ctx.imRuntime.getSimulationInstance(change.instanceId)?.status
+      if (status !== undefined) statuses.push(status)
+    })
+    const creating = bench.ctx.imRuntime.createSimulationInstance({ simUserSessionId: simUser.handle.agent.id })
+    await reachedFlush.promise
+    const record = bench.ctx.imRuntime.listSimulationInstances().at(-1)
+    if (record === undefined) throw new Error('creating simulation record missing')
+    expect(record.status).toBe('creating')
+
+    await expect(bench.ctx.imRuntime.beginStopSimulation(record.instanceId)).resolves.toMatchObject({ status: 'stopping' })
+    expect(bench.ctx.imRuntime.getSimulationInstance(record.instanceId)?.status).toBe('stopping')
+    releaseFlush.resolve()
+    await expect(creating).resolves.toMatchObject({ status: 'stopping' })
+    await expect(bench.ctx.imRuntime.waitSimulationStopped(record.instanceId)).resolves.toMatchObject({ status: 'stopped' })
+    expect(statuses).toEqual(['creating', 'stopping', 'stopped'])
+    expect(bench.ctx.agents.get(record.testedSessionId)).toBeUndefined()
+    bench.ctx.sessions.flush = flush
+    dispose()
+  })
+
+  it('stops cleanly when cancellation overtakes a newly queued admission', async () => {
+    const adapter = new RecordingAdapter(['complete'])
+    const bench = await boot(adapter)
+    const configured = await configure(bench, join(bench.root, 'overtake-tested-workspace'))
+    const simUser = await createSimUser(bench, join(bench.root, 'overtake-sim-user'), 'overtake-sim-user')
+    await bench.ctx.imRuntime.saveSimulationTarget({
+      operationId: operation('overtake-target'), workspaceId: simUser.workspace.id,
+      observedRevision: null, accountId: configured.accountId, routeId: configured.route.id,
+    })
+    const instance = await bench.ctx.imRuntime.createSimulationInstance({ simUserSessionId: simUser.handle.agent.id })
+    await bench.ctx.imRuntime.injectSimulationManagedHuman({ instanceId: instance.instanceId, text: 'queued at stop boundary' })
+    await bench.ctx.imRuntime.beginStopSimulation(instance.instanceId)
+    await expect(bench.ctx.imRuntime.waitSimulationStopped(instance.instanceId)).resolves.toMatchObject({ status: 'stopped' })
+    expect(bench.ctx.imRuntime.getSimulationInstance(instance.instanceId)?.status).toBe('stopped')
+  })
+
+  it('restores durable pair navigation without auto-resuming ordinary Sessions', async () => {
+    const firstAdapter = new RecordingAdapter([])
+    const first = await boot(firstAdapter)
+    const configured = await configure(first, join(first.root, 'restart-tested-workspace'))
+    const simUser = await createSimUser(first, join(first.root, 'restart-sim-user'), 'restart-sim-user')
+    await first.ctx.imRuntime.saveSimulationTarget({
+      operationId: operation('restart-target'), workspaceId: simUser.workspace.id,
+      observedRevision: null, accountId: configured.accountId, routeId: configured.route.id,
+    })
+    const instance = await first.ctx.imRuntime.createSimulationInstance({ simUserSessionId: simUser.handle.agent.id })
+    await first.ctx.fiber.dispose()
+    contexts.splice(contexts.indexOf(first.ctx), 1)
+
+    const runtimePath = join(first.root, 'storage', 'gestaltrun_im_runtime.json')
+    const stored = JSON.parse(await readFile(runtimePath, 'utf8')) as {
+      tables: { simulation_instances: Record<string, { status: string; updatedAt: string }> }
+    }
+    const partial = stored.tables.simulation_instances[instance.instanceId]
+    if (partial === undefined) throw new Error('stored simulation instance missing')
+    partial.status = 'creating'
+    partial.updatedAt = '2026-09-14T02:00:00.000Z'
+    await writeFile(runtimePath, `${JSON.stringify(stored, null, 2)}\n`)
+
+    const second = await boot(new RecordingAdapter([]), first.root)
+    await expect.poll(() => second.ctx.imRuntime.getSimulationInstance(instance.instanceId)?.status).toBe('running')
+    expect(second.ctx.imRuntime.getSimulationInstance(instance.instanceId)).toMatchObject({
+      status: 'running', simUserSessionId: instance.simUserSessionId, testedSessionId: instance.testedSessionId,
+    })
+    expect(second.ctx.imRuntime.scopeForSession(instance.simUserSessionId)).toMatchObject({
+      role: 'sim-user', peerSessionId: instance.testedSessionId,
+    })
+    expect(second.ctx.agents.get(instance.simUserSessionId)).toBeUndefined()
+    expect(second.ctx.agents.get(instance.testedSessionId)).toBeUndefined()
+    expect(await second.ctx.sessionPersistence.stat(instance.simUserSessionId)).toBeDefined()
+    expect(await second.ctx.sessionPersistence.stat(instance.testedSessionId)).toBeDefined()
+  })
+
+  it('finishes a persisted stopping instance on restart without resuming either Session', async () => {
+    const first = await boot(new RecordingAdapter([]))
+    const configured = await configure(first, join(first.root, 'reload-stop-tested'))
+    const simUser = await createSimUser(first, join(first.root, 'reload-stop-user'), 'reload-stop-user')
+    await first.ctx.imRuntime.saveSimulationTarget({
+      operationId: operation('reload-stop-target'), workspaceId: simUser.workspace.id,
+      observedRevision: null, accountId: configured.accountId, routeId: configured.route.id,
+    })
+    const instance = await first.ctx.imRuntime.createSimulationInstance({ simUserSessionId: simUser.handle.agent.id })
+    await first.ctx.fiber.dispose()
+    contexts.splice(contexts.indexOf(first.ctx), 1)
+    const runtimePath = join(first.root, 'storage', 'gestaltrun_im_runtime.json')
+    const stored = JSON.parse(await readFile(runtimePath, 'utf8')) as {
+      tables: { simulation_instances: Record<string, { status: string; updatedAt: string }> }
+    }
+    const partial = stored.tables.simulation_instances[instance.instanceId]
+    if (partial === undefined) throw new Error('stored simulation instance missing')
+    partial.status = 'stopping'
+    partial.updatedAt = '2026-09-14T02:00:00.000Z'
+    await writeFile(runtimePath, `${JSON.stringify(stored, null, 2)}\n`)
+
+    const second = await boot(new RecordingAdapter([]), first.root)
+    await expect.poll(() => second.ctx.imRuntime.getSimulationInstance(instance.instanceId)?.status).toBe('stopped')
+    expect(second.ctx.agents.get(instance.simUserSessionId)).toBeUndefined()
+    expect(second.ctx.agents.get(instance.testedSessionId)).toBeUndefined()
+    expect(await second.ctx.sessionPersistence.stat(instance.simUserSessionId)).toBeDefined()
+    expect(await second.ctx.sessionPersistence.stat(instance.testedSessionId)).toBeDefined()
+  })
+
+  it('retains an honest failed record when tested Session creation cannot start', async () => {
+    const bench = await boot(new RecordingAdapter([]))
+    const configured = await configure(bench, join(bench.root, 'failed-tested-workspace'))
+    const simUser = await createSimUser(bench, join(bench.root, 'failed-sim-user'), 'failed-sim-user')
+    await bench.ctx.imRuntime.saveSimulationTarget({
+      operationId: operation('failed-target'), workspaceId: simUser.workspace.id,
+      observedRevision: null, accountId: configured.accountId, routeId: configured.route.id,
+    })
+    const create = bench.ctx.agents.create.bind(bench.ctx.agents)
+    bench.ctx.agents.create = async () => { throw new Error('controlled Agent creation failure') }
+    await expect(bench.ctx.imRuntime.createSimulationInstance({ simUserSessionId: simUser.handle.agent.id }))
+      .rejects.toThrow('controlled Agent creation failure')
+    bench.ctx.agents.create = create
+    const failed = bench.ctx.imRuntime.listSimulationInstances().at(-1)
+    expect(failed).toMatchObject({
+      status: 'failed', simUserSessionId: simUser.handle.agent.id,
+      failure: { code: 'IM_SIMULATION_CREATE_FAILED', message: 'Simulation instance creation did not complete' },
+    })
+    expect(failed === undefined ? undefined : await bench.ctx.sessionPersistence.stat(failed.testedSessionId)).toBeUndefined()
   })
 
   it('does not re-submit after a Session read failure and reconciles the logged batch on a later restart', async () => {
