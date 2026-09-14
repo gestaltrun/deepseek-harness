@@ -4,7 +4,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Product packages use this independent pnpm workspace and published DSH peers. Install dependencies with `pnpm --dir product install --frozen-lockfile --ignore-scripts`. The `build`, `test`, `typecheck`, and `pack` scripts select [Model Center](model-center/README.md); its package owns those commands and runtime behavior.
+Product packages use this independent pnpm workspace and published DSH peers. Install dependencies with `pnpm --dir product install --frozen-lockfile --ignore-scripts`. The workspace pins Zod to `4.4.3` so product schemas and the published DSH schema interfaces resolve the same implementation. The `build`, `test`, `typecheck`, and `pack` scripts select [Model Center](model-center/README.md); its package owns those commands and runtime behavior.
 
 ## Table of Contents
 

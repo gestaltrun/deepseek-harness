@@ -14,7 +14,9 @@
     "types": ["node"],
     "paths": {
       "@gestaltrun/dsh-im-runtime": ["./im-runtime/src/index.ts"],
+      "@gestaltrun/dsh-im-runtime/types": ["./im-runtime/src/types.ts"],
       "@gestaltrun/dsh-api-im": ["./api-im/src/index.ts"],
+      "@gestaltrun/dsh-api-im/types": ["./api-im/src/types.ts"],
       "@gestaltrun/dsh-api-im/client": ["./api-im/src/client/index.ts"],
       "@gestaltrun/dsh-api-im/remote": ["./api-im/lib/typert.remote-client.d.ts"]
     }

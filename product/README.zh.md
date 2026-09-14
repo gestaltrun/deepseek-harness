@@ -4,7 +4,7 @@
 
 ## 概述
 
-产品包使用这个独立的 pnpm 工作区和已发布的 DSH 对等依赖。使用 `pnpm --dir product install --frozen-lockfile --ignore-scripts` 安装依赖。`build`、`test`、`typecheck` 和 `pack` 脚本选择 [Model Center](model-center/README.zh.md)；对应命令和运行时行为由该包定义。
+产品包使用这个独立的 pnpm 工作区和已发布的 DSH 对等依赖。使用 `pnpm --dir product install --frozen-lockfile --ignore-scripts` 安装依赖。工作区把 Zod 固定为 `4.4.3`，使产品 schema 与已发布 DSH schema 接口解析到同一实现。`build`、`test`、`typecheck` 和 `pack` 脚本选择 [Model Center](model-center/README.zh.md)；对应命令和运行时行为由该包定义。
 
 ## 目录
 
