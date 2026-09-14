@@ -60,6 +60,7 @@ export const imAccountRecordSchema = z.object({
   identity,
   credentialKey: z.string().transform(parseCredentialKey).optional(),
   authorization,
+  connectionIntent: z.enum(['connected', 'disconnected']).default('connected'),
   paused: z.boolean(),
   revision,
   createdAt: timestamp,

@@ -49,7 +49,7 @@ The runtime has no deployment configuration fields. StorageDomain selects the du
 - name: '@gestaltrun/dsh-im-runtime'
 ```
 
-`listAccountCandidates` returns installed DingTalk profiles or admitted Wangwang merchants from the registered transport. The UI selects one of these identifiers and does not invent a default profile, merchant id, or endpoint. The transport then validates write-only setup input and returns safe identity facts plus an optional credential record. The runtime stores that record through `ctx.credentials` before publishing the account. It exposes authorization and listener states separately and never derives a `connected` flag.
+`listAccountCandidates` returns installed DingTalk profiles or admitted Wangwang merchants from the registered transport. The UI selects one of these identifiers and does not invent a default profile, merchant id, or endpoint. The transport then validates write-only setup input and returns safe identity facts plus an optional credential record. `inspectAccount` and `refreshAccount` report provider-observed authorization facts without changing the account identity. The runtime stores credentials through `ctx.credentials`. It exposes connection intent, authorization, and listener state as separate facts.
 
 Every route includes platform, account, conversation kind, an `all` or `specific` target, and a Workspace owner. A specific route wins over an `all` route even when the specific route is disabled. Direct routes reject group settings; group routes require at least one of `mention`, positive `everyN`, or positive `fixedIntervalSeconds`.
 
@@ -57,11 +57,11 @@ Every route includes platform, account, conversation kind, an `all` or `specific
 
 `ingestInboundPage` durably stores one complete conversation page, deduplicated by full scope plus platform message identity. JSONL imports enter query history and never enter pending Agent delivery. Use `sessionUserMessage` to create a stable identified `user/message`; after that Session log is durable, call `markSubmitted`. `reconcileSession` scans `SessionPersistence` after a crash and confirms any matching stable sources. These are separate durable writes and do not claim a transaction across the delivery domain and Session log.
 
-Provider polling cursors have explicit account-and-stream ownership. A provider first commits every conversation page, then passes all page operation receipts to `commitProviderCursor`. If the process stops between those steps, it re-reads the old provider cursor and safely replays the pages through durable deduplication. This permits a Wangwang merchant page to cover several conversations without assigning the merchant cursor to one conversation.
+Provider polling cursors have explicit account-and-stream ownership. The runtime-owned listener sink accepts one provider page with stable per-conversation operation ids. It commits every conversation group, then commits the provider cursor with all page receipts. If the process stops or a later group fails between those writes, it re-reads the old provider cursor and safely replays the groups through durable deduplication. This permits a Wangwang merchant page to cover several conversations without assigning the merchant cursor to one conversation.
 
 `registerOutbound` stores an intent before any platform call. `beginOutboundAttempt` grants one attempt; a restart or repeated begin while dispatch is unresolved records `result-unknown`, which callers query or confirm without a blind retry. Route and account generations are frozen for automated intents. Manual DSH sends and simulation sends remain available while an account or route is paused, while old automated intents cannot flush after a pause or route-change cycle.
 
-Providers pass actor and echo facts to `classifyInboundSender`. A sent automated outbox match yields `ai`, a sent manual match yields `human-dsh`, and explicit provider-native evidence yields `human-native`. An unmatched configured-account observation remains `unknown`; text equality never changes sender attribution.
+Providers pass actor and echo facts to `classifyInboundSender`. A sent automated outbox match yields `ai`, a sent manual match yields `human-dsh`, and explicit provider-native evidence yields `human-native`. An unmatched configured-account observation remains `unknown`; text equality never changes sender attribution. Mention activation uses only the provider's explicit mention metadata stored with the message.
 
 -----
 
@@ -73,7 +73,7 @@ Providers pass actor and echo facts to `classifyInboundSender`. A sent automated
 
 The `gestaltrun_im_runtime` StorageDomain has one record per account aggregate and one record per Workspace simulation target. The separate `gestaltrun_im_delivery` domain has one aggregate per complete conversation scope plus provider-owned cursor records. A conversation aggregate stores inbound messages, deduplication keys, operation receipts, submission evidence, and outbox rows in one durable write. Provider cursor commits happen only after referenced page receipts exist. No operation claims atomicity across credentials, configuration, delivery, provider cursor, or Session records.
 
-`ImTransports` reserves one live provider per platform and releases it with the registering Cordis fiber. `ctx.imRuntime.subscribe` and the typed `imRuntime/changed` event run after the matching durable write. Snapshot revisions order events within one process generation; durable operation ids and record revisions survive restart.
+`ImTransports` reserves one live provider per platform and releases it with the registering Cordis fiber. The runtime starts its listener when a connected, unpaused account has an enabled route, and stops the listener when those facts cease to hold. `ctx.imRuntime.subscribe` and the typed `imRuntime/changed` event run after the matching durable write. Snapshot revisions order events within one process generation; durable operation ids and record revisions survive restart.
 
 | Source | Purpose |
 |---|---|
@@ -113,7 +113,7 @@ None; account and route configuration alone does not assemble or send a model re
 ## Known Limitations and Deferred Work
 
 - Provider packages own live identity checks, conversation discovery, listeners, outbound sends, and receipt confirmation.
-- Agent admission, automatic reply pumping, provider connection controls, and the two-Session simulation lifecycle are later product slices.
+- Agent admission, automatic reply pumping, and the two-Session simulation lifecycle are later product slices.
 - Operation receipts remain durable without automatic pruning because pruning would make an old operation indistinguishable from one never received.
 - Credentials and configuration use separate durable services. A failed account write attempts credential rollback and reports both failures if rollback also fails; it does not claim a cross-service transaction.
 

@@ -102,6 +102,8 @@ export interface ImInboundMessageInput {
   readonly sender: ImSenderAttribution
   readonly content: ImMessageContent
   readonly occurredAt: string
+  /** Provider-normalized evidence that this account was explicitly mentioned. */
+  readonly mentionedConfiguredAccount?: boolean
 }
 
 /** Session attribution written with the existing durable `user/message` event. */
@@ -123,6 +125,8 @@ export interface ImInboundMessageView {
   readonly stage: 'received' | 'submitted'
   readonly sequenceNumber: number
   readonly occurredAt: string
+  /** Provider-normalized evidence; message text is never parsed to infer a mention. */
+  readonly mentionedConfiguredAccount?: boolean
   readonly receivedAt: string
   readonly submission?: { readonly sessionId: SessionId; readonly submittedAt: string }
 }

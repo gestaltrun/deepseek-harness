@@ -11,7 +11,17 @@ export class ImTransportError extends Error {
   constructor(readonly code: ImTransportErrorCode, message: string) { super(message); this.name = 'ImTransportError' }
 }
 
-declare module '@deepseek-ai/cordis' { interface Context { imTransports: ImTransports } }
+declare module '@deepseek-ai/cordis' {
+  interface Context { imTransports: ImTransports }
+  interface Events {
+    /**
+     * A platform transport became available or unavailable.
+     * @param platform - changed platform reservation.
+     * @mode emit
+     */
+    'imTransports/changed'(platform: ImPlatform): void
+  }
+}
 
 /** Registry whose entries live and die with their registering Cordis fiber. */
 export class ImTransports extends Service {
@@ -21,7 +31,14 @@ export class ImTransports extends Service {
   /** @param provider - complete transport capability. @returns disposer that releases the platform reservation. */
   register(provider: ImTransport): () => void {
     if (this.providers.has(provider.platform)) throw new ImTransportError('IM_TRANSPORT_CONFLICT', `IM transport '${provider.platform}' is already registered`)
-    const dispose = this.ctx.effect(() => { this.providers.set(provider.platform, provider); return () => { this.providers.delete(provider.platform) } }, `imTransports.register(${provider.platform})`)
+    const dispose = this.ctx.effect(() => {
+      this.providers.set(provider.platform, provider)
+      this.publish(provider.platform)
+      return () => {
+        this.providers.delete(provider.platform)
+        this.publish(provider.platform)
+      }
+    }, `imTransports.register(${provider.platform})`)
     return () => { void dispose() }
   }
   /** @param platform - platform to resolve. @returns the registered provider. */
@@ -29,5 +46,15 @@ export class ImTransports extends Service {
     const provider = this.providers.get(platform)
     if (provider === undefined) throw new ImTransportError('IM_TRANSPORT_UNAVAILABLE', `IM transport '${platform}' is not registered`)
     return provider
+  }
+
+  /** @param platform - platform to inspect. @returns the transport, or absence while unloaded. */
+  get(platform: ImPlatform): ImTransport | undefined { return this.providers.get(platform) }
+
+  /** Notify post-registration observers without making their failure revoke the committed reservation. */
+  private publish(platform: ImPlatform): void {
+    try { this.ctx.emit('imTransports/changed', platform) } catch (error) {
+      this.ctx.logger.warn(`IM transport change listener failed after commit: ${String(error)}`)
+    }
   }
 }

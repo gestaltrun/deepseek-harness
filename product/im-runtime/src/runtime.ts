@@ -17,6 +17,7 @@ import { ImRuntimeError } from './errors.ts'
 import { imRuntimeDomainSpec } from './schema.ts'
 import type { ImAccountAggregate, ImAccountRecord, ImSimulationTargetAggregate } from './schema.ts'
 import { ImTransports } from './transports.ts'
+import type { ImTransportInboundPage, ImTransportInboundPageReceipt, ImTransportSink } from './transport.ts'
 import type {
   ImBeginOutboundAttemptRequest,
   ImBeginOutboundAttemptResult,
@@ -60,6 +61,7 @@ import type {
 import type {
   ImAccountId,
   ImAccountCandidate,
+  ImAccountLifecycleRequest,
   ImAccountSetupRequest,
   ImAccountMutationResult,
   ImAccountView,
@@ -120,13 +122,20 @@ function triggerError(conversationKind: ImConversationKind, trigger: ImRouteView
   return undefined
 }
 
-function accountView(record: ImAccountRecord, routes: Readonly<Record<string, ImRouteView>>): ImAccountView {
+function accountView(record: ImAccountRecord, routes: Readonly<Record<string, ImRouteView>>, active?: ImAccountView['listener']): ImAccountView {
   const listener: ImAccountView['listener'] = record.paused
     ? { state: 'stopped', reason: 'account-paused' }
+    : record.connectionIntent === 'disconnected'
+      ? { state: 'stopped', reason: 'manual' }
     : Object.values(routes).some(route => route.enabled)
-      ? { state: 'stopped', reason: 'disconnected' }
+      ? active ?? { state: 'stopped', reason: 'disconnected' }
       : { state: 'stopped', reason: 'no-enabled-route' }
   return { ...record, listener }
+}
+
+interface ActiveListener {
+  readonly controller: AbortController
+  dispose?: () => Promise<void>
 }
 
 function routeResult(operationId: ImOperationId, status: ImRouteMutationResult['status'], options: Omit<ImRouteMutationResult, 'operationId' | 'status'> = {}): ImRouteMutationResult {
@@ -155,6 +164,9 @@ export class ImRuntime extends Service implements ImRuntimeService {
   private generation = 0
   private deliveryGeneration = 0
   private simulationTail: Promise<void> = Promise.resolve()
+  private readonly activeListeners = new Map<ImAccountId, ActiveListener>()
+  private readonly listenerStates = new Map<ImAccountId, ImAccountView['listener']>()
+  private readonly listenerTails = new Map<ImAccountId, Promise<void>>()
   readonly transports: ImTransports
 
   /** @param ctx - Cordis context carrying StorageDomain and Credentials. */
@@ -187,6 +199,12 @@ export class ImRuntime extends Service implements ImRuntimeService {
       publish: change => { this.publishDelivery(change) },
     })
     await this.delivery.recoverInterruptedAttempts()
+    this.ctx.on('imTransports/changed', platform => {
+      for (const [id, aggregate] of this.accountTable().entries()) {
+        if (aggregate.account.platform === platform) this.scheduleListener(id)
+      }
+    })
+    this.ctx.effect(() => async () => { await this.stopAllListeners() }, 'imRuntime.listeners()')
   }
 
   snapshot(): ImRuntimeSnapshot {
@@ -195,7 +213,7 @@ export class ImRuntime extends Service implements ImRuntimeService {
       .sort((left, right) => left.id.localeCompare(right.id))
     return {
       revision: this.generation,
-      accounts: accounts.map(([, aggregate]) => accountView(aggregate.account, aggregate.routes)),
+      accounts: accounts.map(([id, aggregate]) => accountView(aggregate.account, aggregate.routes, this.listenerStates.get(id))),
       routes,
       simulationTargets: [...this.simulationTargetTable().entries()].flatMap(([, aggregate]) => aggregate.target === undefined ? [] : [aggregate.target])
         .sort((left, right) => left.workspaceId.localeCompare(right.workspaceId)),
@@ -236,6 +254,7 @@ export class ImRuntime extends Service implements ImRuntimeService {
       identity: prepared.identity,
       ...(storedKey === undefined ? {} : { credentialKey: storedKey }),
       authorization: prepared.authorization,
+      connectionIntent: 'connected',
       paused: false,
       revision: revision(),
       createdAt,
@@ -252,7 +271,7 @@ export class ImRuntime extends Service implements ImRuntimeService {
       throw error
     }
     this.publish({ kind: 'account', accountId: id })
-    return accountView(record, {})
+    return accountView(record, {}, this.listenerStates.get(record.id))
   }
 
   async setAccountPaused(request: ImSetAccountPausedRequest): Promise<ImAccountMutationResult> {
@@ -278,9 +297,33 @@ export class ImRuntime extends Service implements ImRuntimeService {
     }).catch(error => { throw this.accountError(request.accountId, error) })
     const stored = aggregate.accountOperations[request.operationId]
     if (stored === undefined) throw new Error(`IM account operation '${request.operationId}' was not recorded`)
-    const result: ImAccountMutationResult = { ...stored.result, account: accountView(stored.result.account, aggregate.routes) }
+    const result: ImAccountMutationResult = { ...stored.result, account: accountView(stored.result.account, aggregate.routes, this.listenerStates.get(request.accountId)) }
     if (!replayed) this.publish({ kind: 'account', accountId: request.accountId, operationId: request.operationId })
     return result
+  }
+
+  disconnectAccount(request: ImAccountLifecycleRequest): Promise<ImAccountMutationResult> {
+    return this.setConnectionIntent(request, 'disconnected')
+  }
+
+  reconnectAccount(request: ImAccountLifecycleRequest): Promise<ImAccountMutationResult> {
+    return this.setConnectionIntent(request, 'connected')
+  }
+
+  async refreshAccount(request: ImAccountLifecycleRequest, signal = new AbortController().signal): Promise<ImAccountMutationResult> {
+    const fingerprint = JSON.stringify(['refresh', request.accountId, request.observedRevision])
+    const before = this.requireAccount(request.accountId)
+    const existing = before.accountOperations[request.operationId]
+    assertOperation(existing, fingerprint, request.operationId)
+    if (existing !== undefined) {
+      return { ...existing.result, account: accountView(existing.result.account, before.routes, this.listenerStates.get(request.accountId)) }
+    }
+    if (before.account.revision !== request.observedRevision) {
+      return await this.storeRefreshResult(request, fingerprint, before.account.authorization, 'conflict')
+    }
+    const inspected = await this.transports.require(before.account.platform)
+      .refreshAccount(accountView(before.account, before.routes, this.listenerStates.get(request.accountId)), signal)
+    return await this.storeRefreshResult(request, fingerprint, inspected.authorization, undefined)
   }
 
   async createRoute(request: ImCreateRouteRequest): Promise<ImRouteMutationResult> {
@@ -644,11 +687,72 @@ export class ImRuntime extends Service implements ImRuntimeService {
     return result
   }
 
+  /** Persist a connection intent separately from pause and process listener state. */
+  private async setConnectionIntent(request: ImAccountLifecycleRequest, intent: ImAccountView['connectionIntent']): Promise<ImAccountMutationResult> {
+    const fingerprint = JSON.stringify([intent, request.accountId, request.observedRevision])
+    const nextRevision = revision()
+    const updatedAt = now()
+    let replayed = false
+    const aggregate = await this.accountTable().update(request.accountId, current => {
+      const existing = current.accountOperations[request.operationId]
+      assertOperation(existing, fingerprint, request.operationId)
+      if (existing !== undefined) { replayed = true; return current }
+      const status: ImAccountMutationResult['status'] = current.account.revision !== request.observedRevision
+        ? 'conflict'
+        : current.account.connectionIntent === intent ? 'unchanged' : 'applied'
+      const account = status === 'applied'
+        ? { ...current.account, connectionIntent: intent, revision: nextRevision, updatedAt }
+        : current.account
+      return {
+        ...current,
+        account,
+        accountOperations: { ...current.accountOperations, [request.operationId]: { fingerprint, result: { operationId: request.operationId, status, account } } },
+      }
+    }).catch(error => { throw this.accountError(request.accountId, error) })
+    const stored = aggregate.accountOperations[request.operationId]
+    if (stored === undefined) throw new Error(`IM account operation '${request.operationId}' was not recorded`)
+    const result = { ...stored.result, account: accountView(stored.result.account, aggregate.routes, this.listenerStates.get(request.accountId)) }
+    if (!replayed) this.publish({ kind: 'account', accountId: request.accountId, operationId: request.operationId })
+    return result
+  }
+
+  /** Store one provider authorization observation under the account revision CAS. */
+  private async storeRefreshResult(
+    request: ImAccountLifecycleRequest,
+    fingerprint: string,
+    authorization: ImAccountView['authorization'],
+    forcedStatus: 'conflict' | undefined,
+  ): Promise<ImAccountMutationResult> {
+    const nextRevision = revision()
+    const updatedAt = now()
+    const aggregate = await this.accountTable().update(request.accountId, current => {
+      const existing = current.accountOperations[request.operationId]
+      assertOperation(existing, fingerprint, request.operationId)
+      if (existing !== undefined) return current
+      const status: ImAccountMutationResult['status'] = forcedStatus ?? (current.account.revision !== request.observedRevision
+        ? 'conflict'
+        : JSON.stringify(current.account.authorization) === JSON.stringify(authorization) ? 'unchanged' : 'applied')
+      const account = status === 'applied'
+        ? { ...current.account, authorization, revision: nextRevision, updatedAt }
+        : current.account
+      return {
+        ...current,
+        account,
+        accountOperations: { ...current.accountOperations, [request.operationId]: { fingerprint, result: { operationId: request.operationId, status, account } } },
+      }
+    }).catch(error => { throw this.accountError(request.accountId, error) })
+    const stored = aggregate.accountOperations[request.operationId]
+    if (stored === undefined) throw new Error(`IM account operation '${request.operationId}' was not recorded`)
+    this.publish({ kind: 'account', accountId: request.accountId, operationId: request.operationId })
+    return { ...stored.result, account: accountView(stored.result.account, aggregate.routes, this.listenerStates.get(request.accountId)) }
+  }
+
   private publish(change: Omit<ImRuntimeChange, 'revision'>): void {
     const event: ImRuntimeChange = { revision: ++this.generation, ...change }
     try { this.ctx.emit('imRuntime/changed', event) } catch (error) {
       this.ctx.logger.warn(`IM runtime change listener failed after commit: ${String(error)}`)
     }
+    if (change.accountId !== undefined) this.scheduleListener(change.accountId)
   }
 
   private publishDelivery(change: Omit<ImDeliveryChange, 'sequence'>): void {
@@ -656,6 +760,120 @@ export class ImRuntime extends Service implements ImRuntimeService {
     try { this.ctx.emit('imRuntime/delivery-changed', event) } catch (error) {
       this.ctx.logger.warn(`IM delivery change listener failed after commit: ${String(error)}`)
     }
+  }
+
+  /** Serialize listener state changes for one configured account. */
+  private scheduleListener(id: ImAccountId): void {
+    const prior = this.listenerTails.get(id) ?? Promise.resolve()
+    const next = prior.then(() => this.reconcileListener(id))
+    this.listenerTails.set(id, next.then(() => {}, error => {
+      this.ctx.logger.warn(`IM account '${id}' listener reconciliation failed: ${String(error)}`)
+    }))
+  }
+
+  /** Start or stop the provider listener from durable account and route facts. */
+  private async reconcileListener(id: ImAccountId): Promise<void> {
+    const aggregate = this.accountTable().get(id)
+    const shouldRun = aggregate !== undefined
+      && aggregate.account.connectionIntent === 'connected'
+      && !aggregate.account.paused
+      && Object.values(aggregate.routes).some(route => route.enabled)
+    const transport = aggregate === undefined ? undefined : this.transports.get(aggregate.account.platform)
+    const current = this.activeListeners.get(id)
+    if (!shouldRun || transport === undefined) {
+      if (current !== undefined) await this.stopListener(id, current)
+      return
+    }
+    if (current !== undefined) return
+    const controller = new AbortController()
+    const active: ActiveListener = { controller }
+    this.activeListeners.set(id, active)
+    this.listenerStates.set(id, { state: 'starting', since: now() })
+    try {
+      const view = accountView(aggregate.account, aggregate.routes, this.listenerStates.get(id))
+      const dispose = await transport.listen(view, this.transportSink(id, aggregate.account.platform), controller.signal)
+      if (controller.signal.aborted) {
+        await dispose()
+        return
+      }
+      active.dispose = dispose
+      this.listenerStates.set(id, { state: 'running', readyAt: now() })
+    } catch (error) {
+      this.activeListeners.delete(id)
+      if (!controller.signal.aborted) {
+        this.listenerStates.set(id, { state: 'failed', attempts: 1, lastError: String(error) })
+      }
+    }
+  }
+
+  /** Stop one exact listener before publishing a later start for the same account. */
+  private async stopListener(id: ImAccountId, active: ActiveListener): Promise<void> {
+    active.controller.abort(new Error(`IM account '${id}' listener stopped`))
+    if (active.dispose !== undefined) await active.dispose()
+    if (this.activeListeners.get(id) === active) this.activeListeners.delete(id)
+    this.listenerStates.delete(id)
+  }
+
+  /** Drain every provider listener owned by this runtime. */
+  private async stopAllListeners(): Promise<void> {
+    const active = [...this.activeListeners]
+    await Promise.all(active.map(([id, listener]) => this.stopListener(id, listener)))
+    await Promise.all(this.listenerTails.values())
+  }
+
+  /** Bind a provider page sink to one configured account and its platform. */
+  private transportSink(accountId: ImAccountId, platform: ImPlatform): ImTransportSink {
+    return {
+      receivePage: page => this.receiveTransportPage(accountId, platform, page),
+    }
+  }
+
+  /** Persist every conversation page before committing the provider-owned cursor. */
+  private async receiveTransportPage(accountId: ImAccountId, platform: ImPlatform, page: ImTransportInboundPage): Promise<ImTransportInboundPageReceipt> {
+    if (page.owner.accountId !== accountId || page.owner.platform !== platform) {
+      throw new ImRuntimeError('IM_DELIVERY_SCOPE_INVALID', 'provider page owner must match the listener account and platform')
+    }
+    const conversations: ImInboundPageResult[] = []
+    for (const group of page.conversations) {
+      const scope: ImRealDeliveryScope = {
+        kind: 'real', platform, accountId,
+        conversationKind: group.conversationKind,
+        conversationId: group.conversationId,
+      }
+      const prior = this.getConversationCursor(scope).platformCursor
+      const result = await this.ingestInboundPage({
+        operationId: group.operationId,
+        scope,
+        observedCursor: prior,
+        nextCursor: prior,
+        messages: group.messages.map(message => ({
+          externalMessageId: message.externalMessageId,
+          sender: this.classifyInboundSender(scope, message.senderEvidence),
+          content: { text: message.text, format: message.format },
+          occurredAt: message.occurredAt,
+          ...(message.mentionedConfiguredAccount === undefined ? {} : { mentionedConfiguredAccount: message.mentionedConfiguredAccount }),
+        })),
+      })
+      if (result.status !== 'applied') {
+        throw new ImRuntimeError('IM_DELIVERY_SCOPE_INVALID', `provider conversation page '${group.operationId}' lost its cursor comparison`)
+      }
+      conversations.push(result)
+    }
+    const cursor = await this.commitProviderCursor({
+      operationId: page.operationId,
+      owner: page.owner,
+      observedCursor: page.observedCursor,
+      nextCursor: page.nextCursor,
+      pages: page.conversations.map(group => ({
+        scope: {
+          kind: 'real' as const, platform, accountId,
+          conversationKind: group.conversationKind,
+          conversationId: group.conversationId,
+        },
+        operationId: group.operationId,
+      })),
+    })
+    return { conversations, cursor }
   }
 }
 

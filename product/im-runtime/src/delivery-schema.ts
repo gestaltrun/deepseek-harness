@@ -69,6 +69,7 @@ export const imInboundMessageInputSchema = z.object({
   sender,
   content,
   occurredAt: timestamp,
+  mentionedConfiguredAccount: z.boolean().optional(),
 }) as ZodType<ImInboundMessageInput>
 
 const inboundMessage = z.object({
@@ -81,6 +82,7 @@ const inboundMessage = z.object({
   stage: z.enum(['received', 'submitted']),
   sequenceNumber: z.number().int().positive(),
   occurredAt: timestamp,
+  mentionedConfiguredAccount: z.boolean().optional(),
   receivedAt: timestamp,
   submission: z.object({ sessionId: z.string().min(1).transform(SessionId), submittedAt: timestamp }).optional(),
 }) as ZodType<ImInboundMessageView>
