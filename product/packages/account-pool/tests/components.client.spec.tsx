@@ -25,7 +25,8 @@ function copy(locale: 'en' | 'zh' = 'en'): AccountPoolCopy {
 }
 
 const account: AccountPoolAccount = {
-  authIndex: 'kimi-1' as AccountPoolAccountRef, name: 'kimi.json' as AccountPoolAccountName,
+  ref: 'kimi-1' as AccountPoolAccountRef, name: 'kimi.json' as AccountPoolAccountName,
+  capabilities: { models: 'account', quota: true, export: 'auth-file', editableFields: ['note', 'prefix', 'proxyUrl', 'priority', 'weight', 'disableCooling', 'websockets', 'excludedModels', 'headers'] },
   provider: 'kimi', label: 'Kimi user', status: 'ready', enabled: true, successCount: 3, failCount: 1,
   recentRequests: [{ success: 1, failed: 0 }, { success: 0, failed: 1 }],
   quota: [], quotaState: { status: 'unobserved', stale: false },
@@ -118,7 +119,7 @@ describe('account pool Settings', () => {
   it('ignores account A reads after its dialog closes and account B opens', async () => {
     const a = deferred<AccountPoolEditableFields>()
     const b = deferred<AccountPoolEditableFields>()
-    const second = { ...account, authIndex: 'codex-2' as AccountPoolAccountRef, name: 'codex.json' as AccountPoolAccountName, provider: 'codex' }
+    const second = { ...account, ref: 'codex-2' as AccountPoolAccountRef, name: 'codex.json' as AccountPoolAccountName, provider: 'codex' }
     const actions = commands({ readFields: vi.fn(name => name === account.name ? a.promise : b.promise) })
     mount({ ...ready, accounts: [account, second] }, actions)
     fireEvent.click(within(screen.getByTestId('account-card-kimi-1')).getByRole('button', { name: en.settings }))
@@ -171,6 +172,27 @@ describe('account pool Settings', () => {
     fireEvent.change(screen.getAllByLabelText(en.fieldProxy).find(item => item.tagName === 'SELECT')!, { target: { value: 'remove' } })
     fireEvent.click(screen.getByText(en.save))
     await waitFor(() => expect(actions.patchFields).toHaveBeenCalledWith(account.name, expect.objectContaining({ proxyUrl: { kind: 'remove' }, headers: { Authorization: { kind: 'replace', value: 'new-test-value' }, 'X-Project': { kind: 'remove' } } })))
+  })
+
+  it('keeps GLM observations unknown and disables unsupported edits', async () => {
+    const { successCount: _success, failCount: _failed, ...base } = account
+    const glm: AccountPoolAccount = {
+      ...base, ref: 'glm-1' as AccountPoolAccountRef, provider: 'glm', status: 'configured',
+      capabilities: { models: 'provider', quota: false, export: 'glm-credential', editableFields: ['note', 'prefix', 'proxyUrl', 'priority', 'weight'] },
+      quotaState: { status: 'unsupported', stale: false },
+    }
+    mount({ ...ready, accounts: [glm] })
+    expect(screen.getByText(en.configured)).toBeTruthy()
+    expect(screen.getByText(en.successFail.replace('{success}', en.unknown).replace('{fail}', en.unknown))).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: en.models, exact: true }))
+    await screen.findByText(en.providerModelsScope)
+    fireEvent.click(screen.getAllByRole('button', { name: en.close })[0]!)
+    fireEvent.click(screen.getByRole('button', { name: en.settings }))
+    await screen.findByLabelText(en.fieldPrefix)
+    expect((screen.getByLabelText(en.fieldPrefix) as HTMLInputElement).disabled).toBe(false)
+    expect((screen.getByRole('switch', { name: en.fieldCooling }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('switch', { name: en.fieldWebsockets }) as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText(en.limitedFields)).toBeTruthy()
   })
 
   it('shows a read-only live route in the Models footer', () => {

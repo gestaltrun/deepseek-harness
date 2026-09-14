@@ -267,3 +267,5 @@
   margin-top: auto;
 }
 .quotaObservation { color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 1.5; }
+
+.status_configured { color: var(--dsw-alias-label-secondary); background: var(--dsw-alias-bg-skeleton); }

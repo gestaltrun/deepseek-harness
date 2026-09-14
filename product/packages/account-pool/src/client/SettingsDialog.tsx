@@ -33,42 +33,44 @@ export function SettingsDialog(props: SettingsDialogProps) {
 }
 
 function SettingsForm({ t, account, details, models = [], onClose, onSave, saving, error }: SettingsDialogProps & { details: AccountPoolEditableFields }) {
-  const seed = details?.fields
-  const [note, setNote] = useState(seed?.note ?? account.note ?? '')
-  const [prefix, setPrefix] = useState(seed?.prefix ?? account.prefix ?? '')
+  const editable = new Set(account.capabilities.editableFields)
+  const seed = details.fields
+  const [note, setNote] = useState(seed.note ?? '')
+  const [prefix, setPrefix] = useState(seed.prefix ?? '')
   const [proxyMode, setProxyMode] = useState<'keep' | 'replace' | 'remove'>('keep')
   const [proxyUrl, setProxyUrl] = useState('')
   const [priority, setPriority] = useState(
-    seed?.priority === undefined && account.priority === undefined ? '' : String(seed?.priority ?? account.priority),
+    seed.priority === undefined ? '' : String(seed.priority),
   )
   const [weight, setWeight] = useState(
-    seed?.weight === undefined && account.weight === undefined ? '1' : String(seed?.weight ?? account.weight ?? 1),
+    seed.weight === undefined ? '1' : String(seed.weight),
   )
-  const [disableCooling, setDisableCooling] = useState(seed?.disableCooling ?? account.disableCooling === true)
-  const [websockets, setWebsockets] = useState(seed?.websockets ?? account.websockets === true)
-  const [excludedExact, setExcludedExact] = useState((seed?.excludedModels ?? account.excludedModels ?? []).filter(item => !item.includes('*')))
-  const [excludedWildcards, setExcludedWildcards] = useState((seed?.excludedModels ?? account.excludedModels ?? []).filter(item => item.includes('*')).join('\n'))
+  const [disableCooling, setDisableCooling] = useState(seed.disableCooling === true)
+  const [websockets, setWebsockets] = useState(seed.websockets === true)
+  const [excludedExact, setExcludedExact] = useState((seed.excludedModels ?? []).filter(item => !item.includes('*')))
+  const [excludedWildcards, setExcludedWildcards] = useState((seed.excludedModels ?? []).filter(item => item.includes('*')).join('\n'))
   const [headersText, setHeadersText] = useState('{}')
   const [headerEdits, setHeaderEdits] = useState<NonNullable<AccountPoolFieldPatch['headers']>>({})
   const [headersError, setHeadersError] = useState<string | undefined>()
-  const preview = details?.info ?? accountInfoPreview(account)
+  const preview = details.info
   return (
     <AccountDialog title={t('settingsTitle')} description={account.name} closeLabel={t('close')} onClose={onClose}>
       {error !== undefined && <p role="alert" className={clsx(css.error)}>{t('actionFailed', { message: error })}</p>}
+      {account.capabilities.editableFields.length < 9 && <p className={css.fieldTip}>{t('limitedFields')}</p>}
       <div className={poolCss.settingsBody}>
         <section className={poolCss.settingsSection}>
           <h4>{t('settingsInfo')}</h4>
           <pre className={poolCss.jsonPreview}>{JSON.stringify(preview, undefined, 2)}</pre>
         </section>
         <label className={clsx(css.fieldLabel)} htmlFor="account-pool-prefix">{t('fieldPrefix')}</label>
-        <Input id="account-pool-prefix" className={clsx(css.textInput)} value={prefix} onChange={(event) => { setPrefix(event.target.value) }} />
+        <Input disabled={!editable.has('prefix')} id="account-pool-prefix" className={clsx(css.textInput)} value={prefix} onChange={(event) => { setPrefix(event.target.value) }} />
         <label className={clsx(css.fieldLabel)} htmlFor="account-pool-proxy">{t('fieldProxy')}</label>
         <p className={clsx(css.fieldTip)}>{seed?.proxyUrl ?? ''}{seed?.proxyCredentialsConfigured === true ? ` · ${t('proxyCredentialsConfigured')}` : ''}</p>
-        <select aria-label={t('fieldProxy')} value={proxyMode} onChange={event => { setProxyMode(event.target.value as 'keep' | 'replace' | 'remove') }}>
+        <select disabled={!editable.has('proxyUrl')} aria-label={t('fieldProxy')} value={proxyMode} onChange={event => { setProxyMode(event.target.value as 'keep' | 'replace' | 'remove') }}>
           {(['keep', 'replace', 'remove'] as const).map(mode => <option key={mode} value={mode}>{t(mode)}</option>)}
         </select>
         <Input
-          disabled={proxyMode !== 'replace'}
+          disabled={proxyMode !== 'replace' || !editable.has('proxyUrl')}
           id="account-pool-proxy"
           className={clsx(css.textInput)}
           value={proxyUrl}
@@ -77,7 +79,7 @@ function SettingsForm({ t, account, details, models = [], onClose, onSave, savin
         />
         <label className={clsx(css.fieldLabel)} htmlFor="account-pool-priority">{t('fieldPriority')}</label>
         <Input
-          id="account-pool-priority"
+          disabled={!editable.has('priority')} id="account-pool-priority"
           className={clsx(css.textInput)}
           value={priority}
           placeholder={t('placeholderPriority')}
@@ -86,26 +88,27 @@ function SettingsForm({ t, account, details, models = [], onClose, onSave, savin
         <p className={clsx(css.fieldTip)}>{t('fieldPriorityTip')}</p>
         <label className={clsx(css.fieldLabel)} htmlFor="account-pool-weight">{t('fieldWeight')}</label>
         <Input
-          id="account-pool-weight"
+          disabled={!editable.has('weight')} id="account-pool-weight"
           className={clsx(css.textInput)}
           value={weight}
           onChange={(event) => { setWeight(event.target.value) }}
         />
         <p className={clsx(css.fieldTip)}>{t('fieldWeightTip')}</p>
         <div className={poolCss.toggleRow}>
-          <Switch checked={disableCooling} onChange={setDisableCooling} label={t('fieldCooling')} />
+          <Switch disabled={!editable.has('disableCooling')} checked={disableCooling} onChange={setDisableCooling} label={t('fieldCooling')} />
           <span>{t('fieldCooling')}</span>
         </div>
         <p className={clsx(css.fieldTip)}>{t('fieldCoolingTip')}</p>
         <div className={poolCss.toggleRow}>
-          <Switch checked={websockets} onChange={setWebsockets} label={t('fieldWebsockets')} />
+          <Switch disabled={!editable.has('websockets')} checked={websockets} onChange={setWebsockets} label={t('fieldWebsockets')} />
           <span>{t('fieldWebsockets')}</span>
         </div>
         <p className={clsx(css.fieldTip)}>{t('fieldWebsocketsTip')}</p>
         <label className={clsx(css.fieldLabel)} htmlFor="account-pool-excluded">{t('fieldExcluded')}</label>
-        <ExcludedModelsPicker t={t} models={models} selected={excludedExact} onChange={(next) => { setExcludedExact([...next]) }} />
+        <ExcludedModelsPicker disabled={!editable.has('excludedModels')} t={t} models={models} selected={excludedExact} onChange={(next) => { setExcludedExact([...next]) }} />
         <label className={clsx(css.fieldLabel)} htmlFor="account-pool-wildcards">{t('fieldWildcards')}</label>
         <textarea
+          disabled={!editable.has('excludedModels')}
           id="account-pool-wildcards"
           className={clsx(css.textInput)}
           rows={2}
@@ -120,7 +123,7 @@ function SettingsForm({ t, account, details, models = [], onClose, onSave, savin
           return <div key={name} className={clsx(css.fieldGroup)}>
             <span className={clsx(css.fieldLabel)}>{name}</span>
             <p className={clsx(css.fieldTip)}>{header.kind === 'secret' ? t('secretConfigured') : header.value}</p>
-            <select aria-label={name} value={edit.kind} onChange={event => {
+            <select disabled={!editable.has('headers')} aria-label={name} value={edit.kind} onChange={event => {
               const kind = event.target.value as 'keep' | 'replace' | 'remove'
               setHeaderEdits(current => ({ ...current, [name]: kind === 'replace' ? { kind, value: '' } : { kind } }))
             }}>
@@ -131,6 +134,7 @@ function SettingsForm({ t, account, details, models = [], onClose, onSave, savin
         })}
         <label className={clsx(css.fieldLabel)} htmlFor="account-pool-headers">{t('newHeaders')}</label>
         <textarea
+          disabled={!editable.has('headers')}
           id="account-pool-headers"
           className={clsx(css.textInput)}
           rows={3}
@@ -141,7 +145,7 @@ function SettingsForm({ t, account, details, models = [], onClose, onSave, savin
         {headersError !== undefined && <p className={clsx(css.fieldTip)}>{headersError}</p>}
         <label className={clsx(css.fieldLabel)} htmlFor="account-pool-note">{t('fieldNote')}</label>
         <Input
-          id="account-pool-note"
+          disabled={!editable.has('note')} id="account-pool-note"
           className={clsx(css.textInput)}
           value={note}
           placeholder={t('placeholderNote')}
@@ -164,7 +168,7 @@ function SettingsForm({ t, account, details, models = [], onClose, onSave, savin
           }
           const nextPriority = parseOptionalInt(priority)
           const nextWeight = parseOptionalInt(weight)
-          onSave(account.name, {
+          const candidate: AccountPoolFieldPatch = {
             note,
             prefix,
             proxyUrl: proxyMode === 'replace' ? { kind: 'replace', value: proxyUrl } : { kind: proxyMode },
@@ -174,7 +178,9 @@ function SettingsForm({ t, account, details, models = [], onClose, onSave, savin
             websockets,
             excludedModels: [...excludedExact, ...lines(excludedWildcards)],
             headers: { ...headerEdits, ...Object.fromEntries(Object.entries(headers).map(([name, value]) => [name, { kind: 'replace' as const, value }])) },
-          })
+          }
+          const fields = Object.fromEntries(Object.entries(candidate).filter(([field]) => account.capabilities.editableFields.includes(field as typeof account.capabilities.editableFields[number]))) as AccountPoolFieldPatch
+          onSave(account.name, fields)
         }}>{t(saving ? 'saving' : 'save')}</Button>
       </div>
     </AccountDialog>
@@ -206,24 +212,5 @@ function parseHeaders(text: string): Record<string, string> | undefined {
     return out
   } catch {
     return undefined
-  }
-}
-
-function accountInfoPreview(account: AccountPoolAccount): Record<string, string | number | boolean> {
-  return {
-    account: account.email ?? account.label,
-    auth_index: account.authIndex,
-    disabled: !account.enabled,
-    email: account.email ?? '',
-    failed: account.failCount,
-    id: account.name,
-    success: account.successCount,
-    ...account.createdAt === undefined ? {} : { created_at: account.createdAt },
-    ...account.prefix === undefined ? {} : { prefix: account.prefix },
-    ...account.priority === undefined ? {} : { priority: account.priority },
-    ...account.weight === undefined ? {} : { weight: account.weight },
-    ...account.note === undefined ? {} : { note: account.note },
-    ...account.websockets === undefined ? {} : { websockets: account.websockets },
-    ...account.disableCooling === undefined ? {} : { disable_cooling: account.disableCooling },
   }
 }

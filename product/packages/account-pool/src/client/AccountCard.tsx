@@ -16,7 +16,7 @@ export interface AccountCardProps {
   refreshingQuota?: boolean
   refreshingRoster?: boolean
   onToggleStatus: (name: AccountPoolAccountName, enabled: boolean) => void
-  onRefreshQuota: (authIndex: AccountPoolAccountRef) => void
+  onRefreshQuota: (ref: AccountPoolAccountRef) => void
   onDelete: (name: AccountPoolAccountName) => void
   onListModels: (name: AccountPoolAccountName) => void
   onRefresh: () => void
@@ -35,7 +35,7 @@ export function AccountCard({
   const flipFace = (): void => { setLocalOverride(currentFace === 'A' ? 'B' : 'A') }
   const quotaWindows = visibleQuotaWindows(item.quota, t)
   return (
-    <div className={clsx(css.card, item.enabled ? '' : css.cardDisabled)} data-testid={`account-card-${item.authIndex}`} data-current-face={currentFace}>
+    <div className={clsx(css.card, item.enabled ? '' : css.cardDisabled)} data-testid={`account-card-${item.ref}`} data-current-face={currentFace}>
       <div className={clsx(css.cardTop)}>
         <div className={clsx(css.providerBadge)}>
           <span className={clsx(css.providerIcon)}><ProviderIcon provider={item.provider} /></span>
@@ -45,11 +45,11 @@ export function AccountCard({
           </div>
         </div>
         <div className={clsx(css.topRightActions)}>
-          <button type="button" className={clsx(css.faceFlipBtn)} onClick={flipFace} data-testid={`card-flip-btn-${item.authIndex}`}>
+          <button type="button" className={clsx(css.faceFlipBtn)} onClick={flipFace} data-testid={`card-flip-btn-${item.ref}`}>
             {currentFace === 'A' ? t('flipToQuota') : t('flipToManage')}
           </button>
-          <span className={clsx(css.statusBadge, item.enabled ? css.status_active : css.status_expired)}>
-            {item.enabled ? t('enabled') : t('disabled')}
+          <span className={clsx(css.statusBadge, item.status === 'configured' ? css.status_configured : item.enabled ? css.status_active : css.status_expired)}>
+            {item.status === 'configured' ? t('configured') : item.enabled ? t('enabled') : t('disabled')}
           </span>
         </div>
       </div>
@@ -59,9 +59,9 @@ export function AccountCard({
           <div className={clsx(css.healthSection)}>
             <div className={clsx(css.healthHeader)}>
               <span>{t('health')}</span>
-              <span>{t('successFail', { success: item.successCount, fail: item.failCount })}</span>
+              <span>{t('successFail', { success: item.successCount ?? t('unknown'), fail: item.failCount ?? t('unknown') })}</span>
             </div>
-            <div className={clsx(css.healthTicks)} data-testid={`health-ticks-${item.authIndex}`}>
+            <div className={clsx(css.healthTicks)} data-testid={`health-ticks-${item.ref}`}>
               {healthTicks(item.recentRequests).map((tick, index) => (
                 <span key={index} className={clsx(css.tick, tick === 'pass' ? css.tickPass : tick === 'fail' ? css.tickFail : css.tickEmpty)} />
               ))}
@@ -70,9 +70,9 @@ export function AccountCard({
           <div className={clsx(css.metaFooter)}>
             <span className={clsx(css.dateText)}>{formatMeta(item.sizeBytes, item.modifiedAt ?? item.createdAt, t)}</span>
             <div className={clsx(css.footerActions)}>
-              <button type="button" className={clsx(css.iconBtn)} title={t('models')} aria-label={t('models')} onClick={() => { onListModels(item.name) }}>{t('models')}</button>
+              <button type="button" className={clsx(css.iconBtn)} title={t('models')} aria-label={t('models')} disabled={item.capabilities.models === 'none'} onClick={() => { onListModels(item.name) }}>{t('models')}</button>
               <button type="button" className={clsx(css.iconBtn, refreshingRoster ? css.spinning : '')} title={t('refresh')} aria-label={t('refresh')} onClick={onRefresh}>↻</button>
-              <button type="button" className={clsx(css.iconBtn)} title={t('download')} aria-label={t('download')} onClick={() => { onDownload(item.name) }}>↓</button>
+              <button type="button" className={clsx(css.iconBtn)} title={t('download')} aria-label={t('download')} disabled={item.capabilities.export === 'none'} onClick={() => { onDownload(item.name) }}>↓</button>
               <button type="button" className={clsx(css.iconBtn)} title={t('settings')} aria-label={t('settings')} onClick={() => { onEditSettings(item) }}>⚙</button>
               <button type="button" className={clsx(css.iconBtn)} title={t('delete')} aria-label={t('delete')} onClick={() => { onDelete(item.name) }}>🗑</button>
               <Button size="sm" variant="ghost" onClick={flipFace}>{t('viewQuota')}</Button>
@@ -100,7 +100,7 @@ export function AccountCard({
                 unknownLabel={t('unknown')}
                 isReliable={false}
               />
-              <Button size="sm" variant="primary" disabled={refreshingQuota} onClick={() => { onRefreshQuota(item.authIndex) }}>{t('probeNow')}</Button>
+              <Button size="sm" variant="primary" disabled={refreshingQuota || !item.capabilities.quota} onClick={() => { onRefreshQuota(item.ref) }}>{t('probeNow')}</Button>
             </div>
           ) : (
             <div className={clsx(css.quotaList)}>
@@ -141,7 +141,7 @@ export function AccountCard({
                 variant="ghost"
                 aria-busy={refreshingQuota}
                 icon={<span className={refreshingQuota ? css.spinning : undefined} aria-hidden>↻</span>}
-                disabled={refreshingQuota} onClick={() => { onRefreshQuota(item.authIndex) }}
+                disabled={refreshingQuota || !item.capabilities.quota} onClick={() => { onRefreshQuota(item.ref) }}
               >
                 {t('refreshQuota')}
               </Button>

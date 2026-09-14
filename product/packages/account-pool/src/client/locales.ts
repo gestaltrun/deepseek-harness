@@ -144,6 +144,9 @@ export const zh = {
   enableAccount: '启用 {name}',
   disableAccount: '停用 {name}',
   loginComplete: '账号已添加',
+  configured: '已配置',
+  providerModelsScope: '此列表是供应商模型目录，不代表该账号已通过每个模型的认证。',
+  limitedFields: '当前账号类型不支持的设置已停用。',
 } as const
 
 /** Keys owned by the account-pool locale namespace. */
@@ -293,4 +296,7 @@ export const en: Record<AccountPoolKey, string> = {
   enableAccount: 'Enable {name}',
   disableAccount: 'Disable {name}',
   loginComplete: 'Account added',
+  configured: 'Configured',
+  providerModelsScope: 'This is the provider model directory. It does not verify this account for each model.',
+  limitedFields: 'Settings unsupported by this account type are disabled.',
 }

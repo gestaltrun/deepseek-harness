@@ -24,6 +24,7 @@ export type AccountPoolControlProps = PropsRuntime<'settings.section'>
 interface OpenModels {
   readonly name: string
   readonly models: readonly AccountPoolModel[]
+  readonly scope: AccountPoolAccount['capabilities']['models']
 }
 
 interface OpenSettings {
@@ -141,24 +142,24 @@ export function AccountPoolControl({ t, useAccountPool, accountPoolActions: clie
       <div className={clsx(css.cardsGrid)}>
         {accounts.map(account => (
           <AccountCard
-            key={account.authIndex}
+            key={account.ref}
             t={t}
             item={account}
             globalFace={globalFace}
             globalEpoch={globalEpoch}
-            refreshingQuota={refreshingQuota === 'all' || refreshingQuota === account.authIndex}
+            refreshingQuota={refreshingQuota === 'all' || refreshingQuota === account.ref}
             refreshingRoster={refreshingRoster}
             onToggleStatus={(name, enabled) => { void run(() => client.setEnabled(name, enabled)) }}
-            onRefreshQuota={(authIndex) => {
-              setRefreshingQuota(authIndex)
-              void run(() => client.refreshQuota(authIndex)).finally(() => { if (mounted.current) setRefreshingQuota(undefined) })
+            onRefreshQuota={(ref) => {
+              setRefreshingQuota(ref)
+              void run(() => client.refreshQuota(ref)).finally(() => { if (mounted.current) setRefreshingQuota(undefined) })
             }}
             onDelete={() => { setPendingDelete(account) }}
             onListModels={(name) => {
               const generation = ++modelGeneration.current
               void run(async () => {
                 const models = await client.listModels(name)
-                if (mounted.current && generation === modelGeneration.current) setModelsDialog({ name, models })
+                if (mounted.current && generation === modelGeneration.current) setModelsDialog({ name, models, scope: account.capabilities.models })
               })
             }}
             onRefresh={() => {
@@ -213,6 +214,7 @@ export function AccountPoolControl({ t, useAccountPool, accountPoolActions: clie
           t={t}
           name={modelsDialog.name}
           models={modelsDialog.models}
+          scope={modelsDialog.scope}
           onClose={() => { modelGeneration.current++; setModelsDialog(undefined) }}
         />
       )}

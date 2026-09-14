@@ -12,10 +12,12 @@ export function ModelsDialog({
   t,
   name,
   models,
+  scope,
   onClose,
 }: {
   t: AccountPoolCopy
   name: string
+  scope: 'account' | 'provider' | 'none'
   models: readonly AccountPoolModel[]
   onClose: () => void
 }) {
@@ -32,6 +34,7 @@ export function ModelsDialog({
       closeLabel={t('close')}
       onClose={onClose}
     >
+      {scope === 'provider' && <p>{t('providerModelsScope')}</p>}
       {models.length === 0 ? (
         <p className={poolCss.dialogEmpty}>{t('modelsEmpty')}</p>
       ) : (

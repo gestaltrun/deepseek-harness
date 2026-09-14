@@ -15,8 +15,10 @@ export function ExcludedModelsPicker({
   models,
   selected,
   onChange,
+  disabled = false,
 }: {
   t: AccountPoolCopy
+  disabled?: boolean
   models: readonly ExcludedModelOption[]
   selected: readonly string[]
   onChange: (next: readonly string[]) => void
@@ -34,6 +36,7 @@ export function ExcludedModelsPicker({
     <div className={clsx(css.wrap)}>
       <button
         type="button"
+        disabled={disabled}
         id="account-pool-excluded"
         className={clsx(css.trigger)}
         aria-expanded={open}
