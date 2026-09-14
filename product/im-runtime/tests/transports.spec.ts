@@ -16,7 +16,10 @@ function transport(platform: ImTransport['platform']): ImTransport {
     inspectAccount: async () => ({ authorization: { state: 'unchecked' } }),
     refreshAccount: async () => ({ authorization: { state: 'unchecked' } }),
     discoverConversations: async () => ({ items: [] }),
-    listen: async () => async () => {},
+    listen: async () => {
+      const done = Promise.withResolvers<void>()
+      return { done: done.promise, dispose: async () => { done.resolve() } }
+    },
     send: async () => ({ state: 'unknown' }),
     confirm: async () => ({ state: 'unknown' }),
   }

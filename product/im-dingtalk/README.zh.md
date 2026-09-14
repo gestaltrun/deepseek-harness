@@ -59,11 +59,13 @@ kind: "package-reference"
 
 `listAccountCandidates` 读取 `dws profile list --format json`，并要求稳定选择器等于 `corpId:userId`。`inspectAccount` 读取 Profile 状态但不刷新。`refreshAccount` 运行 `dws auth status --profile <精确值> --format json`，核对返回的组织与员工事实，绝不改变环境中的当前 Profile。只有明确状态事实才变成就绪、过期或撤销；缺失状态与通用命令错误保持检查失败。
 
-会话发现为群聊和单聊保留钉钉 `openConversationId`。DWS 单聊发送另需对端 `openDingTalkId`；监听器从单聊消息事件同时保留两种字段，不用接收方替换会话身份。
+会话发现为群聊和单聊保留钉钉 `openConversationId`。DWS 单聊发送另需对端 `openDingTalkId` 或用户 id。特定路由和单聊消息发送者证据会单独保留对端，因此 runtime 重启后仍同时拥有稳定会话身份与真实发送接收方。Transport 绝不会用会话 id 替代缺失的对端。
 
-一个公开 `event consume` 进程订阅 `user_im_message_receive_at`、`user_im_message_receive_o2o_all` 与 `user_im_message_receive_group_all`。它覆盖当前与未来所有适用单聊和群聊。解析器只接受固定版本的扁平消息字段，只从 at-me event key 得出 mention 证据，并在把 frame 归属为外部参与者前依赖 DWS 的普通本人回环过滤。它绝不从消息文本推断 mention 或发送者。
+一个公开 `event consume` 进程订阅 `user_im_message_receive_at`、`user_im_message_receive_o2o_all` 与 `user_im_message_receive_group_all`。Runtime 监听计划选择特定会话，或当前与未来所有适用单聊和群聊。解析器只接受固定版本的扁平消息字段，只从 at-me event key 得出 mention 证据，并在把 frame 归属为外部参与者前依赖 DWS 的普通本人回环过滤。当 all-group frame 先于对应 at-me frame 到达时，runtime 会为同一条持久消息补充 mention 证据，不会重新提交已完成的 admission。它绝不从消息文本推断 mention 或发送者。
 
-群聊发送把真实会话 id、文本、runtime request id、AI 标记与精确 Profile 传给 `chat message send`。`openTaskId` 是不确定回执。`confirm` 调用 `chat message query-send-status`，仅在成功状态包含 `openMessageId` 时报告已发送；明确失败保持失败，其余不完整或丢失结果保持未知，不会二次发送。
+监听器只在精确公开 ready marker 出现后返回生命周期 handle。有序断开、计划重启和关闭都会等待受管进程静止。DWS 进程随后退出时会终结 handle，使 runtime 移除运行状态或发布安全失败，而不会让账号继续显示为已连接。
+
+群聊发送传入真实会话 id；单聊发送通过 `--open-dingtalk-id` 或 `--user` 传入持久对端。两者都向 `chat message send` 传入文本、runtime request id、AI 标记与精确 Profile。`openTaskId` 是不确定回执。`confirm` 调用 `chat message query-send-status`，仅在成功状态包含 `openMessageId` 时报告已发送；明确失败保持失败，其余不完整或丢失结果保持未知，不会二次发送。
 
 -----
 
@@ -111,9 +113,7 @@ kind: "package-reference"
 ## 已知限制与延期工作
 
 - 产品包的构建、测试或 Loader smoke 绝不读取真实 Profile 或消息。真实员工访问、发送、状态确认与 GUI 验收需要单独授权的测试范围。
-- 当前 runtime 接口不能把单聊对端 `openDingTalkId` 与路由一起持久保存，因此单聊出站会拒绝，而不会把会话 id 当成错误的接收方类型。
-- 同一条群消息可能先出现在 all-group 订阅，随后出现在 at-me 订阅。当前 runtime 会去重第二个 frame，但尚不能补充其持久 mention 证据。Mention 触发验收仍等待 runtime 的单调证据更新。
-- DWS stream 在就绪后退出时，Provider 会终止它并记录日志；当前 runtime listener 接口无法观察这次后续完成并发布重连或失败状态。
+- 本地交付主机在 2026-09-14 报告 `v1.0.52.1 (4fb8794, 2026-07-24T08:01:49Z)`，低于要求的 DWS `1.0.61`，且没有升级。真实接入验收必须先选择隔离的兼容可执行文件与 Profile 主目录。
 
 <a id="dev-note"></a>
 ### 开发说明
@@ -121,6 +121,6 @@ kind: "package-reference"
 <details>
 <summary>维护上下文 — 点击展开</summary>
 
-迁移来源、经评审 DWS commit、许可与源文件路径记录在 `UPSTREAM.json`。先构建产品 runtime，再运行本包的测试、类型检查与构建脚本。`smoke:loader` 使用合成可执行文件与本地 JSON Storage；它绝不能指向操作员的 DWS 主目录。
+迁移来源、经评审 DWS commit、许可与本地版本探测记录在 `UPSTREAM.json`。先构建产品 runtime，再运行本包的测试、类型检查与构建脚本。`smoke:loader` 使用合成可执行文件与本地 JSON Storage，覆盖监听计划、延迟 mention 证据、重启持久性、单聊接收方 argv、重连、teardown 与就绪后失败；它绝不能指向操作员的 DWS 主目录。
 
 </details>

@@ -83,7 +83,7 @@ class RecordingAdapter extends LlmAdapter {
 function fixtureTransport(capture: (sink: ImTransportSink) => void, captureSend: (request: ImTransportSendRequest) => void): ImTransport {
   return {
     platform: 'wangwang',
-    listAccountCandidates: async () => [{ platform: 'wangwang', candidateId: 'merchant-1', displayName: 'Merchant', merchantId: 'merchant-1' }],
+    listAccountCandidates: async () => [{ platform: 'wangwang', candidateId: 'merchant-1', endpoint: 'https://wangwang.invalid', displayName: 'Merchant', merchantId: 'merchant-1' }],
     prepareAccount: async request => {
       if (request.platform !== 'wangwang') throw new Error('wrong fixture platform')
       return {
@@ -95,7 +95,11 @@ function fixtureTransport(capture: (sink: ImTransportSink) => void, captureSend:
     inspectAccount: async () => ({ authorization: { state: 'unchecked' } }),
     refreshAccount: async () => ({ authorization: { state: 'unchecked' } }),
     discoverConversations: async () => ({ items: [] }),
-    listen: async (_account, _plan, sink) => { capture(sink); return async () => {} },
+    listen: async (_account, _plan, sink) => {
+      capture(sink)
+      const done = Promise.withResolvers<void>()
+      return { done: done.promise, dispose: async () => { done.resolve() } }
+    },
     send: async request => { captureSend(request); return { state: 'unknown' } },
     confirm: async () => ({ state: 'unknown' }),
   }
@@ -161,7 +165,7 @@ async function boot(
 async function configure(bench: Bench, workspacePath: string): Promise<{ accountId: ImAccountId; route: ImRouteView; scope: ImDeliveryScope }> {
   await mkdir(workspacePath, { recursive: true })
   const workspace = await bench.ctx.workspaceRegistry.create(workspacePath)
-  const account = await bench.ctx.imRuntime.addAccount({ platform: 'wangwang', candidateId: 'merchant-1' })
+  const account = await bench.ctx.imRuntime.addAccount({ platform: 'wangwang', candidateId: 'merchant-1', endpoint: 'https://wangwang.invalid', accessKeyId: 'fixture-key', accessKeySecret: 'fixture-secret' })
   const result = await bench.ctx.imRuntime.createRoute({
     operationId: operation('route'), accountId: account.id, conversationKind: 'direct',
     target: { kind: 'specific', conversationId: 'buyer-1' }, workspaceId: workspace.id, enabled: true,
@@ -345,7 +349,7 @@ describe('IM Agent coordinator', () => {
     const workspacePath = join(bench.root, 'workspace-group')
     await mkdir(workspacePath)
     const workspace = await bench.ctx.workspaceRegistry.create(workspacePath)
-    const account = await bench.ctx.imRuntime.addAccount({ platform: 'wangwang', candidateId: 'merchant-1' })
+    const account = await bench.ctx.imRuntime.addAccount({ platform: 'wangwang', candidateId: 'merchant-1', endpoint: 'https://wangwang.invalid', accessKeyId: 'fixture-key', accessKeySecret: 'fixture-secret' })
     const route = (await bench.ctx.imRuntime.createRoute({
       operationId: operation('group-route'), accountId: account.id, conversationKind: 'group',
       target: { kind: 'specific', conversationId: 'group-1' }, workspaceId: workspace.id, enabled: true,

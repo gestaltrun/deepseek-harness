@@ -1,6 +1,6 @@
 import { Context } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import type { ImAccountId, ImAccountView, ImProviderCursorId, ImRevision, ImTransportInboundPage } from '@gestaltrun/dsh-im-runtime'
+import type { ImAccountId, ImAccountView, ImProviderCursorId, ImRevision, ImRouteId, ImTransportInboundPage, ImTransportListenPlan } from '@gestaltrun/dsh-im-runtime'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { DwsClient } from '../src/client.ts'
 import { DingTalkTransport } from '../src/transport.ts'
@@ -22,6 +22,16 @@ function boot(client: DwsClient): DingTalkTransport {
   const ctx = new Context()
   roots.push(ctx)
   return new DingTalkTransport(ctx, {}, { client, now: () => Date.parse('2026-09-14T00:00:00.000Z') })
+}
+
+function groupMentionPlan(): ImTransportListenPlan {
+  return { routes: [{
+    routeId: brandString<ImRouteId>('route-all-groups'),
+    routeRevision: brandString<ImRevision>('route-revision-1'),
+    conversationKind: 'group',
+    target: { kind: 'all' },
+    needsMentionEvidence: true,
+  }] }
 }
 
 describe('DingTalk transport', () => {
@@ -69,7 +79,7 @@ describe('DingTalk transport', () => {
     } as unknown as DwsClient
     const transport = boot(client)
     const pages: ImTransportInboundPage[] = []
-    const listening = transport.listen(account(), {
+    const listening = transport.listen(account(), groupMentionPlan(), {
       receivePage: async page => {
         pages.push(page)
         return {
@@ -86,29 +96,70 @@ describe('DingTalk transport', () => {
     await Promise.resolve()
     expect(resolved).toBe(false)
     ready()
-    const dispose = await listening
+    const listener = await listening
+    await onLine(JSON.stringify({
+      type: 'user_im_message_receive_group_all', event_id: 'event-1', timestamp: 1_726_000_000_000, subscribe_id: 'sub-1',
+      message_id: 'message-1', conversation_id: 'cid-group', sender: '客户', sender_open_dingtalk_id: 'D-peer',
+      content: 'hello', create_time: '2026-09-14 00:00:00', event_time: 1_726_000_000_000,
+    }))
     await onLine(JSON.stringify({
       type: 'user_im_message_receive_at', event_id: 'event-1', timestamp: 1_726_000_000_000, subscribe_id: 'sub-1',
       message_id: 'message-1', conversation_id: 'cid-group', sender: '客户', sender_open_dingtalk_id: 'D-peer',
       content: 'hello', create_time: '2026-09-14 00:00:00', event_time: 1_726_000_000_000,
     }))
-    expect(pages).toHaveLength(1)
+    await onLine(JSON.stringify({
+      type: 'user_im_message_receive_o2o_all', event_id: 'event-direct', timestamp: 1_726_000_001_000, subscribe_id: 'sub-1',
+      message_id: 'message-direct', conversation_id: 'cid-direct', sender: '客户', sender_open_dingtalk_id: 'D-peer',
+      content: 'direct', create_time: '2026-09-14 00:00:01', event_time: 1_726_000_001_000,
+    }))
+    expect(pages).toHaveLength(2)
     expect(pages[0]).toMatchObject({
       owner: { platform: 'dingtalk', accountId: account().id, streamId: 'corp-a:user-1:messages' },
       observedCursor: null,
-      conversations: [{ conversationId: 'cid-group', conversationKind: 'group', messages: [{ externalMessageId: 'message-1', mentionedConfiguredAccount: true, senderEvidence: { kind: 'external-actor', senderId: 'D-peer' } }] }],
+      conversations: [{ conversationId: 'cid-group', conversationKind: 'group', messages: [{ externalMessageId: 'message-1', senderEvidence: { kind: 'external-actor', senderId: 'D-peer' } }] }],
     })
-    await dispose()
+    expect(pages[0]?.conversations[0]?.messages[0]).not.toHaveProperty('mentionedConfiguredAccount')
+    expect(pages[1]).toMatchObject({
+      conversations: [{ conversationId: 'cid-group', conversationKind: 'group', messages: [{ externalMessageId: 'message-1', mentionedConfiguredAccount: true }] }],
+    })
+    expect(client.listen).toHaveBeenCalledOnce()
+    await listener.dispose()
+    await listener.done
     expect(stop).toHaveBeenCalledOnce()
   })
 
-  it('does not treat an async task as sent and never guesses a direct target from conversationId', async () => {
+  it('rejects the listener terminal signal when a ready DWS stream fails', async () => {
+    let fail!: (error: Error) => void
+    const done = new Promise<void>((_resolve, reject) => { fail = reject })
+    const client = {
+      listen: vi.fn(async () => ({ ready: Promise.resolve(), done, stop: vi.fn(async () => {}) })),
+    } as unknown as DwsClient
+    const transport = boot(client)
+    const listener = await transport.listen(account(), groupMentionPlan(), {
+      receivePage: vi.fn(),
+    }, new AbortController().signal)
+    const terminal = expect(listener.done).rejects.toThrow('controlled stream failure')
+
+    fail(new Error('controlled stream failure'))
+
+    await terminal
+  })
+
+  it('does not treat an async task as sent and sends direct messages only to durable peer facts', async () => {
     const client = { send: vi.fn(async () => ({ state: 'unknown', externalMessageId: 'task-1' })) } as unknown as DwsClient
     const transport = boot(client)
     await expect(transport.send({ account: account(), conversationKind: 'group', conversationId: 'cid-group', requestId: 'request-1', text: 'hello' }, new AbortController().signal))
       .resolves.toEqual({ state: 'unknown', externalMessageId: 'task-1' })
     await expect(transport.send({ account: account(), conversationKind: 'direct', conversationId: 'cid-direct', requestId: 'request-2', text: 'hello' }, new AbortController().signal))
       .resolves.toMatchObject({ state: 'failed', code: 'DINGTALK_DIRECT_RECIPIENT_UNAVAILABLE' })
-    expect(client.send).toHaveBeenCalledTimes(1)
+    await expect(transport.send({
+      account: account(), conversationKind: 'direct', conversationId: 'cid-direct',
+      directRecipient: { providerActorId: 'D-peer', openDingTalkId: 'D-peer' },
+      requestId: 'request-3', text: 'hello',
+    }, new AbortController().signal)).resolves.toEqual({ state: 'unknown', externalMessageId: 'task-1' })
+    expect(client.send).toHaveBeenCalledTimes(2)
+    expect(client.send).toHaveBeenLastCalledWith(
+      'corp-a:user-1', { kind: 'direct-open', openDingTalkId: 'D-peer' }, 'hello', 'request-3', expect.any(AbortSignal),
+    )
   })
 })

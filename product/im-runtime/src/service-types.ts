@@ -44,8 +44,13 @@ import type {
 import type {
   ImAccountId,
   ImAccountCandidate,
+  ImAccountSetupId,
+  ImAccountSetupPreview,
+  ImCancelAccountSetupResult,
+  ImConfirmAccountSetupRequest,
   ImAccountLifecycleRequest,
   ImAccountMutationResult,
+  ImAccountOperationQuery,
   ImAccountSetupRequest,
   ImAccountView,
   ImConversationKind,
@@ -100,9 +105,15 @@ export interface ImRuntimeService {
   subscribe(listener: (change: ImRuntimeChange) => void): () => void
   /** @param platform - provider whose installed or admitted identities are requested. @param signal - caller lifetime. @returns safe selectable candidates. */
   listAccountCandidates(platform: ImPlatform, signal?: AbortSignal): Promise<readonly ImAccountCandidate[]>
+  /** @param request - candidate-bound write-only setup input. @param signal - caller lifetime. @returns safe verified facts and a short-lived Host setup identifier. */
+  previewAccountSetup(request: ImAccountSetupRequest, signal?: AbortSignal): Promise<ImAccountSetupPreview>
+  /** @param request - setup identifier and idempotency identifier. @returns the durable account-creation outcome. */
+  confirmAccountSetup(request: ImConfirmAccountSetupRequest): Promise<ImAccountMutationResult>
+  /** @param setupId - unconfirmed setup to release. @returns whether it was released or had already advanced. */
+  cancelAccountSetup(setupId: ImAccountSetupId): ImCancelAccountSetupResult
   /** @param accountId - receiving account. @param conversationKind - provider category. @param conversationId - provider conversation. @returns precedence-ordered route resolution. */
   resolveRoute(accountId: ImAccountId, conversationKind: ImConversationKind, conversationId: string): ImRouteResolution
-  /** @param request - transport-owned account setup input. @param signal - caller lifetime. @returns the persisted safe account. */
+  /** @param request - candidate-bound setup input for non-interactive Host consumers. @param signal - caller lifetime. @returns the persisted safe account. */
   addAccount(request: ImAccountSetupRequest, signal?: AbortSignal): Promise<ImAccountView>
   /** @param request - guarded account pause mutation. @returns its durable outcome. */
   setAccountPaused(request: ImSetAccountPausedRequest): Promise<ImAccountMutationResult>
@@ -112,6 +123,8 @@ export interface ImRuntimeService {
   reconnectAccount(request: ImAccountLifecycleRequest): Promise<ImAccountMutationResult>
   /** @param request - guarded provider authorization refresh. @param signal - caller lifetime. @returns its durable outcome. */
   refreshAccount(request: ImAccountLifecycleRequest, signal?: AbortSignal): Promise<ImAccountMutationResult>
+  /** @param accountId - owning account. @param operationId - idempotency identifier. @returns stored result or an explicit miss. */
+  queryAccountOperation(accountId: ImAccountId, operationId: ImOperationId): ImAccountOperationQuery
   /** @param request - new route tuple and workspace owner. @returns its durable outcome. */
   createRoute(request: ImCreateRouteRequest): Promise<ImRouteMutationResult>
   /** @param request - guarded non-ownership route edit. @returns its durable outcome. */

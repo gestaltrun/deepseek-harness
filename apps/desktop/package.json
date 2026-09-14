@@ -26,19 +26,21 @@
     "package:win:x64:dir": "tsx scripts/package-target.ts win-x64 --dir",
     "upload:mac:arm64": "tsx scripts/upload-target.ts mac-arm64",
     "upload:mac:x64": "tsx scripts/upload-target.ts mac-x64",
-    "upload:win:x64": "tsx scripts/upload-target.ts win-x64"
+    "upload:win:x64": "tsx scripts/upload-target.ts win-x64",
+    "release:plan": "tsx scripts/desktop-release-plan.ts"
   },
   "dependencies": {
     "electron-updater": "^6.8.9",
     "semver": "^7.8.5"
   },
   "devDependencies": {
-    "@aws-sdk/client-s3": "3.1067.0",
     "@deepseek-ai/dsh-home-paths": "workspace:^",
     "@electron/notarize": "2.5.0",
+    "@types/ali-oss": "6.23.3",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.20.0",
     "@types/semver": "^7.8.0",
+    "ali-oss": "6.23.0",
     "app-builder-lib": "26.15.3",
     "electron": "^44.0.0",
     "electron-builder": "^26.15.3",

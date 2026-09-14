@@ -8,7 +8,7 @@ import Storage from '@deepseek-ai/dsh-storage'
 import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
 import * as StorageJson from '@deepseek-ai/dsh-storage-json'
 import { WorkspaceId } from '@deepseek-ai/dsh-workspace'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import ImRuntime, {
   type ImAccountId,
   type ImOperationId,
@@ -17,6 +17,7 @@ import ImRuntime, {
   type ImTransport,
   type ImTransportListenPlan,
   type ImTransportSink,
+  type ImRuntimeConfig,
 } from '../src/index.ts'
 
 const roots: Context[] = []
@@ -32,7 +33,7 @@ function operation(value: string): ImOperationId { return brandString<ImOperatio
 function fixtureTransport(onListen?: (sink: ImTransportSink) => void, onDispose?: () => void): ImTransport {
   return {
     platform: 'wangwang',
-    listAccountCandidates: async () => [{ platform: 'wangwang', candidateId: 'merchant-1', displayName: 'Fixture merchant', merchantId: 'merchant-1' }],
+    listAccountCandidates: async () => [{ platform: 'wangwang', candidateId: 'merchant-1', endpoint: 'https://wangwang.invalid', displayName: 'Fixture merchant', merchantId: 'merchant-1' }],
     prepareAccount: async request => {
       if (request.platform !== 'wangwang') throw new Error('wrong fixture platform')
       return {
@@ -45,13 +46,17 @@ function fixtureTransport(onListen?: (sink: ImTransportSink) => void, onDispose?
     inspectAccount: async () => ({ authorization: { state: 'unchecked' } }),
     refreshAccount: async () => ({ authorization: { state: 'unchecked' } }),
     discoverConversations: async () => ({ items: [] }),
-    listen: async (_account, _plan, sink) => { onListen?.(sink); return async () => { onDispose?.() } },
+    listen: async (_account, _plan, sink) => {
+      onListen?.(sink)
+      const done = Promise.withResolvers<void>()
+      return { done: done.promise, dispose: async () => { onDispose?.(); done.resolve() } }
+    },
     send: async () => ({ state: 'unknown' }),
     confirm: async () => ({ state: 'unknown' }),
   }
 }
 
-async function boot(directory?: string, transport = fixtureTransport()) {
+async function boot(directory?: string, transport = fixtureTransport(), config: ImRuntimeConfig = {}) {
   const root = directory ?? await mkdtemp(join(tmpdir(), 'dsh-im-runtime-'))
   if (directory === undefined) directories.push(root)
   const ctx = new Context()
@@ -60,7 +65,7 @@ async function boot(directory?: string, transport = fixtureTransport()) {
   await ctx.plugin(StorageJson, { root: join(root, 'storage') })
   await ctx.plugin(StorageDomain, { backend: 'json' })
   await ctx.plugin(LocalCredentialProvider, { path: join(root, 'credentials.yaml'), watch: false })
-  await ctx.plugin(ImRuntime)
+  await ctx.plugin(ImRuntime, config)
   function fixtureProvider(ctx: Context): void { ctx.imTransports.register(transport) }
   fixtureProvider.inject = ['imTransports']
   const provider = ctx.plugin(fixtureProvider)
@@ -72,19 +77,94 @@ async function addAccount(ctx: Context) {
   return ctx.imRuntime.addAccount({
     platform: 'wangwang',
     candidateId: 'merchant-1',
+    endpoint: 'https://wangwang.invalid',
     accessKeyId: 'key-id',
     accessKeySecret: 'secret-value',
   })
 }
 
+const setupRequest = {
+  platform: 'wangwang' as const,
+  candidateId: 'merchant-1',
+  endpoint: 'https://wangwang.invalid',
+  accessKeyId: 'key-id',
+  accessKeySecret: 'secret-value',
+}
+
 describe('ImRuntime configuration', () => {
+  it('previews a verified identity without persistence and confirms it idempotently across restart', async () => {
+    const first = await boot()
+    const preview = await first.ctx.imRuntime.previewAccountSetup(setupRequest)
+    expect(preview).toMatchObject({
+      setupId: expect.stringMatching(/^account-setup-/u),
+      displayName: 'Fixture merchant',
+      identity: { platform: 'wangwang', merchantId: 'merchant-1' },
+      authorization: { state: 'unchecked' },
+    })
+    expect(JSON.stringify(preview)).not.toContain('secret-value')
+    expect(first.ctx.imRuntime.snapshot().accounts).toEqual([])
+    expect(await first.ctx.credentials.listRecords()).toEqual([])
+
+    const request = { setupId: preview.setupId, operationId: operation('confirm-setup') }
+    const confirmed = await first.ctx.imRuntime.confirmAccountSetup(request)
+    expect(confirmed).toMatchObject({ status: 'applied', account: { identity: preview.identity } })
+    await expect(first.ctx.imRuntime.confirmAccountSetup(request)).resolves.toMatchObject({ account: { id: confirmed.account.id } })
+    expect(first.ctx.imRuntime.snapshot().accounts).toHaveLength(1)
+    expect(first.ctx.imRuntime.queryAccountOperation(confirmed.account.id, request.operationId)).toMatchObject({
+      state: 'known', result: { status: 'applied', account: { id: confirmed.account.id } },
+    })
+
+    await first.ctx.fiber.dispose()
+    roots.splice(roots.indexOf(first.ctx), 1)
+    const second = await boot(first.root)
+    await expect(second.ctx.imRuntime.confirmAccountSetup(request)).resolves.toMatchObject({ account: { id: confirmed.account.id } })
+    expect(second.ctx.imRuntime.snapshot().accounts).toHaveLength(1)
+  })
+
+  it('rejects an unadmitted endpoint and releases cancelled, aborted, and expired setup material', async () => {
+    let prepareCalls = 0
+    const fixture = fixtureTransport()
+    const { ctx } = await boot(undefined, {
+      ...fixture,
+      prepareAccount: async (...args) => { prepareCalls++; return fixture.prepareAccount(...args) },
+    }, { accountSetupTtlMs: 50 })
+    await expect(ctx.imRuntime.previewAccountSetup({ ...setupRequest, endpoint: 'https://other.invalid' }))
+      .rejects.toMatchObject({ code: 'IM_IDENTITY_MISMATCH' })
+    expect(prepareCalls).toBe(0)
+
+    const cancelled = await ctx.imRuntime.previewAccountSetup(setupRequest)
+    expect(ctx.imRuntime.cancelAccountSetup(cancelled.setupId)).toEqual({ state: 'cancelled' })
+    await expect(ctx.imRuntime.confirmAccountSetup({ setupId: cancelled.setupId, operationId: operation('cancelled') }))
+      .rejects.toMatchObject({ code: 'IM_ACCOUNT_SETUP_NOT_FOUND' })
+
+    const controller = new AbortController()
+    controller.abort(new Error('cancelled by caller'))
+    await expect(ctx.imRuntime.previewAccountSetup(setupRequest, controller.signal)).rejects.toThrow('cancelled by caller')
+
+    vi.useFakeTimers()
+    try {
+      const expired = await ctx.imRuntime.previewAccountSetup(setupRequest)
+      await vi.advanceTimersByTimeAsync(50)
+      await expect(ctx.imRuntime.confirmAccountSetup({ setupId: expired.setupId, operationId: operation('expired') }))
+        .rejects.toMatchObject({ code: 'IM_ACCOUNT_SETUP_NOT_FOUND' })
+    } finally {
+      vi.useRealTimers()
+    }
+    expect(ctx.imRuntime.snapshot().accounts).toEqual([])
+    expect(await ctx.credentials.listRecords()).toEqual([])
+  })
+
   it('passes enabled route and mention-evidence requirements to the provider listener', async () => {
     const plans: ImTransportListenPlan[] = []
     let stops = 0
     const fixture = fixtureTransport()
     const { ctx } = await boot(undefined, {
       ...fixture,
-      listen: async (_account, nextPlan) => { plans.push(nextPlan); return async () => { stops++ } },
+      listen: async (_account, nextPlan) => {
+        plans.push(nextPlan)
+        const done = Promise.withResolvers<void>()
+        return { done: done.promise, dispose: async () => { stops++; done.resolve() } }
+      },
     })
     const account = await addAccount(ctx)
     const created = await ctx.imRuntime.createRoute({
@@ -158,7 +238,8 @@ describe('ImRuntime configuration', () => {
         starts++
         plans.push(plan)
         await ready.promise
-        return async () => { stops++ }
+        const done = Promise.withResolvers<void>()
+        return { done: done.promise, dispose: async () => { stops++; done.resolve() } }
       },
     }
     const { ctx } = await boot(undefined, {
@@ -195,7 +276,116 @@ describe('ImRuntime configuration', () => {
       operationId: operation('refresh'), accountId: account.id, observedRevision: reconnected.account.revision,
     })
     expect(refreshed).toMatchObject({ status: 'applied', account: { authorization: { state: 'ready' }, connectionIntent: 'connected' } })
+    expect(ctx.imRuntime.queryAccountOperation(account.id, operation('disconnect'))).toMatchObject({
+      state: 'known', result: { operationId: operation('disconnect'), status: disconnected.status, account: { revision: disconnected.account.revision, connectionIntent: 'disconnected' } },
+    })
+    expect(ctx.imRuntime.queryAccountOperation(account.id, operation('reconnect'))).toMatchObject({
+      state: 'known', result: { operationId: operation('reconnect'), status: reconnected.status, account: { revision: reconnected.account.revision, connectionIntent: 'connected' } },
+    })
+    expect(ctx.imRuntime.queryAccountOperation(account.id, operation('refresh'))).toMatchObject({
+      state: 'known', result: { operationId: operation('refresh'), status: refreshed.status, account: { revision: refreshed.account.revision, authorization: { state: 'ready' } } },
+    })
+    expect(ctx.imRuntime.queryAccountOperation(account.id, operation('unknown'))).toEqual({ state: 'not-found' })
     expect(listenerStates).toEqual(expect.arrayContaining(['starting', 'running', 'stopped']))
+  })
+
+  it('aborts an intentional stop and waits for listener completion before reconnecting', async () => {
+    const listeners: Array<{
+      readonly signal: AbortSignal
+      readonly done: ReturnType<typeof Promise.withResolvers<void>>
+      disposeCalls: number
+    }> = []
+    const fixture = fixtureTransport()
+    const { ctx } = await boot(undefined, {
+      ...fixture,
+      listen: async (_account, _plan, _sink, signal) => {
+        const done = Promise.withResolvers<void>()
+        const listener = { signal, done, disposeCalls: 0 }
+        listeners.push(listener)
+        return { done: done.promise, dispose: async () => { listener.disposeCalls++ } }
+      },
+    })
+    const account = await addAccount(ctx)
+    await ctx.imRuntime.createRoute({
+      operationId: operation('manual-stop-route'), accountId: account.id, conversationKind: 'direct',
+      target: { kind: 'all' }, workspaceId: WorkspaceId('workspace-a'), enabled: true,
+    })
+    await expect.poll(() => listeners.length).toBe(1)
+    await expect.poll(() => ctx.imRuntime.snapshot().accounts[0]?.listener.state).toBe('running')
+
+    const disconnected = await ctx.imRuntime.disconnectAccount({
+      operationId: operation('manual-stop'), accountId: account.id, observedRevision: account.revision,
+    })
+    await ctx.imRuntime.reconnectAccount({
+      operationId: operation('manual-reconnect'), accountId: account.id, observedRevision: disconnected.account.revision,
+    })
+    await expect.poll(() => listeners[0]?.signal.aborted).toBe(true)
+    expect(listeners[0]?.disposeCalls).toBe(1)
+    expect(listeners).toHaveLength(1)
+
+    listeners[0]?.done.resolve()
+    await expect.poll(() => listeners.length).toBe(2)
+    await expect.poll(() => ctx.imRuntime.snapshot().accounts[0]?.listener.state).toBe('running')
+    listeners[1]?.done.resolve()
+    await expect.poll(() => ctx.imRuntime.snapshot().accounts[0]?.listener).toEqual({ state: 'stopped', reason: 'disconnected' })
+    expect(listeners).toHaveLength(2)
+  })
+
+  it('ignores a stopped generation failure and safely reports a current listener failure', async () => {
+    const sentinel = 'post-ready-credential-sentinel'
+    const listeners: Array<{
+      readonly signal: AbortSignal
+      readonly done: ReturnType<typeof Promise.withResolvers<void>>
+      disposeCalls: number
+    }> = []
+    const fixture = fixtureTransport()
+    const { ctx } = await boot(undefined, {
+      ...fixture,
+      listen: async (_account, _plan, _sink, signal) => {
+        const done = Promise.withResolvers<void>()
+        const listener = { signal, done, disposeCalls: 0 }
+        listeners.push(listener)
+        return { done: done.promise, dispose: async () => { listener.disposeCalls++ } }
+      },
+    })
+    const warnings: string[] = []
+    ctx.logger.warn = ((message: unknown) => { warnings.push(String(message)) }) as typeof ctx.logger.warn
+    const states: string[] = []
+    ctx.imRuntime.subscribe(change => {
+      if (change.kind === 'account-listener') {
+        const state = ctx.imRuntime.snapshot().accounts[0]?.listener.state
+        if (state !== undefined) states.push(state)
+      }
+    })
+    const account = await addAccount(ctx)
+    const route = (await ctx.imRuntime.createRoute({
+      operationId: operation('generation-route'), accountId: account.id, conversationKind: 'direct',
+      target: { kind: 'all' }, workspaceId: WorkspaceId('workspace-a'), enabled: true,
+    })).route
+    if (route === undefined) throw new Error('fixture route was not created')
+    await expect.poll(() => listeners.length).toBe(1)
+    const beforeRestart = states.length
+    await ctx.imRuntime.rebindRoute({
+      operationId: operation('generation-rebind'), accountId: account.id, routeId: route.id,
+      observedRevision: route.revision, observedWorkspaceId: route.workspaceId, workspaceId: WorkspaceId('workspace-b'),
+    })
+    await expect.poll(() => listeners[0]?.signal.aborted).toBe(true)
+    expect(listeners[0]?.disposeCalls).toBe(1)
+    listeners[0]?.done.reject(new Error(sentinel))
+    await expect.poll(() => listeners.length).toBe(2)
+    await expect.poll(() => ctx.imRuntime.snapshot().accounts[0]?.listener.state).toBe('running')
+    expect(states.slice(beforeRestart)).not.toContain('failed')
+
+    listeners[1]?.done.reject(new Error(sentinel))
+    await expect.poll(() => ctx.imRuntime.snapshot().accounts[0]?.listener.state).toBe('failed')
+    expect(listeners).toHaveLength(2)
+    expect(JSON.stringify(ctx.imRuntime.snapshot())).not.toContain(sentinel)
+    expect(JSON.stringify(states)).not.toContain(sentinel)
+    expect(JSON.stringify(warnings)).not.toContain(sentinel)
+    expect(warnings).toEqual([
+      expect.stringContaining('listener stop failed'),
+      expect.stringContaining('listener failed'),
+    ])
   })
 
   it('does not start an unauthorized listener or expose a provider failure', async () => {
@@ -242,7 +432,7 @@ describe('ImRuntime configuration', () => {
   it('persists only safe account facts and reloads them from the JSON domain', async () => {
     const first = await boot()
     await expect(first.ctx.imRuntime.listAccountCandidates('wangwang')).resolves.toEqual([
-      { platform: 'wangwang', candidateId: 'merchant-1', displayName: 'Fixture merchant', merchantId: 'merchant-1' },
+      { platform: 'wangwang', candidateId: 'merchant-1', endpoint: 'https://wangwang.invalid', displayName: 'Fixture merchant', merchantId: 'merchant-1' },
     ])
     const account = await addAccount(first.ctx)
     expect(account).toMatchObject({
@@ -326,12 +516,21 @@ describe('ImRuntime configuration', () => {
     const routeResult = await first.ctx.imRuntime.createRoute({ operationId: operation('durable-route'), accountId: account.id, conversationKind: 'direct', target: { kind: 'specific', conversationId: 'buyer-durable' }, workspaceId: WorkspaceId('workspace-a'), enabled: true })
     const route = routeResult.route!
     const targetResult = await first.ctx.imRuntime.saveSimulationTarget({ operationId: operation('durable-target'), workspaceId: WorkspaceId('sim-workspace'), observedRevision: null, accountId: account.id, routeId: route.id })
+    const paused = await first.ctx.imRuntime.setAccountPaused({ operationId: operation('durable-pause'), accountId: account.id, observedRevision: account.revision, paused: true })
+    const disconnected = await first.ctx.imRuntime.disconnectAccount({ operationId: operation('durable-disconnect'), accountId: account.id, observedRevision: paused.account.revision })
+    const reconnected = await first.ctx.imRuntime.reconnectAccount({ operationId: operation('durable-reconnect'), accountId: account.id, observedRevision: disconnected.account.revision })
+    const refreshed = await first.ctx.imRuntime.refreshAccount({ operationId: operation('durable-refresh'), accountId: account.id, observedRevision: reconnected.account.revision })
 
     await first.ctx.fiber.dispose()
     roots.splice(roots.indexOf(first.ctx), 1)
     const second = await boot(first.root)
     expect(second.ctx.imRuntime.queryRouteOperation(account.id, operation('durable-route'))).toEqual({ state: 'known', result: routeResult })
     expect(second.ctx.imRuntime.querySimulationTargetOperation(WorkspaceId('sim-workspace'), operation('durable-target'))).toEqual({ state: 'known', result: targetResult })
+    for (const result of [paused, disconnected, reconnected, refreshed]) {
+      expect(second.ctx.imRuntime.queryAccountOperation(account.id, result.operationId)).toMatchObject({
+        state: 'known', result: { operationId: result.operationId, status: result.status, account: { revision: result.account.revision } },
+      })
+    }
     expect(second.ctx.imRuntime.snapshot()).toMatchObject({ routes: [route], simulationTargets: [targetResult.target] })
   })
 

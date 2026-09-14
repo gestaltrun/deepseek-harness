@@ -16,6 +16,8 @@ import type {
   ImTransportInboundMessage,
   ImTransportInboundPage,
   ImTransportInboundPageReceipt,
+  ImTransportListener,
+  ImTransportListenPlan,
   ImTransportSendRequest,
   ImTransportSendResult,
   ImTransportSink,
@@ -72,6 +74,11 @@ function transportResult(receipt: WangwangReceipt): ImTransportSendResult {
   if (receipt.state === 'sent') return { state: 'sent', externalMessageId: receipt.messageId, ...(receipt.rawStatus === undefined ? {} : { rawStatus: receipt.rawStatus }) }
   if (receipt.state === 'failed') return { state: 'failed', code: receipt.code, message: 'Wangwang provider rejected the message' }
   return { state: 'unknown', ...(receipt.messageId === undefined ? {} : { externalMessageId: receipt.messageId }) }
+}
+
+function receivesConversation(plan: ImTransportListenPlan, conversationId: string): boolean {
+  return plan.routes.some(route => route.conversationKind === 'direct'
+    && (route.target.kind === 'all' || route.target.conversationId === conversationId))
 }
 
 /** Complete Wangwang platform transport registered with the product runtime. */
@@ -216,7 +223,12 @@ export class WangwangTransport implements ImTransport {
     for (const event of page.events) {
       if (seen.has(event.conversationId)) continue
       seen.add(event.conversationId)
-      items.push({ conversationId: event.conversationId, conversationKind: 'direct', displayName: event.customerNick ?? event.customerId })
+      items.push({
+        conversationId: event.conversationId,
+        conversationKind: 'direct',
+        displayName: event.customerNick ?? event.customerId,
+        directRecipient: { providerActorId: event.customerId },
+      })
     }
     return { items, cursor: String(page.nextCursor) }
   }
@@ -242,6 +254,7 @@ export class WangwangTransport implements ImTransport {
     sink: ImTransportSink,
     candidate: WangwangAdmittedMerchant,
     account: ImAccountView,
+    plan: ImTransportListenPlan,
     observedCursor: string | null,
   ): Promise<string | null> {
     const nextCursor = String(page.nextCursor)
@@ -251,6 +264,7 @@ export class WangwangTransport implements ImTransport {
     ])
     const grouped = new Map<string, WangwangEvent[]>()
     for (const event of page.events) {
+      if (!receivesConversation(plan, event.conversationId)) continue
       const events = grouped.get(event.conversationId)
       if (events === undefined) grouped.set(event.conversationId, [event])
       else events.push(event)
@@ -278,7 +292,7 @@ export class WangwangTransport implements ImTransport {
     return receipt.cursor.cursor.cursor
   }
 
-  private async poll(candidate: WangwangAdmittedMerchant, account: ImAccountView, sink: ImTransportSink, startCursor: string | null, signal: AbortSignal): Promise<void> {
+  private async poll(candidate: WangwangAdmittedMerchant, account: ImAccountView, plan: ImTransportListenPlan, sink: ImTransportSink, startCursor: string | null, signal: AbortSignal): Promise<void> {
     let current = startCursor
     while (!signal.aborted) {
       await wait(this.config.pollIntervalMs, signal)
@@ -287,15 +301,18 @@ export class WangwangTransport implements ImTransport {
         merchantId: candidate.merchantId, credentials, cursor: cursor(current ?? undefined),
         limit: this.config.pollLimit, waitSeconds: this.config.pollWaitSeconds, signal,
       })
-      current = await this.admitPage(page, sink, candidate, account, current)
+      current = await this.admitPage(page, sink, candidate, account, plan, current)
       if (page.hasMore) continue
     }
   }
 
   /** @inheritdoc */
-  async listen(account: ImAccountView, sink: ImTransportSink, signal: AbortSignal): Promise<() => Promise<void>> {
+  async listen(account: ImAccountView, plan: ImTransportListenPlan, sink: ImTransportSink, signal: AbortSignal): Promise<ImTransportListener> {
     const key = String(account.id)
     if (this.listeners.has(key)) throw new WangwangProtocolError('WANGWANG_LISTENER_CONFLICT', 'Wangwang account listener is already running')
+    if (!plan.routes.some(route => route.conversationKind === 'direct')) {
+      throw new WangwangProtocolError('WANGWANG_LISTEN_PLAN_UNSUPPORTED', 'Wangwang listener requires an enabled direct-conversation route')
+    }
     const candidate = this.candidateForAccount(account)
     const abort = new AbortController()
     const relayAbort = (): void => { abort.abort(signal.reason) }
@@ -307,17 +324,22 @@ export class WangwangTransport implements ImTransport {
         merchantId: candidate.merchantId, credentials, cursor: 0,
         limit: this.config.pollLimit, waitSeconds: 0, signal: abort.signal,
       })
-      const resumedCursor = await this.admitPage(first, sink, candidate, account, null)
-      const done = this.poll(candidate, account, sink, resumedCursor, abort.signal)
+      const resumedCursor = await this.admitPage(first, sink, candidate, account, plan, null)
+      const done = this.poll(candidate, account, plan, sink, resumedCursor, abort.signal)
         .catch((error: unknown) => {
-          if (!abort.signal.aborted) this.ctx.logger('imWangwang').warn(`Wangwang listener stopped: ${error instanceof Error ? error.message : 'unknown failure'}`)
+          if (abort.signal.aborted) return
+          this.ctx.logger('imWangwang').warn(`Wangwang listener stopped: ${error instanceof Error ? error.message : 'unknown failure'}`)
+          throw error
         })
         .finally(() => {
           signal.removeEventListener('abort', relayAbort)
           if (this.listeners.get(key)?.abort === abort) this.listeners.delete(key)
         })
       this.listeners.set(key, { abort, done })
-      return async () => { abort.abort(new Error('Wangwang listener disposed')); await done }
+      return {
+        done,
+        dispose: async () => { abort.abort(new Error('Wangwang listener disposed')); await done },
+      }
     } catch (error) {
       signal.removeEventListener('abort', relayAbort)
       abort.abort(error)
@@ -328,10 +350,11 @@ export class WangwangTransport implements ImTransport {
   /** @inheritdoc */
   async send(request: ImTransportSendRequest, signal: AbortSignal): Promise<ImTransportSendResult> {
     if (request.conversationKind !== 'direct') return { state: 'failed', code: 'WANGWANG_CONVERSATION_UNSUPPORTED', message: 'Wangwang transport supports direct conversations' }
+    if (request.directRecipient === undefined) return { state: 'failed', code: 'WANGWANG_DIRECT_RECIPIENT_UNAVAILABLE', message: 'Wangwang direct send requires the durable customer identity' }
     const candidate = this.candidateForAccount(request.account)
     const credentials = await this.credentials(request.account, candidate)
     return transportResult(await this.client(candidate).sendMessage({
-      merchantId: candidate.merchantId, customerId: request.conversationId,
+      merchantId: candidate.merchantId, customerId: request.directRecipient.providerActorId,
       userId: candidate.mainServiceAccountId, text: request.text, requestId: request.requestId,
       credentials, signal,
     }))

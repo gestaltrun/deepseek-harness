@@ -25,6 +25,30 @@ describe('Wangwang OpenAPI protocol', () => {
     expect(page.nextCursor).toBe(7)
   })
 
+  it('preserves native-human and configured-echo claims as provider evidence', async () => {
+    const client = new WangwangProtocolClient({
+      endpoint: 'https://wangwang.invalid',
+      fetch: async () => new Response(JSON.stringify({
+        code: 0,
+        data: {
+          events: [
+            { eventId: 'event-native', merchantId: 'merchant-1', senderType: 2, messageId: 'message-native', customerId: 'buyer-1', conversationId: 'conversation-1', msgType: 1, textContent: 'native', msgTime: 1_726_000_000_000 },
+            { eventId: 'event-echo', merchantId: 'merchant-1', senderType: 3, messageId: 'message-echo', customerId: 'buyer-1', conversationId: 'conversation-1', msgType: 1, textContent: 'echo', msgTime: 1_726_000_001_000 },
+          ],
+          nextSinceId: 2,
+          hasMore: false,
+        },
+      }), { status: 200 }),
+    })
+
+    const page = await client.pullEvents({ merchantId: 'merchant-1', credentials, cursor: 0, limit: 10, waitSeconds: 0 })
+
+    expect(page.events.map(event => event.sender)).toEqual([
+      { kind: 'configured-native' },
+      { kind: 'configured-echo', externalMessageId: 'message-echo' },
+    ])
+  })
+
   it('rejects a page that crosses the admitted merchant identity', async () => {
     const client = new WangwangProtocolClient({
       endpoint: 'https://wangwang.invalid',

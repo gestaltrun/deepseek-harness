@@ -1,13 +1,16 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { createRequire } from 'node:module'
 import { FileMatcher } from 'app-builder-lib/out/fileMatcher.js'
+import { Arch, Platform, type AfterPackContext } from 'electron-builder'
+import { load } from 'js-yaml'
 import { runtimeFixture } from './runtime-fixture.ts'
 import { verifyDesktopRuntime } from '../src/runtime-tree.ts'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { NotarizeOptions } from '@electron/notarize'
 import {
+  desktopInternalName,
   resolveDesktopAppId,
   resolveMacOSNotarizationEnvironment,
   resolveMacOSSigningEnvironment,
@@ -16,7 +19,9 @@ import { notarizeMacOSDiskImageArtifact } from '../scripts/notarize-macos-disk-i
 import {
   assertMacOSRuntimeSignatureDetails,
   assertMacOSSignatureDetails,
+  developerIdApplicationIdentity,
 } from '../scripts/verify-macos-signature.mjs'
+import { desktopElectronBuilderArguments, resolveDesktopPackageTarget } from '../scripts/package-target.ts'
 
 // app-builder-lib omits this internal copier from its declarations; the regression exercises its actual file filter.
 const { copyFiles } = createRequire(import.meta.url)('app-builder-lib/out/fileMatcher.js') as {
@@ -32,7 +37,7 @@ const RELEASE_ENVIRONMENT = {
   APPLE_API_KEY: '/private/credentials/AuthKey_TEST123456.p8',
   APPLE_API_KEY_ID: 'TEST123456',
   APPLE_API_ISSUER: '11111111-2222-3333-4444-555555555555',
-  DOWNLOAD_TEST_ORIGIN: 'https://desktop-updates.example.com',
+  DESKTOP_RELEASE_TEST_FEED_URL: 'https://desktop-updates.example.com/desktop/test',
 }
 
 function portablePath(value: string): string {
@@ -52,14 +57,17 @@ describe('desktop macOS release signature', () => {
     const { createElectronBuilderConfig } = await import('../electron-builder.config.mjs')
     const config = createElectronBuilderConfig(RELEASE_ENVIRONMENT, 'darwin', 'arm64')
     expect(portablePath(config.directories.output)).toContain('/.desktop-build/targets/mac-arm64/artifacts')
-    expect(config.extraResources).toHaveLength(3)
+    expect(config.extraResources).toHaveLength(4)
     expect(config.extraResources[0]?.to).toBe('runtime')
     expect(config.extraResources[1]?.to).toBe('dsh')
     expect(portablePath(config.extraResources[0]?.from ?? '')).toContain('/.desktop-build/targets/mac-arm64/runtime')
     expect(portablePath(config.extraResources[1]?.from ?? '')).toContain('/.desktop-build/targets/mac-arm64/dsh')
     expect(config).toMatchObject({
       appId: RELEASE_ENVIRONMENT.DSH_DESKTOP_APP_ID,
+      productName: 'DeepSeek Gestalt',
+      extraMetadata: { name: 'com-example-desktop' },
       mac: {
+        artifactName: 'DeepSeek-Gestalt-${version}-${arch}.${ext}',
         identity: RELEASE_ENVIRONMENT.DSH_DESKTOP_MACOS_SIGNING_IDENTITY,
         forceCodeSigning: true,
         notarize: true,
@@ -71,7 +79,7 @@ describe('desktop macOS release signature', () => {
       },
       publish: [{
         provider: 'generic',
-        url: 'https://desktop-updates.example.com/_/harness/desktop/stable/mac-arm64/',
+        url: 'https://desktop-updates.example.com/desktop/test/mac-arm64/',
       }],
     })
     expect(typeof config.artifactBuildCompleted).toBe('function')
@@ -143,8 +151,72 @@ describe('desktop macOS release signature', () => {
       .toThrow(/must be 0 or 1/u)
   })
 
+  it('derives a distinct Electron updater cache identity from the application id', () => {
+    const name = desktopInternalName('org.gestaltrun.deepseek-harness')
+    expect(name).toBe('org-gestaltrun-deepseek-harness')
+    expect(`${name}-updater`).toBe('org-gestaltrun-deepseek-harness-updater')
+    expect(name).not.toBe('@deepseek-ai/dsh-desktop')
+    expect(() => desktopInternalName('not-an-app-id')).toThrow(/reverse-DNS/u)
+  })
+
+  it('embeds the SDK update configuration before the directory application becomes a prepackaged artifact', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'desktop-app-update-config-'))
+    try {
+      const appOutDir = join(root, 'mac-arm64')
+      const resources = join(appOutDir, 'DeepSeek Gestalt.app', 'Contents', 'Resources')
+      mkdirSync(resources, { recursive: true })
+      runtimeFixture(join(resources, 'dsh'))
+
+      const { createElectronBuilderConfig, writeDesktopAppUpdateConfig } = await import('../electron-builder.config.mjs')
+      const config = createElectronBuilderConfig(RELEASE_ENVIRONMENT, 'darwin', 'arm64')
+      const appInfo = {
+        channel: 'rc',
+        updaterCacheDirName: 'com-example-desktop-updater',
+        version: '1.0.0',
+      }
+      const packager = {
+        appInfo,
+        config,
+        expandMacro: (value: string) => value,
+        getResourcesDir: () => resources,
+        info: { appInfo, config },
+        platform: Platform.MAC,
+        platformSpecificBuildOptions: config.mac,
+      }
+      const context = {
+        appOutDir,
+        arch: Arch.arm64,
+        electronPlatformName: 'darwin',
+        outDir: root,
+        packager,
+        targets: [],
+      } as unknown as AfterPackContext
+      expect(config.afterPack.toString()).toContain('writeDesktopAppUpdateConfig(context)')
+      await writeDesktopAppUpdateConfig(context)
+
+      expect(load(readFileSync(join(resources, 'app-update.yml'), 'utf8'))).toEqual({
+        provider: 'generic',
+        url: 'https://desktop-updates.example.com/desktop/test/mac-arm64/',
+        channel: 'rc',
+        updaterCacheDirName: 'com-example-desktop-updater',
+      })
+
+      const target = resolveDesktopPackageTarget('mac-arm64', 'darwin', 'arm64')
+      expect(desktopElectronBuilderArguments(target, true)).toContain('--dir')
+      expect(desktopElectronBuilderArguments(target, false, {
+        format: 'zip',
+        appPath: join(appOutDir, 'DeepSeek Gestalt.app'),
+        output: join(root, 'zip'),
+      })).toEqual(expect.arrayContaining(['--prepackaged', join(appOutDir, 'DeepSeek Gestalt.app')]))
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('accepts the configured authority and team', () => {
     const expected = resolveMacOSSigningEnvironment(RELEASE_ENVIRONMENT)
+    expect(developerIdApplicationIdentity(expected))
+      .toBe(`Developer ID Application: ${expected.signingIdentity}`)
     expect(() => {
       assertMacOSSignatureDetails([
         `Authority=Developer ID Application: ${expected.signingIdentity}`,

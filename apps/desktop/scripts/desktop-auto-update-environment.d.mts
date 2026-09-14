@@ -11,16 +11,17 @@ export type DesktopAutoUpdateTarget = 'mac-arm64' | 'mac-x64' | 'win-x64'
 export interface DesktopAutoUpdateConfig {
   readonly environment: DesktopAutoUpdateEnvironment
   readonly target: DesktopAutoUpdateTarget
-  readonly origin: string
+  readonly feedBaseUrl: string
   readonly publicUrl: string
-  readonly keyPrefix: string
 }
 
-/** Public updater URL and private COS destination for one upload target. */
+/** Public updater URL and private OSS destination for one upload target. */
 export interface DesktopUploadConfig extends DesktopAutoUpdateConfig {
+  readonly keyPrefix: string
   readonly bucket: string
-  readonly secretIdEnvName: string
-  readonly secretKeyEnvName: string
+  readonly endpoint: string
+  readonly region: string
+  readonly timeoutMs: number
 }
 
 /**
@@ -62,12 +63,23 @@ export function desktopUpdateMetadataFilename(
 ): string
 
 /**
+ * Return the branded installer basename for one Desktop version and target.
+ * @param version - Desktop semantic version.
+ * @param target - Supported release target.
+ * @returns Filename without its installer extension.
+ */
+export function desktopReleaseArtifactBase(
+  version: string,
+  target: DesktopAutoUpdateTarget,
+): string
+
+/**
  * Resolve the public updater URL for one release target.
  * @param env - Packaging or upload environment.
  * @param platform - Target Node.js platform.
  * @param arch - Target Node.js architecture.
  * @returns Resolved updater configuration.
- * @throws When the test deployment lacks a valid HTTPS origin.
+ * @throws When the selected deployment lacks a valid HTTPS feed URL.
  */
 export function resolveDesktopAutoUpdateConfig(
   env: NodeJS.ProcessEnv,
@@ -76,12 +88,12 @@ export function resolveDesktopAutoUpdateConfig(
 ): DesktopAutoUpdateConfig
 
 /**
- * Resolve the public updater URL and private COS destination for one upload target.
+ * Resolve the public updater URL and private OSS destination for one upload target.
  * @param env - Upload environment.
  * @param platform - Target Node.js platform.
  * @param arch - Target Node.js architecture.
  * @returns Resolved upload configuration.
- * @throws When the selected deployment lacks a required origin or bucket, or the test origin is not HTTPS.
+ * @throws When the selected deployment lacks a valid feed URL or OSS setting.
  */
 export function resolveDesktopUploadConfig(
   env: NodeJS.ProcessEnv,

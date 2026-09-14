@@ -59,11 +59,13 @@ kind: "package-reference"
 
 授权事实与监听事实保持分离。通用 HTTP 401 或 403 属于检查失败；只有明确的供应方过期或撤销代码才变成 `required`。监听就绪要求一次供应方页面请求成功并取得 runtime 持久回执，不能由定时器创建代替。
 
-每个商家轮询页按会话分组，通过 `receivePage` 一次提交。稳定页面与会话 operation id 允许 runtime 在部分失败后保留已完成分组。Provider 采用 runtime 回执中的游标；重启后可以从零重拉一次，取得持久游标冲突后从 runtime 所有的位置继续，不丢失或重复持久消息。
+每个商家轮询页先按当前监听计划过滤，再按会话分组并通过 `receivePage` 一次提交。`all` 路由包含未来出现的适用买家会话；特定路由只接收其稳定会话 id。稳定页面与会话 operation id 允许 runtime 在部分失败后保留已完成分组。Provider 只在每个适用分组持久化后推进商家游标，没有匹配分组的页面也遵循同一规则。重启后可以从零重拉一次，取得持久游标冲突后从 runtime 持有的位置继续，不丢失或重复持久消息。
 
-发送者解析器保留外部参与者、配置账号原生发送、配置账号回显与供应方未知证据。不支持的 `senderType` 保持未知。Provider 不会用文本相等判断本人或 Agent，也不会回退到另一个商家。
+发送者解析器保留外部参与者、配置账号原生发送、配置账号回显与供应方未知证据。不支持的 `senderType` 保持未知。稳定会话 id 与买家 customer id 保持分离；会话发现和入站证据会保留该对端，以便 runtime 重启后继续单聊发送。Provider 不会用文本相等判断本人或 Agent，也不会回退到另一个商家。
 
-出站发送把 runtime request id 用作平台 request id。网络故障、HTTP 408 或 429、5xx、无效 JSON 或缺少回执都会保持 `unknown`。已确认发送的回执会在持久原始状态中保留可选的供应方 producer 与 revision 证据。`confirm` 查询供应方状态 endpoint，只有供应方明确确认已发送或失败时才改变结果。
+出站发送使用持久买家身份，并把 runtime request id 用作平台 request id；它绝不会从会话 id 猜测 customer id。网络故障、HTTP 408 或 429、5xx、无效 JSON 或缺少回执都会保持 `unknown`。已确认发送的回执会在持久原始状态中保留可选的供应方 producer 与 revision 证据。`confirm` 查询供应方状态 endpoint，只有供应方明确确认已发送或失败时才改变结果。
+
+监听器只在首次供应方请求和 runtime 游标回执完成后返回。其终结 handle 会在断开、计划重启与关闭时正常结束，并在后续轮询失败时拒绝，因此 runtime 不会保留过期的运行状态。
 
 -----
 
@@ -120,6 +122,6 @@ Transport 层负责准入目录、逐操作凭据读取、账号检查、轮询�
 <details>
 <summary>维护上下文 — 点击展开</summary>
 
-迁移来源与保留的旧行为记录在 `UPSTREAM.json`。先构建 `@gestaltrun/dsh-im-runtime`，再运行本包的测试、类型检查与构建脚本；之后针对构建产物运行 `smoke:loader`。
+迁移来源与保留的旧行为记录在 `UPSTREAM.json`。先构建 `@gestaltrun/dsh-im-runtime`，再运行本包的测试、类型检查与构建脚本；之后针对构建产物运行 `smoke:loader`。受控 HTTP 与 JSON Storage smoke 覆盖多会话页面接收、`all` 下的未来会话、重拉去重、断开、重连与 teardown。
 
 </details>

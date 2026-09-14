@@ -59,6 +59,13 @@ export interface ImTransportRoutePlan {
 }
 /** Listener plan computed from the account's enabled routes. */
 export interface ImTransportListenPlan { readonly routes: readonly ImTransportRoutePlan[] }
+/** Provider listener lifetime returned only after the listener is ready. */
+export interface ImTransportListener {
+  /** Settles after the listener ends; rejects when an established listener fails. */
+  readonly done: Promise<void>
+  /** Request an orderly stop. The `done` promise must settle after this request. @returns when provider stop has been requested. */
+  dispose(): Promise<void>
+}
 /** Sink owned by the runtime while a provider listener is active. */
 export interface ImTransportSink {
   /**
@@ -92,8 +99,8 @@ export interface ImTransport {
   refreshAccount(account: ImAccountView, signal: AbortSignal): Promise<ImTransportAccountInspection>
   /** @param account - safe configured account. @param cursor - provider cursor. @param signal - caller lifetime. @returns one candidate page. */
   discoverConversations(account: ImAccountView, cursor: string | undefined, signal: AbortSignal): Promise<ImConversationCandidatePage>
-  /** @param account - account to listen on. @param plan - enabled routes and required provider evidence. @param sink - runtime-owned durable sink. @param signal - listener lifetime. @returns disposer only after the provider has established and verified the usable listener. */
-  listen(account: ImAccountView, plan: ImTransportListenPlan, sink: ImTransportSink, signal: AbortSignal): Promise<() => Promise<void>>
+  /** @param account - account to listen on. @param plan - enabled routes and required provider evidence. @param sink - runtime-owned durable sink. @param signal - listener lifetime. @returns lifetime handle only after the provider has established and verified the usable listener. */
+  listen(account: ImAccountView, plan: ImTransportListenPlan, sink: ImTransportSink, signal: AbortSignal): Promise<ImTransportListener>
   /** @param request - normalized outbound request. @param signal - caller lifetime. @returns provider result. */
   send(request: ImTransportSendRequest, signal: AbortSignal): Promise<ImTransportSendResult>
   /** @param request - uncertain delivery to inspect. @param signal - caller lifetime. @returns current provider result. */

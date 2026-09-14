@@ -33,7 +33,7 @@ kind: "package-reference"
 
 ### 最小配置
 
-`admissionBatchSize` 限制一次模型可见批次，默认值为 1000。群聊 `everyN` 不能超过该限制。StorageDomain 选择持久后端，Credentials 实现选择密钥存储。
+`admissionBatchSize` 限制一次模型可见批次，默认值为 1000。群聊 `everyN` 不能超过该限制。`accountSetupTtlMs` 限制未确认提供方接入材料在 Host 内存中的保留时间，默认五分钟。StorageDomain 选择持久后端，Credentials 实现选择密钥存储。
 
 ```yaml
 - name: '@deepseek-ai/dsh-storage'
@@ -49,9 +49,10 @@ kind: "package-reference"
 - name: '@gestaltrun/dsh-im-runtime'
   config:
     admissionBatchSize: 1000
+    accountSetupTtlMs: 300000
 ```
 
-`listAccountCandidates` 从已注册 transport 返回已安装的钉钉 profile 或已准入的旺旺商家。UI 从中选择标识，不虚构默认 profile、商家 ID 或 endpoint。transport 随后校验只写的接入输入，并返回安全身份事实与可选凭据记录。`inspectAccount` 和 `refreshAccount` 报告提供方观察到的授权事实，不改变账号身份。runtime 通过 `ctx.credentials` 保存凭据。连接意图、授权状态和监听状态是三个独立事实。
+`listAccountCandidates` 从已注册 transport 返回已安装的钉钉 profile 或已准入的旺旺商家。已准入旺旺 candidate 包含安全 endpoint。UI 从中选择标识，Host 拒绝与所选 candidate 不一致的 endpoint。`previewAccountSetup` 要求 transport 校验只写输入，并返回安全身份、授权事实、过期时间与 Host 生成的 setup id，不创建账号，也不写入 Credentials。`confirmAccountSetup` 固定已验证身份，在同一持久操作收据中保存凭据记录与账号；相同 setup 与 operation id 会复用结果，即使 Host 重启也不会重复创建账号。`cancelAccountSetup`、请求取消、setup 过期与 runtime dispose 都会释放未确认的内存材料；JavaScript 不保证物理擦除内存。暂停、断开、重连、刷新或确认接入响应不确定时，调用 `queryAccountOperation` 查询。`inspectAccount` 和 `refreshAccount` 报告提供方观察到的授权事实，不改变账号身份。连接意图、授权状态和监听状态仍是三个独立事实。
 
 每条路由包含平台、账号、会话类型、`all` 或 `specific` 目标以及工作区归属。指定私聊目标可在稳定平台会话 ID 之外单独保留提供方对端标识。指定会话路由始终优先于全量路由，包括指定路由被停用时。私聊路由拒绝群触发设置；群聊路由必须至少配置 `mention`、正整数 `everyN` 或正整数 `fixedIntervalSeconds` 之一。
 
@@ -79,7 +80,7 @@ kind: "package-reference"
 
 `gestaltrun_im_runtime` StorageDomain 为每个账号聚合保存一条记录，并为每个工作区模拟目标保存一条记录。独立的 `gestaltrun_im_delivery` 领域为每个完整会话 scope 保存一个聚合，并另存提供方拥有的游标记录与按路由绑定的 Agent 任务代次。会话聚合在一次持久写入中保存入站消息、去重键、操作收据、提交证据和 outbox。提供方游标只在引用的页面收据都存在后提交。任何操作都不声称在凭据、配置、投递、提供方游标、Agent 任务或 Session 记录之间提供原子事务。
 
-`ImTransports` 为每个平台保留一个存活的提供方，并随注册方 Cordis fiber 释放。当账号连接意图为连接、未暂停、存在启用路由且授权状态为 `ready` 或 `unchecked` 时，runtime 启动监听器；明确的 `required` 或 `failed` 授权状态使其保持停止。`unchecked` 允许没有独立身份探针的提供方通过首次真实 listen 或 poll 完成验证，其本身不投影已就绪身份。提供方 `listen` 只在监听器已建立并验证可用后返回。启用路由计划变化会重启监听器。`ctx.imRuntime.subscribe` 和类型化 `imRuntime/changed` 事件发布持久变更及后续进程监听状态变化。snapshot revision 只在当前进程 generation 内排序；持久 operation id 与记录 revision 跨重启保留。
+`ImTransports` 为每个平台保留一个存活的提供方，并随注册方 Cordis fiber 释放。当账号连接意图为连接、未暂停、存在启用路由且授权状态为 `ready` 或 `unchecked` 时，runtime 启动监听器；明确的 `required` 或 `failed` 授权状态使其保持停止。`unchecked` 允许没有独立身份探针的提供方通过首次真实 listen 或 poll 完成验证，其本身不投影已就绪身份。提供方 `listen` 只在监听器已建立并验证可用后返回，其返回的 `done` promise 报告后续正常结束或失败。主动停止会中止 signal、调用 `dispose` 并等待 `done`；启用路由计划变化时也按此顺序停止旧监听器，再启动替代实例。监听器终止失败不会触发无界重试。`ctx.imRuntime.subscribe` 和类型化 `imRuntime/changed` 事件发布持久变更及后续进程监听状态变化。snapshot revision 只在当前进程 generation 内排序；持久 operation id 与记录 revision 跨重启保留。
 
 | 源文件 | 用途 |
 |---|---|

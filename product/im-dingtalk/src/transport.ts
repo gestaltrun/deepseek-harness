@@ -12,6 +12,8 @@ import type {
   ImTransportConfirmRequest,
   ImTransportInboundPage,
   ImTransportInboundPageReceipt,
+  ImTransportListener,
+  ImTransportListenPlan,
   ImTransportSendRequest,
   ImTransportSendResult,
   ImTransportSink,
@@ -40,6 +42,12 @@ function assertCursor(value: string | undefined): void {
   if (!/^\d+$/u.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) < 0) {
     throw new DwsProtocolError('DINGTALK_CONVERSATION_CURSOR_INVALID', 'DingTalk conversation cursor is not a non-negative safe integer')
   }
+}
+
+function receivesEvent(plan: ImTransportListenPlan, event: DwsInboundEvent): boolean {
+  return plan.routes.some(route => route.conversationKind === event.conversationKind
+    && (route.target.kind === 'all' || route.target.conversationId === event.conversationId)
+    && (event.mentionedConfiguredAccount !== true || route.needsMentionEvidence))
 }
 
 /** Complete DingTalk employee transport registered with the product runtime. */
@@ -159,7 +167,12 @@ export class DingTalkTransport implements ImTransport {
         conversationKind: event.conversationKind,
         messages: [{
           externalMessageId: event.messageId,
-          senderEvidence: { kind: 'external-actor', senderId: event.senderId, ...(event.senderName === undefined ? {} : { senderDisplayName: event.senderName }) },
+          senderEvidence: {
+            kind: 'external-actor',
+            senderId: event.senderId,
+            ...(event.senderName === undefined ? {} : { senderDisplayName: event.senderName }),
+            ...(event.directRecipientId === undefined ? {} : { openDingTalkId: event.directRecipientId }),
+          },
           text: event.text,
           format: 'text',
           occurredAt: event.occurredAt,
@@ -176,10 +189,13 @@ export class DingTalkTransport implements ImTransport {
   }
 
   /** @inheritdoc */
-  async listen(account: ImAccountView, sink: ImTransportSink, signal: AbortSignal): Promise<() => Promise<void>> {
+  async listen(account: ImAccountView, plan: ImTransportListenPlan, sink: ImTransportSink, signal: AbortSignal): Promise<ImTransportListener> {
     const identity = this.identity(account)
     const key = String(account.id)
     if (this.listeners.has(key)) throw new DwsProtocolError('DINGTALK_LISTENER_CONFLICT', 'DingTalk account listener is already running')
+    if (!plan.routes.some(route => route.conversationKind === 'direct' || route.conversationKind === 'group')) {
+      throw new DwsProtocolError('DINGTALK_LISTEN_PLAN_UNSUPPORTED', 'DingTalk listener requires an enabled direct or group route')
+    }
     const abort = new AbortController()
     const relayAbort = (): void => { abort.abort(signal.reason) }
     signal.addEventListener('abort', relayAbort, { once: true })
@@ -193,18 +209,24 @@ export class DingTalkTransport implements ImTransport {
           this.ctx.logger('imDingTalk').warn(`DingTalk event skipped: ${error instanceof DwsProtocolError ? error.code : 'DINGTALK_EVENT_INVALID'}`)
           return
         }
+        if (!receivesEvent(plan, event)) return
         cursor = await this.admit(event, account, sink, cursor)
       })
       await stream.ready
       const done = stream.done.catch((error: unknown) => {
-        if (!abort.signal.aborted) this.ctx.logger('imDingTalk').warn(`DingTalk listener stopped: ${error instanceof DwsProtocolError ? error.code : 'DINGTALK_STREAM_FAILED'}`)
+        if (abort.signal.aborted) return
+        this.ctx.logger('imDingTalk').warn(`DingTalk listener stopped: ${error instanceof DwsProtocolError ? error.code : 'DINGTALK_STREAM_FAILED'}`)
+        throw error
       }).finally(() => {
         signal.removeEventListener('abort', relayAbort)
         if (this.listeners.get(key)?.abort === abort) this.listeners.delete(key)
       })
       const active: ActiveListener = { abort, stop: stream.stop, done }
       this.listeners.set(key, active)
-      return async () => { abort.abort(new Error('DingTalk listener disposed')); await active.stop(); await active.done }
+      return {
+        done,
+        dispose: async () => { abort.abort(new Error('DingTalk listener disposed')); await active.stop() },
+      }
     } catch (error) {
       signal.removeEventListener('abort', relayAbort)
       abort.abort(error)
@@ -217,7 +239,20 @@ export class DingTalkTransport implements ImTransport {
   async send(request: ImTransportSendRequest, signal: AbortSignal): Promise<ImTransportSendResult> {
     const identity = this.identity(request.account)
     if (request.conversationKind === 'direct') {
-      return { state: 'failed', code: 'DINGTALK_DIRECT_RECIPIENT_UNAVAILABLE', message: 'DingTalk direct send requires the durable peer openDingTalkId' }
+      const recipient = request.directRecipient
+      if (recipient === undefined) return { state: 'failed', code: 'DINGTALK_DIRECT_RECIPIENT_UNAVAILABLE', message: 'DingTalk direct send requires a durable peer identifier' }
+      try {
+        if (recipient.openDingTalkId !== undefined) {
+          return await this.client.send(identity.profile, { kind: 'direct-open', openDingTalkId: recipient.openDingTalkId }, request.text, request.requestId, signal)
+        }
+        if (recipient.userId !== undefined) {
+          return await this.client.send(identity.profile, { kind: 'direct-user', userId: recipient.userId }, request.text, request.requestId, signal)
+        }
+        return { state: 'failed', code: 'DINGTALK_DIRECT_RECIPIENT_UNAVAILABLE', message: 'DingTalk direct send requires a DWS-supported peer identifier' }
+      } catch (error) {
+        if (error instanceof DwsCommandError && !error.started) return { state: 'failed', code: error.code, message: 'DWS did not start a DingTalk send attempt' }
+        return { state: 'unknown' }
+      }
     }
     try {
       return await this.client.send(identity.profile, { kind: 'group', conversationId: request.conversationId }, request.text, request.requestId, signal)

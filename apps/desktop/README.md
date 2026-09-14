@@ -1,4 +1,4 @@
-# DeepSeek Harness Desktop
+# DeepSeek Gestalt Desktop
 
 English | [中文](README.zh.md)
 
@@ -98,7 +98,9 @@ pnpm run package:desktop:win:x64
 
 The macOS arm64 command requires Apple Silicon. The macOS x64 command runs on Intel macOS or Apple Silicon with Rosetta. The Windows x64 command requires Windows x64. Linux is not a supported Desktop release target.
 
-Each target owns its packed package inputs, prepared runtime, package set, dsh tree, pnpm preparation state, unpacked application, update metadata, and final artifacts under `apps/desktop/.desktop-build/targets/<target>/`. The Node.js archive cache remains shared under `.desktop-build/downloads` because every archive name includes its version, platform, and architecture and is verified before extraction. A target build never consumes another target's mutable preparation state.
+Each target owns its packed package inputs, prepared runtime, package set, dsh tree, pnpm preparation state, unpacked application, update metadata, and final artifacts under `apps/desktop/.desktop-build/targets/<target>/`. Packaging uses the DeepSeek Gestalt product name and derives its internal application name from `DSH_DESKTOP_APP_ID`, which gives Electron's updater cache an identity separate from the workspace npm package. The Node.js archive cache remains shared under `.desktop-build/downloads` because every archive name includes its version, platform, and architecture and is verified before extraction. A target build never consumes another target's mutable preparation state.
+
+Runtime materialization uses the isolated npmjs registry and package-manager state described below. Release automation may set `PNPM_CONFIG_NETWORK_CONCURRENCY` and `PNPM_CONFIG_FETCH_TIMEOUT` to positive integers for that bundled-pnpm installation; all other ambient npm, pnpm, Corepack, registry, authentication, and hook settings remain excluded. Unset values retain pnpm's defaults.
 
 ### Runtime file selection
 
@@ -112,30 +114,22 @@ Windows release qualification also runs [native cleanup and replacement checks](
 pwsh -NoProfile -File apps/desktop/scripts/smoke-windows.ps1 -Electron $Electron -Makensis $Makensis -SevenZip $SevenZip -PluginDir $PluginDir
 ```
 
-### Upload updates
+### Publish updates
 
-`DSH_DESKTOP_AUTO_UPDATE_ENV` selects `test` or `production` for both the URL embedded during packaging and the later COS upload; an absent value selects `test`. Test packaging requires its HTTPS origin in `DOWNLOAD_TEST_ORIGIN`, while the production origin remains `https://download.deepseek.com`. Upload additionally requires the selected deployment's COS bucket in `DOWNLOAD_TEST_COS_BUCKET` or `DOWNLOAD_PROD_COS_BUCKET`. The target path is `_/harness/desktop/stable/<target>/`, where `target` is `mac-arm64`, `mac-x64`, or `win-x64`.
+The manually dispatched [Desktop Release workflow](../../.github/workflows/desktop-release.yml) accepts an exact commit, the version shared by dsh and Desktop, `test` or `production`, and one of three operations. `validate` performs credential-free request checks. `candidate` accepts a commit contained in `master` and creates signed and notarized artifacts without adding them to an update channel. `publish` applies the same source restriction, uploads the selected targets, and creates a GitHub Release for a production deployment. macOS arm64 and x64 are required targets; Windows x64 remains explicitly selectable and fails unless the configured hardware-backed signing inputs are available.
 
-The update destination and upload credentials follow the selected deployment:
+`DSH_DESKTOP_AUTO_UPDATE_ENV` selects the public generic feed embedded during packaging. Each deployment supplies a public feed root and matching OSS object prefix:
 
-| Environment | Public origin | COS bucket | COS credentials |
-|---|---|---|---|
-| `test` or unset | `DOWNLOAD_TEST_ORIGIN` | `DOWNLOAD_TEST_COS_BUCKET` | `DOWNLOAD_TEST_COS_SECRET_ID`, `DOWNLOAD_TEST_COS_SECRET_KEY` |
-| `production` | `https://download.deepseek.com` | `DOWNLOAD_PROD_COS_BUCKET` | `DOWNLOAD_PROD_COS_SECRET_ID`, `DOWNLOAD_PROD_COS_SECRET_KEY` |
+| Environment | Public feed root | OSS object prefix |
+|---|---|---|
+| `test` or unset | `DESKTOP_RELEASE_TEST_FEED_URL` | `DESKTOP_RELEASE_TEST_OSS_PREFIX` |
+| `production` | `DESKTOP_RELEASE_PRODUCTION_FEED_URL` | `DESKTOP_RELEASE_PRODUCTION_OSS_PREFIX` |
 
-Package and upload one target under the same environment. For example, the default test deployment uses:
+Upload additionally requires `DESKTOP_RELEASE_OSS_BUCKET`, `DESKTOP_RELEASE_OSS_ENDPOINT`, and `DESKTOP_RELEASE_ALIYUN_REGION`. `DESKTOP_RELEASE_OSS_TIMEOUT_MS` accepts a positive request timeout in milliseconds and defaults to 600000 for large installers. The repository-scoped Alibaba Cloud OIDC action supplies `ALIBABA_CLOUD_ACCESS_KEY_ID`, `ALIBABA_CLOUD_ACCESS_KEY_SECRET`, and `ALIBABA_CLOUD_SECURITY_TOKEN` only to the publish job. Packaging removes those temporary credentials from every subprocess and needs only the selected feed URL. Before signing the initial unpacked macOS application, the packaging hook uses electron-builder's publish resolver to write the standard `app-update.yml` into its Resources directory; the later prepackaged ZIP and DMG steps preserve that sealed updater configuration.
 
-```sh
-export DOWNLOAD_TEST_ORIGIN='https://desktop-updates.example.com'
-pnpm run package:desktop:mac:arm64
+Every target writes to `<selected-prefix>/<target>/`, where `target` is `mac-arm64`, `mac-x64`, or `win-x64`. Upload validates the release completion record, coupled dsh and Desktop versions, channel metadata, artifact names, sizes, and SHA-512 values before sending data. It uploads and verifies all selected immutable installers and blockmaps before replacing any selected channel metadata. A retry reuses an immutable object only when its size and stored SHA-512 match; another payload at the same versioned key fails. Channel metadata uses `no-cache` and remains the only replaceable object. Stable releases use `latest-mac.yml` or `latest.yml`; prereleases use the channel name emitted by electron-builder.
 
-export DOWNLOAD_TEST_COS_BUCKET='<test COS bucket>'
-export DOWNLOAD_TEST_COS_SECRET_ID='<test COS SecretId>'
-export DOWNLOAD_TEST_COS_SECRET_KEY='<test COS SecretKey>'
-pnpm run upload:mac:arm64
-```
-
-Set `DSH_DESKTOP_AUTO_UPDATE_ENV=production` before packaging, then provide `DOWNLOAD_PROD_COS_BUCKET` and the production credential pair before running `upload:mac:arm64`, `upload:mac:x64`, or `upload:win:x64`. Packaging does not require a COS bucket or credentials. It explicitly disables electron-builder publishing, strips all four COS credential fields from its subprocesses, and writes a target completion record only after electron-builder and every signing or notarization hook succeeds. Upload requires that record to match the selected environment, target, public URL, and current dsh version; it also requires the root dsh version, Desktop version, channel metadata version, artifact names, sizes, and SHA-512 values to agree before it reads the selected COS credential pair. It uploads only that target's immutable versioned artifacts, uploads the version-derived channel metadata last with `no-cache`, and never deletes historical objects. Stable releases use `latest-mac.yml` or `latest.yml`; a prerelease such as `alpha` uses `alpha-mac.yml` or `alpha.yml`, matching electron-builder's emitted filename.
+A production publication creates a draft `gestalt-v<version>` GitHub Release containing the selected OSS installer links, replaces the selected target metadata, and publishes the Release. The workflow refuses to reuse a tag or draft belonging to another commit. GitHub Releases provides the version list; the application continues to use the standard generic feed and existing update interaction.
 
 The macOS configuration uses the required release environment instead of accepting whichever certificate appears first in a keychain. It rejects empty values, a malformed Team ID, a signing identity that includes electron-builder's unsupported `Developer ID Application:` prefix, and incomplete notarization credentials. macOS packaging requires the configured identity and its private key. Runtime preparation applies that identity, a secure timestamp, and hardened runtime to every embedded Mach-O file; after signing the application, a deep strict check rejects any other leaf authority or Team ID before artifact creation. The fixed-target macOS installer commands create separate copies of the signed application and run two artifact lanes concurrently. One lane notarizes and staples the App before generating the ZIP and its update metadata. The other encloses its signed App copy in a signed DMG, then notarizes, staples, and verifies the DMG; its inner App has no individually stapled ticket. Both lanes must finish successfully before their artifacts reach the final directory and the release completion record is written. Directory-only commands also require notarization credentials and wait for Apple notarization and App stapling. The [parallel notarization decision](../../.agents/notes/implemented/process/2026-09-09-parallel-macos-notarization.md) owns copy isolation and container ticket semantics. The private key can come from the login keychain or electron-builder's standard `CSC_LINK` input; ambient `CSC_NAME` and certificate discovery order do not select the release owner. Notary credentials may instead use electron-builder's complete Apple ID or keychain-profile strategy. The two macOS identity variables are also required when repeating the application check manually with `pnpm --dir apps/desktop run verify:mac-signature -- <path-to-app>`.
 

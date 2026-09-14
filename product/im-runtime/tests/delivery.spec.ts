@@ -40,7 +40,7 @@ const outboundRequest = (value: string): ImOutboundRequestId => brandString<ImOu
 function transport(): ImTransport {
   return {
     platform: 'wangwang',
-    listAccountCandidates: async () => [{ platform: 'wangwang', candidateId: 'merchant-1', displayName: 'Merchant', merchantId: 'merchant-1' }],
+    listAccountCandidates: async () => [{ platform: 'wangwang', candidateId: 'merchant-1', endpoint: 'https://wangwang.invalid', displayName: 'Merchant', merchantId: 'merchant-1' }],
     prepareAccount: async request => {
       if (request.platform !== 'wangwang') throw new Error('wrong fixture platform')
       return {
@@ -53,7 +53,10 @@ function transport(): ImTransport {
     inspectAccount: async () => ({ authorization: { state: 'unchecked' } }),
     refreshAccount: async () => ({ authorization: { state: 'unchecked' } }),
     discoverConversations: async () => ({ items: [] }),
-    listen: async () => async () => {},
+    listen: async () => {
+      const done = Promise.withResolvers<void>()
+      return { done: done.promise, dispose: async () => { done.resolve() } }
+    },
     send: async () => ({ state: 'unknown' }),
     confirm: async () => ({ state: 'unknown' }),
   }
@@ -78,7 +81,7 @@ async function boot(directory?: string, withSessions = false) {
 }
 
 async function configured(ctx: Context) {
-  const account = await ctx.imRuntime.addAccount({ platform: 'wangwang', candidateId: 'merchant-1', accessKeyId: 'key', accessKeySecret: 'secret' })
+  const account = await ctx.imRuntime.addAccount({ platform: 'wangwang', candidateId: 'merchant-1', endpoint: 'https://wangwang.invalid', accessKeyId: 'key', accessKeySecret: 'secret' })
   const route = (await ctx.imRuntime.createRoute({
     operationId: operation('route'), accountId: account.id, conversationKind: 'direct',
     target: { kind: 'specific', conversationId: 'buyer-1' }, workspaceId: WorkspaceId('workspace-a'), enabled: true,

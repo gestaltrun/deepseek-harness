@@ -12,12 +12,21 @@ import { resolveMacOSSigningEnvironment } from './desktop-release-environment.mj
  */
 export function assertMacOSSignatureDetails(details, expected) {
   const fields = new Set(details.split(/\r?\n/u).map(line => line.trim()))
-  const expectedAuthority = `Authority=Developer ID Application: ${expected.signingIdentity}`
+  const expectedAuthority = `Authority=${developerIdApplicationIdentity(expected)}`
   const expectedTeam = `TeamIdentifier=${expected.teamId}`
   const missing = [expectedAuthority, expectedTeam].filter(field => !fields.has(field))
   if (missing.length > 0) {
     throw new Error(`desktop macOS signing: signature does not match the release identity; missing ${missing.join(', ')}`)
   }
+}
+
+/**
+ * Expand the electron-builder certificate qualifier to an unambiguous codesign identity.
+ * @param {{ signingIdentity: string, teamId: string }} expected - Public release identity.
+ * @returns {string} Complete Developer ID Application certificate name.
+ */
+export function developerIdApplicationIdentity(expected) {
+  return `Developer ID Application: ${expected.signingIdentity}`
 }
 
 /**
@@ -115,7 +124,7 @@ function runCodeSign(args) {
 export async function signMacOSRuntimeCode(path, identifier, expected) {
   await runAppleCommandAsync('/usr/bin/codesign', [
     '--force',
-    '--sign', expected.signingIdentity,
+    '--sign', developerIdApplicationIdentity(expected),
     '--identifier', identifier,
     '--timestamp',
     '--options', 'runtime',

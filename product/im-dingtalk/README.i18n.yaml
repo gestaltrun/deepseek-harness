@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write product/im-dingtalk/README.md
-README.md: 082b2f8ddcf012da68a418db0a59d37ab2959653
-README.zh.md: 7ed1ab51d5c4715bc6a5ce8def82153d377c66c3
+README.md: 007359549bb50c8f4a5aa69a579f6a452f7e8996
+README.zh.md: ca45e663cf4650a282d1ae5901e1939b245b1456

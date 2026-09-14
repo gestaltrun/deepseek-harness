@@ -4,7 +4,7 @@ import { CredentialProvider, credentialKey } from '@deepseek-ai/dsh-credentials'
 import type { CredentialInfo, CredentialKey, CredentialRecord, CredentialRecordEntry, CredentialRecordInfo, CredentialRef, ResolvedCredential } from '@deepseek-ai/dsh-credentials'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ImTransports } from '@gestaltrun/dsh-im-runtime'
-import type { ImAccountId, ImAccountView, ImProviderCursorId, ImRevision, ImTransportInboundPage } from '@gestaltrun/dsh-im-runtime'
+import type { ImAccountId, ImAccountView, ImProviderCursorId, ImRevision, ImRouteId, ImTransportInboundPage, ImTransportListenPlan } from '@gestaltrun/dsh-im-runtime'
 import { WangwangTransport } from '../src/transport.ts'
 
 class MemoryCredentials extends CredentialProvider {
@@ -77,6 +77,16 @@ function store(credentials: MemoryCredentials): void {
   })
 }
 
+function allDirectPlan(): ImTransportListenPlan {
+  return { routes: [{
+    routeId: brandString<ImRouteId>('route-all'),
+    routeRevision: brandString<ImRevision>('route-revision-1'),
+    conversationKind: 'direct',
+    target: { kind: 'all' },
+    needsMentionEvidence: false,
+  }] }
+}
+
 describe('Wangwang transport', () => {
   it('lists only admitted merchants and returns write-only setup credentials with explicit authorization evidence', async () => {
     const { transport } = boot(async () => success({ events: [], nextSinceId: 0, hasMore: false }))
@@ -144,7 +154,7 @@ describe('Wangwang transport', () => {
     const { credentials, transport } = boot(fetch)
     store(credentials)
     const admitted: ImTransportInboundPage[] = []
-    const dispose = await transport.listen(account(), {
+    const listener = await transport.listen(account(), allDirectPlan(), {
       receivePage: async page => {
         admitted.push(page)
         return {
@@ -172,7 +182,81 @@ describe('Wangwang transport', () => {
         { conversationId: 'conversation-2', messages: [{ externalMessageId: 'message-2' }] },
       ],
     })
-    await dispose()
+    await listener.dispose()
+    await listener.done
+  })
+
+  it('filters a specific route while still advancing the whole merchant page cursor', async () => {
+    const { credentials, transport } = boot(async () => success({
+      events: [
+        { eventId: 'event-1', merchantId: 'merchant-1', senderType: 1, messageId: 'message-1', customerId: 'buyer-1', conversationId: 'conversation-1', msgType: 1, textContent: 'one', msgTime: 1_726_000_000_000 },
+        { eventId: 'event-2', merchantId: 'merchant-1', senderType: 1, messageId: 'message-2', customerId: 'buyer-2', conversationId: 'conversation-future', msgType: 1, textContent: 'two', msgTime: 1_726_000_001_000 },
+      ],
+      nextSinceId: 11,
+      hasMore: false,
+    }))
+    store(credentials)
+    const admitted: ImTransportInboundPage[] = []
+    const plan: ImTransportListenPlan = { routes: [{
+      routeId: brandString<ImRouteId>('route-specific'),
+      routeRevision: brandString<ImRevision>('route-revision-1'),
+      conversationKind: 'direct',
+      target: { kind: 'specific', conversationId: 'conversation-1', directRecipient: { providerActorId: 'buyer-1' } },
+      needsMentionEvidence: false,
+    }] }
+    const listener = await transport.listen(account(), plan, {
+      receivePage: async page => {
+        admitted.push(page)
+        return {
+          conversations: [],
+          cursor: {
+            operationId: page.operationId,
+            status: 'applied',
+            cursor: {
+              id: brandString<ImProviderCursorId>('cursor-11'), owner: page.owner,
+              cursor: page.nextCursor, updatedAt: '2026-09-14T00:00:00.000Z',
+            },
+          },
+        }
+      },
+    }, new AbortController().signal)
+
+    expect(admitted).toHaveLength(1)
+    expect(admitted[0]?.nextCursor).toBe('11')
+    expect(admitted[0]?.conversations.map(group => group.conversationId)).toEqual(['conversation-1'])
+    await listener.dispose()
+    await listener.done
+  })
+
+  it('rejects the listener terminal signal when polling fails after readiness', async () => {
+    vi.useFakeTimers()
+    try {
+      let calls = 0
+      const { credentials, transport } = boot(async () => {
+        calls++
+        if (calls === 1) return success({ events: [], nextSinceId: 0, hasMore: false })
+        throw new Error('controlled polling failure')
+      })
+      store(credentials)
+      const listener = await transport.listen(account(), allDirectPlan(), {
+        receivePage: async page => ({
+          conversations: [],
+          cursor: {
+            operationId: page.operationId,
+            status: 'applied',
+            cursor: {
+              id: brandString<ImProviderCursorId>('cursor-ready'), owner: page.owner,
+              cursor: page.nextCursor, updatedAt: '2026-09-14T00:00:00.000Z',
+            },
+          },
+        }),
+      }, new AbortController().signal)
+      const terminal = expect(listener.done).rejects.toMatchObject({ code: 'WANGWANG_NETWORK_ERROR' })
+      await vi.advanceTimersByTimeAsync(60_000)
+      await terminal
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('keeps ambiguous sends unknown until the provider status endpoint confirms a fact', async () => {
@@ -182,7 +266,7 @@ describe('Wangwang transport', () => {
       return success({ state: 'sent', messageId: 'message-confirmed' })
     })
     store(credentials)
-    await expect(transport.send({ account: account(), conversationId: 'buyer-1', conversationKind: 'direct', requestId: 'request-1', text: 'hello' }, new AbortController().signal))
+    await expect(transport.send({ account: account(), conversationId: 'conversation-1', conversationKind: 'direct', directRecipient: { providerActorId: 'buyer-1' }, requestId: 'request-1', text: 'hello' }, new AbortController().signal))
       .resolves.toEqual({ state: 'unknown' })
     phase = 'confirm'
     await expect(transport.confirm({ account: account(), requestId: 'request-1' }, new AbortController().signal))
@@ -190,16 +274,20 @@ describe('Wangwang transport', () => {
   })
 
   it('preserves producer receipt evidence in the durable raw status', async () => {
-    const { credentials, transport } = boot(async () => success({
-      messageId: 'message-1', status: 'OK', producerId: 'service-agent', producerRevision: 'revision-3',
-    }))
+    let body: unknown
+    const { credentials, transport } = boot(async (_input, init) => {
+      body = JSON.parse(String(init?.body))
+      return success({ messageId: 'message-1', status: 'OK', producerId: 'service-agent', producerRevision: 'revision-3' })
+    })
     store(credentials)
 
-    await expect(transport.send({ account: account(), conversationId: 'buyer-1', conversationKind: 'direct', requestId: 'request-1', text: 'hello' }, new AbortController().signal))
+    await expect(transport.send({ account: account(), conversationId: 'conversation-1', conversationKind: 'direct', directRecipient: { providerActorId: 'buyer-1' }, requestId: 'request-1', text: 'hello' }, new AbortController().signal))
       .resolves.toEqual({
         state: 'sent',
         externalMessageId: 'message-1',
         rawStatus: '{"status":"OK","producerId":"service-agent","producerRevision":"revision-3"}',
       })
+    expect(body).toMatchObject({ customerId: 'buyer-1' })
+    expect(JSON.stringify(body)).not.toContain('conversation-1')
   })
 })
