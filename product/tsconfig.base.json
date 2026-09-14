@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["node"],
+    "paths": {
+      "@gestaltrun/dsh-im-runtime": ["./im-runtime/src/index.ts"],
+      "@gestaltrun/dsh-api-im": ["./api-im/src/index.ts"],
+      "@gestaltrun/dsh-api-im/client": ["./api-im/src/client/index.ts"],
+      "@gestaltrun/dsh-api-im/remote": ["./api-im/lib/typert.remote-client.d.ts"]
+    }
+  }
+}
