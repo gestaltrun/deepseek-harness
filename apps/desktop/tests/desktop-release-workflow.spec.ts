@@ -30,8 +30,17 @@ describe('Desktop Release workflow', () => {
   })
 
   it('maps only the reviewed package and OSS network timeouts', () => {
-    expect(workflow).toContain('PNPM_CONFIG_NETWORK_CONCURRENCY: ${{ vars.DESKTOP_RELEASE_PNPM_NETWORK_CONCURRENCY }}')
-    expect(workflow).toContain('PNPM_CONFIG_FETCH_TIMEOUT: ${{ vars.DESKTOP_RELEASE_PNPM_FETCH_TIMEOUT }}')
+    const macPackage = workflow.slice(
+      workflow.indexOf('      - name: Package signed and notarized application'),
+      workflow.indexOf('      - name: Remove App Store Connect API key'),
+    )
+    const keyMaterialization = workflow.slice(
+      workflow.indexOf('      - name: Materialize App Store Connect API key'),
+      workflow.indexOf('      - name: Package signed and notarized application'),
+    )
+    expect(macPackage).toContain('PNPM_CONFIG_NETWORK_CONCURRENCY: ${{ vars.DESKTOP_RELEASE_PNPM_NETWORK_CONCURRENCY }}')
+    expect(macPackage).toContain('PNPM_CONFIG_FETCH_TIMEOUT: ${{ vars.DESKTOP_RELEASE_PNPM_FETCH_TIMEOUT }}')
+    expect(keyMaterialization).not.toContain('PNPM_CONFIG_')
     expect(workflow).toContain('DESKTOP_RELEASE_OSS_TIMEOUT_MS: ${{ vars.DESKTOP_RELEASE_OSS_TIMEOUT_MS }}')
   })
 
