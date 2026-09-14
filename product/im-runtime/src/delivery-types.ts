@@ -2,7 +2,7 @@
 import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
-import type { ImAccountId, ImPlatform, ImRevision, ImRouteId } from './types.ts'
+import type { ImAccountId, ImGroupTrigger, ImPlatform, ImRevision, ImRouteId } from './types.ts'
 
 /** Collision-safe identifier of one real or simulated conversation scope. */
 export type ImScopeId = Branded<'ImScopeId'>
@@ -18,6 +18,10 @@ export type ImOutboundAttemptId = Branded<'ImOutboundAttemptId'>
 export type ImSimulationInstanceId = Branded<'ImSimulationInstanceId'>
 /** Stable identity of one provider-owned polling or stream cursor. */
 export type ImProviderCursorId = Branded<'ImProviderCursorId'>
+/** Host-minted identity of one Agent admission batch. */
+export type ImAdmissionId = Branded<'ImAdmissionId'>
+/** Stable identity of one route-bound Agent task generation. */
+export type ImAgentTaskId = Branded<'ImAgentTaskId'>
 
 /** Complete identity of a real platform conversation. */
 export interface ImRealDeliveryScope {
@@ -46,6 +50,8 @@ export interface ImExternalSenderAttribution {
   readonly kind: 'external'
   readonly senderId: string
   readonly senderDisplayName?: string
+  readonly userId?: string
+  readonly openDingTalkId?: string
 }
 
 /** Provider evidence that the configured account spoke in its native client. */
@@ -84,7 +90,7 @@ export type ImSenderAttribution =
 
 /** Provider facts admitted before the runtime assigns a sender category. */
 export type ImInboundSenderEvidence =
-  | { readonly kind: 'external-actor'; readonly senderId: string; readonly senderDisplayName?: string }
+  | { readonly kind: 'external-actor'; readonly senderId: string; readonly senderDisplayName?: string; readonly userId?: string; readonly openDingTalkId?: string }
   | { readonly kind: 'configured-native'; readonly providerActorId: string }
   | { readonly kind: 'configured-echo'; readonly externalMessageId: string; readonly observedSenderId?: string }
   | { readonly kind: 'configured-self'; readonly observedSenderId?: string }
@@ -112,6 +118,51 @@ export interface ImMessageSource {
   readonly scopeId: ImScopeId
   readonly messageId: ImMessageId
   readonly sequenceNumber: number
+  /** Present when one Agent steering item represents a durable message batch. */
+  readonly admission?: ImAgentAdmissionSource
+}
+
+/** OR-combined reason that made one inbound batch eligible for Agent input. */
+export type ImTriggerReason = 'direct' | 'mention' | 'every-n' | 'fixed-interval'
+
+/** Sender and order evidence copied into the Session source for reconstruction. */
+export interface ImAdmissionMessageSource {
+  readonly messageId: ImMessageId
+  readonly sequenceNumber: number
+  readonly externalMessageId: string
+  readonly sender: ImSenderAttribution
+  readonly occurredAt: string
+}
+
+/** Frozen route and message evidence recorded with one Session user/message. */
+export interface ImAgentAdmissionSource {
+  readonly admissionId: ImAdmissionId
+  readonly scope: ImDeliveryScope
+  readonly messageIds: readonly ImMessageId[]
+  readonly messages: readonly ImAdmissionMessageSource[]
+  readonly triggerReasons: readonly ImTriggerReason[]
+  readonly routeId: ImRouteId
+  readonly routeRevision: ImRevision
+  readonly accountRevision: ImRevision
+  readonly workspaceId: WorkspaceId
+}
+
+/** Durable Agent task identity frozen when its first batch is admitted. */
+export interface ImAgentTaskView {
+  readonly taskId: ImAgentTaskId
+  readonly generation: number
+  readonly scope: ImDeliveryScope
+  readonly scopeId: ImScopeId
+  readonly sessionId: SessionId
+  readonly routeId: ImRouteId
+  readonly routeRevision: ImRevision
+  readonly accountRevision: ImRevision
+  readonly workspaceId: WorkspaceId
+  readonly agentPreset: string
+  readonly groupTrigger?: ImGroupTrigger
+  readonly directRecipient?: import('./types.ts').ImDirectRecipient
+  readonly createdAt: string
+  readonly updatedAt: string
 }
 
 /** Durable inbound row safe for history UI and model tools. */
@@ -144,7 +195,7 @@ export interface ImConversationCursor {
 /** Atomic provider page admission request. */
 export interface ImIngestInboundPageRequest {
   readonly operationId: ImDeliveryOperationId
-  readonly scope: ImRealDeliveryScope
+  readonly scope: ImDeliveryScope
   readonly observedCursor: string | null
   readonly nextCursor: string | null
   readonly messages: readonly ImInboundMessageInput[]
@@ -156,6 +207,8 @@ export interface ImInboundPageResult {
   readonly operationId: ImDeliveryOperationId
   readonly status: 'applied' | 'conflict'
   readonly acceptedCount: number
+  /** Existing rows whose explicit mention evidence advanced monotonically to true. */
+  readonly evidenceMergedCount?: number
   readonly duplicateCount: number
   readonly messages: readonly ImInboundMessageView[]
   readonly cursor: ImConversationCursor

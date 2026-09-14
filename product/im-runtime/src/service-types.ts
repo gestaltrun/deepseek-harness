@@ -5,6 +5,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session'
 import type {
   ImBeginOutboundAttemptRequest,
   ImBeginOutboundAttemptResult,
+  ImAgentTaskView,
   ImCancelPendingAiRequest,
   ImCommitProviderCursorRequest,
   ImConversationCursor,
@@ -70,8 +71,8 @@ declare module '@deepseek-ai/cordis' {
   interface Context { imRuntime: ImRuntimeService }
   interface Events {
     /**
-     * Durable IM configuration changed. The emitted revision is newer than every prior event from this process.
-     * @param change - committed configuration subject and generation revision.
+     * IM configuration or process listener state changed. The emitted revision is newer than every prior event from this process.
+     * @param change - changed account, route, target, or listener and its process generation revision.
      * @mode emit
      */
     'imRuntime/changed'(change: ImRuntimeChange): void
@@ -145,6 +146,8 @@ export interface ImRuntimeService {
   queryHistory(request: ImHistoryQueryRequest): ImHistoryPage
   /** @param request - scope and maximum pending live messages. @returns oldest received rows. */
   pendingInbound(request: ImPendingInboundRequest): readonly ImInboundMessageView[]
+  /** @param scope - complete conversation identity. @returns frozen Agent task assignment, or absence before admission. */
+  getAgentTask(scope: ImDeliveryScope): ImAgentTaskView | undefined
   /** @param scope - complete conversation identity. @param messageId - stored inbound identity. @returns source for an existing Session user/message event. */
   messageSource(scope: ImDeliveryScope, messageId: ImMessageId): ImMessageSource
   /** @param scope - complete conversation identity. @param messageId - stored inbound identity. @returns identified Session user message with durable IM source. */

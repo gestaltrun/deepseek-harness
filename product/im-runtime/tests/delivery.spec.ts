@@ -117,6 +117,32 @@ describe('inbound delivery', () => {
     expect(ctx.imRuntime.queryHistory({ scope, limit: 10 }).items).toHaveLength(3)
   })
 
+  it('monotonically merges later provider mention evidence without reopening a submitted message', async () => {
+    const { ctx } = await boot(undefined, true)
+    const { scope } = await configured(ctx)
+    const first = await ctx.imRuntime.ingestInboundPage({
+      operationId: deliveryOperation('all-group-frame'), scope, observedCursor: null, nextCursor: null,
+      messages: [external('shared-message', '2026-09-14T01:00:00.000Z')],
+    })
+    const message = first.messages[0]!
+    const sessionId = SessionId('mention-session')
+    await ctx.imRuntime.markSubmitted({ scope, messageIds: [message.messageId], sessionId })
+
+    const enriched = await ctx.imRuntime.ingestInboundPage({
+      operationId: deliveryOperation('at-me-frame'), scope, observedCursor: null, nextCursor: null,
+      messages: [{ ...external('shared-message', '2026-09-14T01:00:00.000Z'), mentionedConfiguredAccount: true }],
+    })
+
+    expect(enriched).toMatchObject({ acceptedCount: 0, duplicateCount: 1, evidenceMergedCount: 1 })
+    expect(enriched.messages).toMatchObject([{
+      messageId: message.messageId,
+      mentionedConfiguredAccount: true,
+      stage: 'submitted',
+      submission: { sessionId },
+    }])
+    expect(ctx.imRuntime.pendingInbound({ scope, limit: 10 })).toEqual([])
+  })
+
   it('keeps page receipts, deduplication, and cursors across restart', async () => {
     const first = await boot()
     const { account, scope } = await configured(first.ctx)
