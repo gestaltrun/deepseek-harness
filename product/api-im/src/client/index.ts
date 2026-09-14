@@ -9,15 +9,19 @@ import type {
   ImConfigurationReplacement, ImRemoveSimulationTargetRequest, ImRouteBatchRequest,
   ImRouteOperationQueryRequest, ImSaveSimulationTargetRequest, ImSetAccountPausedRequest,
   ImTargetOperationQueryRequest,
+  ImDeliveryFollowRequest,
 } from '../types.ts'
 import { ImConfigurationModel } from './model.ts'
 import type { ImConfigurationState } from './model.ts'
 import { ImAccountCandidatesModel } from './candidates.ts'
 import type { ImAccountCandidatesSource } from './candidates.ts'
+import { ImDeliveryReader } from './delivery.ts'
+import type { ImDeliverySource } from './delivery.ts'
 
 export type * from '../types.ts'
 export type { ImConfigurationState } from './model.ts'
 export type { ImAccountCandidateState, ImAccountCandidatesSource, ImAccountCandidatesState } from './candidates.ts'
+export type { ImDeliveryState, ImDeliverySource } from './delivery.ts'
 export type {} from '@gestaltrun/dsh-api-im/remote'
 
 /** Generated IM configuration commands on the active Client connection. */
@@ -35,6 +39,8 @@ export interface ImConfigurationSource {
 export interface IImClient {
   readonly configuration: ImConfigurationSource
   readonly accountCandidates: ImAccountCandidatesSource
+  /** @param request - immutable authoritative scope and selected pages. @returns reader; the caller disposes it when navigation changes. */
+  watchDelivery(request: ImDeliveryFollowRequest): ImDeliverySource
   /** @param platform - platform selected for setup. @param signal - caller cancellation. @returns safe available identities. */
   listAccountCandidates(platform: ImPlatform, signal?: AbortSignal): ReturnType<ImRemote['listAccountCandidates']>
   /** @param request - write-only setup fields. @param signal - caller cancellation. @returns safe Host account facts. */
@@ -67,6 +73,7 @@ class ImClient extends Service implements IImClient {
   private readonly remote: ImRemote
   private readonly candidates: ImAccountCandidatesModel
   readonly accountCandidates: ImAccountCandidatesSource
+  private readonly readers = new Set<ImDeliverySource>()
 
   constructor(ctx: Context) {
     super(ctx, 'im')
@@ -91,9 +98,22 @@ class ImClient extends Service implements IImClient {
     ctx.effect(() => async () => {
       this.model.dispose()
       this.candidates.dispose()
+      await Promise.all([...this.readers].map(reader => reader.dispose()))
+      this.readers.clear()
       await control.dispose()
     }, 'im-client: configuration follow')
     control.start()
+  }
+
+  watchDelivery(request: ImDeliveryFollowRequest): ImDeliverySource {
+    const reader = new ImDeliveryReader(this.ctx.remote, request)
+    const source: ImDeliverySource = {
+      getSnapshot: reader.getSnapshot,
+      subscribe: reader.subscribe,
+      dispose: async () => { this.readers.delete(source); await reader.dispose() },
+    }
+    this.readers.add(source)
+    return source
   }
 
   listAccountCandidates(platform: ImPlatform, signal?: AbortSignal): ReturnType<ImRemote['listAccountCandidates']> {

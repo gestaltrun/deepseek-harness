@@ -11,10 +11,12 @@ import type {
   ImSaveSimulationTargetRequest, ImSetAccountPausedRequest,
   ImSimulationTargetMutationResult, ImSimulationTargetOperationQuery,
   ImTargetOperationQueryRequest,
+  ImDeliveryFollowFrame, ImDeliveryFollowRequest, ImHistoryQueryRequest, ImHistoryPage, ImOutboundQueryRequest, ImOutboundPage,
 } from './types.ts'
 import { SnapshotFeed } from './snapshot-feed.ts'
 import { applyRouteBatch } from './route-batch.ts'
 import { configurationResult } from './configuration-error.ts'
+import { ImDeliveryFeed } from './delivery-feed.ts'
 
 export type * from './types.ts'
 
@@ -29,6 +31,7 @@ declare module '@deepseek-ai/cordis' {
 export class ImApi extends TypertRemoteService {
   static inject = ['imRuntime']
   private readonly feed: SnapshotFeed<ImRuntimeSnapshot>
+  private readonly delivery: ImDeliveryFeed
 
   /** @param ctx - Host context containing the configured IM runtime. */
   constructor(ctx: Context) {
@@ -37,7 +40,8 @@ export class ImApi extends TypertRemoteService {
       snapshot: () => ctx.imRuntime.snapshot(),
       subscribe: listener => ctx.imRuntime.subscribe(listener),
     })
-    ctx.effect(() => () => { this.feed.dispose() }, 'im-api: configuration subscriptions')
+    this.delivery = new ImDeliveryFeed(ctx.imRuntime)
+    ctx.effect(() => () => { this.feed.dispose(); this.delivery.dispose() }, 'im-api: subscriptions')
   }
 
   /** @returns current safe account, route, and target records. */
@@ -54,6 +58,24 @@ export class ImApi extends TypertRemoteService {
   @Remote({ mode: 'stream' })
   follow(signal: AbortSignal): AsyncIterable<ImConfigurationFrame> {
     return this.feed.follow(signal)
+  }
+
+  /** @param request - complete scope and bounded history page cursor. @returns durable inbound messages in ascending order. */
+  @Remote('history')
+  history(request: ImHistoryQueryRequest): Promise<ImHistoryPage> {
+    return configurationResult(() => this.ctx.imRuntime.queryHistory(request))
+  }
+
+  /** @param request - complete scope and independent outbox page cursor. @returns durable outbound facts in ascending order. */
+  @Remote('outbound')
+  outbound(request: ImOutboundQueryRequest): Promise<ImOutboundPage> {
+    return configurationResult(() => this.ctx.imRuntime.queryOutbound(request))
+  }
+
+  /** @param request - complete real or simulation scope and window size. @param signal - generation cancellation. @returns scope-isolated history and outbox replacements. */
+  @Remote({ mode: 'stream' })
+  followDelivery(request: ImDeliveryFollowRequest, signal: AbortSignal): AsyncIterable<ImDeliveryFollowFrame> {
+    return this.delivery.follow(request, signal)
   }
 
   /**

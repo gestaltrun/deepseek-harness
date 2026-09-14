@@ -2,6 +2,7 @@
 import type {
   ImAccountId, ImCreateRouteRequest, ImDeleteRouteRequest, ImOperationId,
   ImRebindRouteRequest, ImRouteMutationResult, ImRuntimeSnapshot, ImSaveRouteRequest,
+  ImDeliveryScope, ImConversationCursor, ImHistoryPage, ImOutboundPage,
 } from '@gestaltrun/dsh-im-runtime/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 
@@ -35,6 +36,27 @@ export interface ImConfigurationReplacement {
 
 /** One ordered frame in a configuration follow generation. */
 export type ImConfigurationFrame = ImConfigurationBaseline | ImConfigurationReplacement
+
+/** Bounded latest history window for one complete conversation identity. */
+export interface ImDeliveryFollowRequest {
+  readonly scope: ImDeliveryScope
+  readonly limit: number
+  readonly inboundBeforeSequenceNumber?: number
+  readonly outboundBeforeSequenceNumber?: number
+}
+
+/** Latest inbound and outbound pages; numeric cursors remain independent. */
+export interface ImDeliverySnapshot {
+  readonly scope: ImDeliveryScope
+  readonly cursor: ImConversationCursor
+  readonly inbound: ImHistoryPage
+  readonly outbound: ImOutboundPage
+}
+
+/** Opening or replacement delivery window within one follow generation. */
+export type ImDeliveryFollowFrame =
+  | { readonly type: 'baseline'; readonly sequence: number; readonly value: ImDeliverySnapshot }
+  | { readonly type: 'replace'; readonly sequence: number; readonly value: ImDeliverySnapshot }
 
 /** Explicit operation intent; only rebind carries a new owner for an existing route. */
 export type ImRouteOperation =
