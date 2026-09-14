@@ -1,5 +1,5 @@
 /** Independent route mutation dispatch retains every target's outcome. */
-import type { ImRuntimeService } from '@gestaltrun/dsh-im-runtime'
+import { ImRuntimeError, type ImRuntimeService } from '@gestaltrun/dsh-im-runtime'
 import type { ImRouteBatchItem, ImRouteBatchRequest, ImRouteBatchResult, ImRouteOperation } from './types.ts'
 
 type RouteRuntime = Pick<ImRuntimeService, 'createRoute' | 'saveRoute' | 'rebindRoute' | 'deleteRoute'>
@@ -26,9 +26,13 @@ export async function applyRouteBatch(
     try {
       const result = await dispatch(runtime, operation)
       items.push({ state: 'known', accountId, result })
-    } catch {
-      // A runtime rejection does not establish whether its durable update committed.
-      items.push({ state: 'unknown', accountId, operationId })
+    } catch (error) {
+      if (error instanceof ImRuntimeError) {
+        items.push({ state: 'rejected', accountId, operationId, code: error.code, message: error.message })
+      } else {
+        // An unexpected failure does not establish whether its durable update committed.
+        items.push({ state: 'unknown', accountId, operationId })
+      }
     }
   }
   return { items }

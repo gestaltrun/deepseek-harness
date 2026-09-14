@@ -21,7 +21,7 @@ kind: "package-plugin"
 
 ## Configuration API
 
-Host 入口依赖 `imRuntime`，提供 `im` Remote 命名空间。账号接入将只写凭据传给运行时，返回安全的供应方事实。路由创建、编辑、显式改绑、删除和回执查询复用运行时请求类型。普通编辑不能转移归属。
+Host 入口依赖 `imRuntime`，提供 `im` Remote 命名空间。账号接入将只写凭据传给运行时，返回安全的供应方事实。路由创建、编辑、显式改绑、删除和回执查询复用运行时请求类型。普通编辑不能转移归属。已定义的运行时错误使用 `im/configuration`，并在 `details.code` 保留稳定的领域错误码；未定义的供应方异常仍由 Gateway 脱敏。
 
 路由批次保留每个操作身份与结果。各目标独立提交。拒绝或冲突回执与结果未知的操作保持区分；未知操作须先查询，再重试。模拟目标命令使用已观察版本，并提供自己的回执查询。
 
@@ -33,7 +33,7 @@ Client 入口通过公开 Gateway 挂载自身生成的 contribution。每个 fo
 
 ## Build inputs
 
-Host 与 Client 独立编译。Host 声明及 JavaScript 先于 `lib/typert.host.*` 和 `lib/typert.remote-client.*` 生成；Client 编译消费这些生成声明。打包的 Client 请求共享 Cordis、Client store 和 Gateway 身份。生成器与安装检查由产品组合负责；包内定向测试覆盖 follow 顺序、取消、替换和独立批次结果。
+Host 与 Client 独立编译。Host 声明及 JavaScript 先于 `lib/typert.host.*` 和 `lib/typert.remote-client.*` 生成；Client 编译消费这些生成声明。打包的 Client 请求共享 Cordis、Client store 和 Gateway 身份。生成器与安装检查由产品组合负责。包内测试覆盖 follow 顺序和独立结果；构建后的 API smoke 通过仅供配置测试的 Provider，驱动真实 Gateway 调用、JSON 持久化、重连、迟到响应和新进程恢复。
 
 ## Model Experience
 

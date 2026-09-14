@@ -14,6 +14,7 @@ import type {
 } from './types.ts'
 import { SnapshotFeed } from './snapshot-feed.ts'
 import { applyRouteBatch } from './route-batch.ts'
+import { configurationResult } from './configuration-error.ts'
 
 export type * from './types.ts'
 
@@ -63,7 +64,7 @@ export class ImApi extends TypertRemoteService {
    */
   @Remote('listAccountCandidates')
   listAccountCandidates(platform: ImPlatform, signal: AbortSignal): Promise<readonly ImAccountCandidate[]> {
-    return this.ctx.imRuntime.listAccountCandidates(platform, signal)
+    return configurationResult(() => this.ctx.imRuntime.listAccountCandidates(platform, signal))
   }
 
   /**
@@ -74,37 +75,37 @@ export class ImApi extends TypertRemoteService {
    */
   @Remote('connectAccount')
   connectAccount(request: ImAccountSetupRequest, signal: AbortSignal): Promise<ImAccountView> {
-    return this.ctx.imRuntime.addAccount(request, signal)
+    return configurationResult(() => this.ctx.imRuntime.addAccount(request, signal))
   }
 
   /** @param request - observed account revision and desired pause state. @returns durable receipt. */
   @Remote('setAccountPaused')
   setAccountPaused(request: ImSetAccountPausedRequest): Promise<ImAccountMutationResult> {
-    return this.ctx.imRuntime.setAccountPaused(request)
+    return configurationResult(() => this.ctx.imRuntime.setAccountPaused(request))
   }
 
   /** @param request - new route tuple and owner. @returns durable receipt or conflict. */
   @Remote('createRoute')
   createRoute(request: ImCreateRouteRequest): Promise<ImRouteMutationResult> {
-    return this.ctx.imRuntime.createRoute(request)
+    return configurationResult(() => this.ctx.imRuntime.createRoute(request))
   }
 
   /** @param request - existing route revision and behavior, without ownership fields. @returns durable receipt. */
   @Remote('saveRoute')
   saveRoute(request: ImSaveRouteRequest): Promise<ImRouteMutationResult> {
-    return this.ctx.imRuntime.saveRoute(request)
+    return configurationResult(() => this.ctx.imRuntime.saveRoute(request))
   }
 
   /** @param request - explicitly confirmed source owner/revision and new owner. @returns durable receipt. */
   @Remote('rebindRoute')
   rebindRoute(request: ImRebindRouteRequest): Promise<ImRouteMutationResult> {
-    return this.ctx.imRuntime.rebindRoute(request)
+    return configurationResult(() => this.ctx.imRuntime.rebindRoute(request))
   }
 
   /** @param request - route revision and owner observed before confirmation. @returns durable receipt. */
   @Remote('deleteRoute')
   deleteRoute(request: ImDeleteRouteRequest): Promise<ImRouteMutationResult> {
-    return this.ctx.imRuntime.deleteRoute(request)
+    return configurationResult(() => this.ctx.imRuntime.deleteRoute(request))
   }
 
   /**
@@ -120,26 +121,26 @@ export class ImApi extends TypertRemoteService {
 
   /** @param request - owning account and operation identity. @returns stored outcome or explicit absence. */
   @Remote('queryRouteOperation')
-  queryRouteOperation(request: ImRouteOperationQueryRequest): ImRouteOperationQuery {
-    return this.ctx.imRuntime.queryRouteOperation(request.accountId, request.operationId)
+  queryRouteOperation(request: ImRouteOperationQueryRequest): Promise<ImRouteOperationQuery> {
+    return configurationResult(() => this.ctx.imRuntime.queryRouteOperation(request.accountId, request.operationId))
   }
 
   /** @param request - target route and expected current target revision. @returns durable outcome. */
   @Remote('saveSimulationTarget')
   saveSimulationTarget(request: ImSaveSimulationTargetRequest): Promise<ImSimulationTargetMutationResult> {
-    return this.ctx.imRuntime.saveSimulationTarget(request)
+    return configurationResult(() => this.ctx.imRuntime.saveSimulationTarget(request))
   }
 
   /** @param request - workspace and observed target revision. @returns durable outcome. */
   @Remote('removeSimulationTarget')
   removeSimulationTarget(request: ImRemoveSimulationTargetRequest): Promise<ImSimulationTargetMutationResult> {
-    return this.ctx.imRuntime.removeSimulationTarget(request)
+    return configurationResult(() => this.ctx.imRuntime.removeSimulationTarget(request))
   }
 
   /** @param request - workspace and operation identity. @returns stored outcome or explicit absence. */
   @Remote('querySimulationTargetOperation')
-  querySimulationTargetOperation(request: ImTargetOperationQueryRequest): ImSimulationTargetOperationQuery {
-    return this.ctx.imRuntime.querySimulationTargetOperation(request.workspaceId, request.operationId)
+  querySimulationTargetOperation(request: ImTargetOperationQueryRequest): Promise<ImSimulationTargetOperationQuery> {
+    return configurationResult(() => this.ctx.imRuntime.querySimulationTargetOperation(request.workspaceId, request.operationId))
   }
 }
 

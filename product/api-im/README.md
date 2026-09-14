@@ -21,7 +21,7 @@ This package connects the product IM runtime to Client configuration objects. Th
 
 ## Configuration API
 
-The Host entry requires `imRuntime` and exposes the `im` Remote namespace. Account setup passes write-only credentials to the runtime and returns safe provider facts. Route creation, editing, explicit rebinding, deletion, and receipt lookup reuse runtime request types. Ordinary editing cannot transfer ownership.
+The Host entry requires `imRuntime` and exposes the `im` Remote namespace. Account setup passes write-only credentials to the runtime and returns safe provider facts. Route creation, editing, explicit rebinding, deletion, and receipt lookup reuse runtime request types. Ordinary editing cannot transfer ownership. Documented runtime failures use `im/configuration` with their stable domain code in `details.code`; unexpected provider exceptions remain subject to Gateway sanitization.
 
 A route batch preserves every operation identity and outcome. Targets commit independently. Rejected or conflicting receipts remain distinct from operations whose result is unknown; an unknown operation requires lookup before retry. Simulation-target commands use observed revisions and have their own receipt lookup.
 
@@ -33,7 +33,7 @@ The observable has stable identity, batches structural notifications, and remove
 
 ## Build inputs
 
-Host and Client compile independently. Host declarations and JavaScript precede generation of `lib/typert.host.*` and `lib/typert.remote-client.*`; Client compilation consumes those generated declarations. The packaged Client requests the shared Cordis, Client store, and Gateway identities. Generator and installation checks belong to the product composition; focused package tests exercise follow ordering, cancellation, replacement, and independent batch results.
+Host and Client compile independently. Host declarations and JavaScript precede generation of `lib/typert.host.*` and `lib/typert.remote-client.*`; Client compilation consumes those generated declarations. The packaged Client requests the shared Cordis, Client store, and Gateway identities. Generator and installation checks belong to the product composition. Package tests cover follow ordering and independent results; the built API smoke drives real Gateway calls, JSON persistence, reconnection, delayed responses, and a fresh recovery process through a configuration-only test provider.
 
 ## Model Experience
 
