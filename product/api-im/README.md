@@ -29,7 +29,7 @@ A route batch preserves every operation identity and outcome. Targets commit ind
 
 The Client entry mounts its own generated contribution through the public Gateway. Each follow generation starts with a complete baseline and then ordered complete replacements. Slow readers coalesce invalidations. Reconnection retains the last usable configuration until a new baseline arrives. Unary responses return operation outcomes and never overwrite newer stream data.
 
-The observable has stable identity, batches structural notifications, and removes observers during disposal. Connection cancellation closes the Host subscription. UI drafts and selection belong to the consuming UI plugin.
+The observable has stable identity, batches structural notifications, and removes observers during disposal. Connection cancellation closes the Host subscription. Candidate discovery has an independent Client object for each platform; cancelled or superseded reads cannot replace newer choices. UI drafts and selection belong to the consuming UI plugin.
 
 ## Build inputs
 

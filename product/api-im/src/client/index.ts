@@ -12,9 +12,12 @@ import type {
 } from '../types.ts'
 import { ImConfigurationModel } from './model.ts'
 import type { ImConfigurationState } from './model.ts'
+import { ImAccountCandidatesModel } from './candidates.ts'
+import type { ImAccountCandidatesSource } from './candidates.ts'
 
 export type * from '../types.ts'
 export type { ImConfigurationState } from './model.ts'
+export type { ImAccountCandidateState, ImAccountCandidatesSource, ImAccountCandidatesState } from './candidates.ts'
 export type {} from '@gestaltrun/dsh-api-im/remote'
 
 /** Generated IM configuration commands on the active Client connection. */
@@ -31,6 +34,7 @@ export interface ImConfigurationSource {
 /** Configuration object consumed by product UI adapters. */
 export interface IImClient {
   readonly configuration: ImConfigurationSource
+  readonly accountCandidates: ImAccountCandidatesSource
   /** @param platform - platform selected for setup. @param signal - caller cancellation. @returns safe available identities. */
   listAccountCandidates(platform: ImPlatform, signal?: AbortSignal): ReturnType<ImRemote['listAccountCandidates']>
   /** @param request - write-only setup fields. @param signal - caller cancellation. @returns safe Host account facts. */
@@ -61,10 +65,14 @@ class ImClient extends Service implements IImClient {
   private readonly model = new ImConfigurationModel()
   readonly configuration: ImConfigurationSource = this.model
   private readonly remote: ImRemote
+  private readonly candidates: ImAccountCandidatesModel
+  readonly accountCandidates: ImAccountCandidatesSource
 
   constructor(ctx: Context) {
     super(ctx, 'im')
     this.remote = ctx.remote.im
+    this.candidates = new ImAccountCandidatesModel((platform, signal) => this.remote.listAccountCandidates(platform, signal))
+    this.accountCandidates = this.candidates
     const stream = ctx.remote.$stream<ImConfigurationFrame>({
       name: 'IM configuration',
       open: signal => this.remote.follow(signal),
@@ -82,13 +90,14 @@ class ImClient extends Service implements IImClient {
     })
     ctx.effect(() => async () => {
       this.model.dispose()
+      this.candidates.dispose()
       await control.dispose()
     }, 'im-client: configuration follow')
     control.start()
   }
 
   listAccountCandidates(platform: ImPlatform, signal?: AbortSignal): ReturnType<ImRemote['listAccountCandidates']> {
-    return this.remote.listAccountCandidates(platform, signal)
+    return this.candidates.load(platform, signal)
   }
 
   connectAccount(request: ImAccountSetupRequest, signal?: AbortSignal): ReturnType<ImRemote['connectAccount']> {
