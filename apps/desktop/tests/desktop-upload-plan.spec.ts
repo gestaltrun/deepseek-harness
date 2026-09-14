@@ -115,7 +115,7 @@ describe('desktop upload plan', () => {
       publicUrl: 'https://desktop-updates.example.com/desktop/test/mac-arm64/',
       bucket: OSS_BUCKET,
       endpoint: OSS_ENVIRONMENT.DESKTOP_RELEASE_OSS_ENDPOINT,
-      region: OSS_ENVIRONMENT.DESKTOP_RELEASE_ALIYUN_REGION,
+      region: `oss-${OSS_ENVIRONMENT.DESKTOP_RELEASE_ALIYUN_REGION}`,
     })
     expect(plan.artifacts.map(artifact => artifact.filename)).toEqual([
       'DeepSeek-Gestalt-1.2.3-arm64.dmg',

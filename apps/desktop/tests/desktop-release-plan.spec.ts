@@ -14,7 +14,7 @@ function uploadPlan(target: DesktopUploadPlan['target'], version = '1.2.3'): Des
     publicUrl: `https://updates.example.com/desktop/stable/${target}/`,
     bucket: 'desktop-releases',
     endpoint: 'https://oss-cn-hangzhou.aliyuncs.com',
-    region: 'cn-hangzhou',
+    region: 'oss-cn-hangzhou',
     artifacts: [{
       path: `/artifacts/${filename}`,
       filename,

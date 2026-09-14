@@ -161,6 +161,13 @@ function objectPrefix(value, name) {
   return normalized
 }
 
+function ossRegion(value) {
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)+$/u.test(value) || value.startsWith('oss-')) {
+    throw new Error(`desktop auto-update: ${ALIYUN_REGION_ENV} must use the Alibaba Cloud region ID form, such as "cn-hangzhou"`)
+  }
+  return `oss-${value}`
+}
+
 /**
  * Resolve the public updater URL for one release target.
  * @param {NodeJS.ProcessEnv} env - Packaging or upload environment.
@@ -204,6 +211,6 @@ export function resolveDesktopUploadConfig(env, platform, arch) {
     )}/${update.target}`,
     bucket: requiredEnvironmentValue(env, OSS_BUCKET_ENV),
     endpoint: httpsEndpoint(requiredEnvironmentValue(env, OSS_ENDPOINT_ENV), OSS_ENDPOINT_ENV),
-    region: requiredEnvironmentValue(env, ALIYUN_REGION_ENV),
+    region: ossRegion(requiredEnvironmentValue(env, ALIYUN_REGION_ENV)),
   }
 }

@@ -29,7 +29,7 @@ describe('desktop auto-update environment', () => {
     }, 'darwin', 'arm64')).toMatchObject({
       bucket: 'desktop-releases',
       endpoint: 'https://oss-cn-hangzhou.aliyuncs.com',
-      region: 'cn-hangzhou',
+      region: 'oss-cn-hangzhou',
       keyPrefix: 'desktop/test/mac-arm64',
     })
   })
@@ -83,6 +83,13 @@ describe('desktop auto-update environment', () => {
       DESKTOP_RELEASE_TEST_FEED_URL: 'https://desktop-updates.example.com/desktop/test',
       DESKTOP_RELEASE_TEST_OSS_PREFIX: 'desktop/../stable',
     }, 'darwin', 'arm64')).toThrow(/OSS object prefix/u)
+    expect(() => resolveDesktopUploadConfig({
+      DESKTOP_RELEASE_TEST_FEED_URL: 'https://desktop-updates.example.com/desktop/test',
+      DESKTOP_RELEASE_TEST_OSS_PREFIX: 'desktop/test',
+      DESKTOP_RELEASE_OSS_BUCKET: 'desktop-releases',
+      DESKTOP_RELEASE_OSS_ENDPOINT: 'https://oss-cn-hangzhou.aliyuncs.com',
+      DESKTOP_RELEASE_ALIYUN_REGION: 'oss-cn-hangzhou',
+    }, 'darwin', 'arm64')).toThrow(/Alibaba Cloud region ID form/u)
   })
 
   it('rejects unknown deployments and targets', () => {
