@@ -8,6 +8,7 @@ import type { AccountPoolCopy } from './quota-display.ts'
 import css from './LoginModal.module.css'
 import { AccountDialog } from './AccountDialog.tsx'
 
+/** Enrollment state and actions; credential drafts remain inside the dialog. */
 export interface LoginModalProps {
   t: AccountPoolCopy
   initialProvider: AccountPoolLoginKind
@@ -22,6 +23,11 @@ export interface LoginModalProps {
   onSubmitGlmKey: (input: { apiKey: string; site: 'cn' | 'international'; organization?: string; project?: string }) => void
 }
 
+/**
+ * Present provider enrollment and Host-owned authorization progress.
+ * @param props - current login, submission callbacks, and localized copy.
+ * @returns the provider enrollment modal.
+ */
 export function LoginModal({
   t, initialProvider, login, onClose, onStart, onCancel, onOpenExternal, onSubmitCallback, onSubmitGlmKey, busy = false, error,
 }: LoginModalProps) {

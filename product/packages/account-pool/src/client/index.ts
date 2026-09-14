@@ -33,8 +33,16 @@ export const inject = ['slots', 'locale', 'remote', 'remote.llm']
  */
 export async function apply(ctx: Context): Promise<void> {
   const unmount = await ctx.remote.$mount(remoteContribution)
-  const controller = new AccountPoolClientController(ctx.remote, { download: downloadAccount, openExternal: openAuthorization })
-  ctx.effect(() => async () => { await controller.dispose(); await unmount() }, 'account-pool Client lifetime')
+  let controller: AccountPoolClientController
+  try {
+    controller = new AccountPoolClientController(ctx.remote, { download: downloadAccount, openExternal: openAuthorization })
+  } catch (error) {
+    await unmount()
+    throw error
+  }
+  ctx.effect(() => async () => {
+    try { await controller.dispose() } finally { await unmount() }
+  }, 'account-pool Client lifetime')
   ctx.effect(() => ctx.locale.register('accountPool', { zh, en }), 'account-pool locale')
   const t = ctx.locale.bind('accountPool')
   const view = createAccountPoolViewStore()

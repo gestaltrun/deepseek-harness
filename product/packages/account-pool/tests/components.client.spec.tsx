@@ -69,6 +69,15 @@ function deferred<T>() {
 }
 
 describe('account pool Settings', () => {
+  it.each(['en', 'zh'] as const)('retains the assembled %s account-management copy', async locale => {
+    const { container } = mount(ready, commands(), locale)
+    const output = {
+      text: container.textContent,
+      actions: [...container.querySelectorAll('button')].map(button => button.getAttribute('aria-label') ?? button.textContent),
+    }
+    await expect(JSON.stringify(output, undefined, 2) + '\n').toMatchFileSnapshot(`./expected/account-pool.${locale}.json`)
+  })
+
   it('renders without a Desktop bridge and preserves global and individual card faces', () => {
     mount()
     expect(screen.getByText(en.title)).toBeTruthy()
@@ -89,7 +98,7 @@ describe('account pool Settings', () => {
     mount(ready, commands(), 'zh')
     expect(screen.getByText(zh.title)).toBeTruthy()
     fireEvent.click(screen.getByText(zh.addAccount))
-    for (const name of ['CLAUDE', 'CODEX', 'ANTIGRAVITY', 'KIMI', 'XAI', 'GLM']) expect(screen.getByRole('button', { name, exact: true })).toBeTruthy()
+    for (const name of ['ANTHROPIC', 'CODEX', 'ANTIGRAVITY', 'KIMI', 'XAI', 'GLM']) expect(screen.getByRole('button', { name, exact: true })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'CODEX', exact: true }))
     expect(screen.getByRole('button', { name: zh.startLogin.replace('{provider}', 'CODEX') })).toBeTruthy()
   })

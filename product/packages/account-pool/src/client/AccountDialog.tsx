@@ -12,7 +12,11 @@ interface AccountDialogProps {
   onClose: () => void
 }
 
-/** Render one account-management dialog. */
+/**
+ * Render one account-management dialog with the shared Modal behavior.
+ * @param props - localized title, required close label, content, and dismissal.
+ * @returns the shared modal.
+ */
 export function AccountDialog({ title, description, closeLabel, children, onClose }: AccountDialogProps) {
   return <Modal open onClose={onClose} title={title} closeLabel={closeLabel} {...description === undefined ? {} : { description }} className={clsx(css.dialog)}>{children}</Modal>
 }

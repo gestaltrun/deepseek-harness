@@ -1,4 +1,5 @@
 /** Account-pool Settings and quota copy. */
+/** Chinese Settings copy. */
 export const zh = {
   'settingsNav': '账号池',
   'title': '内置账号池',
@@ -110,7 +111,7 @@ export const zh = {
   'placeholderNote': '输入备注信息，例如: 张三的账号',
   'save': '保存',
 
-  "provider.anthropic": "CLAUDE",
+  "provider.anthropic": "ANTHROPIC",
   "provider.codex": "CODEX",
   "provider.antigravity": "ANTIGRAVITY",
   "provider.kimi": "KIMI",
@@ -152,6 +153,7 @@ export const zh = {
 /** Keys owned by the account-pool locale namespace. */
 export type AccountPoolKey = keyof typeof zh
 
+/** English Settings copy, paired with the same keys. */
 export const en: Record<AccountPoolKey, string> = {
   'settingsNav': 'Account pool',
   'title': 'Built-in account pool',
@@ -257,12 +259,12 @@ export const en: Record<AccountPoolKey, string> = {
   "fieldHeadersTip": "Keep, replace, or remove existing headers. Add new headers using JSON below.",
   'headersInvalid': 'Custom headers must be a JSON object with string values.',
   'fieldNote': 'Note (note)',
-  'fieldNoteTip': 'Optional label for ownership or use; leave empty to skip writing.',
+  'fieldNoteTip': 'Optional label for account ownership or use.',
   'placeholderPriority': 'For example: 10 or -1',
   'placeholderWildcards': 'One rule per line, for example gpt-5-*',
   'placeholderNote': 'Optional note, for example: Zhang San’s account',
   'save': 'Save',
-  "provider.anthropic": "CLAUDE",
+  "provider.anthropic": "ANTHROPIC",
   "provider.codex": "CODEX",
   "provider.antigravity": "ANTIGRAVITY",
   "provider.kimi": "KIMI",

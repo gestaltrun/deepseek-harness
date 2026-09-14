@@ -1,11 +1,18 @@
-/** Original CLIProxyAPI management-center provider marks. */
+/** Provider marks used by account cards and enrollment. */
 import clsx from 'clsx'
 import css from './ProviderIcon.module.css'
 
+/** Enrollment providers represented in the account roster filters. */
 export const PROVIDER_FILTERS = ['anthropic', 'antigravity', 'codex', 'xai', 'kimi', 'glm'] as const
 
+/** Known provider ids and extension-defined provider names. */
 export type AccountPoolProviderId = (typeof PROVIDER_FILTERS)[number] | 'all' | string
 
+/**
+ * Resolve product provider names while retaining unknown provider text.
+ * @param provider - provider discriminator from the account roster.
+ * @returns its display name.
+ */
 export function providerDisplayName(provider: string): string {
   switch (provider) {
     case 'anthropic': case 'claude': return 'Claude'
@@ -18,6 +25,11 @@ export function providerDisplayName(provider: string): string {
   }
 }
 
+/**
+ * Draw the provider mark with no independent accessible label.
+ * @param props - provider discriminator and optional layout class.
+ * @returns the decorative provider mark.
+ */
 export function ProviderIcon({ provider, className }: { provider: string; className?: string }) {
   const mark = markFor(provider)
   const tone = toneClass(provider)

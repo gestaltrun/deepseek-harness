@@ -16,6 +16,7 @@ import css from './AccountPool.module.css'
 import type { AccountPoolInjected } from './controller.ts'
 import type { createAccountPoolViewStore } from './view-store.ts'
 
+/** Framework-derived Settings inputs and account-management callbacks. */
 export type AccountPoolControlProps = PropsRuntime<'settings.section'>
   & PropsLocale<'accountPool'>
   & PropsStore<ReturnType<typeof createAccountPoolViewStore>>
@@ -34,6 +35,11 @@ interface OpenSettings {
   readonly error?: string
 }
 
+/**
+ * Render account enrollment, cards, and identity-scoped editing dialogs.
+ * @param props - account observations, Client actions, and viewing preferences.
+ * @returns the account-pool Settings section.
+ */
 export function AccountPoolControl({ t, useAccountPool, accountPoolActions: client, useStore, actions }: AccountPoolControlProps) {
   const snapshot = useAccountPool(value => value)
   const { face: globalFace, faceRevision: globalEpoch, filter } = useStore(value => value)

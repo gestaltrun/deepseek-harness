@@ -8,6 +8,7 @@ import { ProviderIcon, providerDisplayName } from './ProviderIcon.tsx'
 import { QuotaBarWithTimeline } from './QuotaBarWithTimeline.tsx'
 import css from './AccountCard.module.css'
 
+/** Redacted account data and the actions offered by one card. */
 export interface AccountCardProps {
   t: AccountPoolCopy
   item: AccountPoolAccount
@@ -24,6 +25,11 @@ export interface AccountCardProps {
   onEditSettings: (account: AccountPoolAccount) => void
 }
 
+/**
+ * Show account management or observed quota, preserving unknown and stale values.
+ * @param props - account, face commands, and supported management actions.
+ * @returns one account card.
+ */
 export function AccountCard({
   t, item, globalFace, globalEpoch, refreshingQuota = false, refreshingRoster = false,
   onToggleStatus, onRefreshQuota, onDelete,

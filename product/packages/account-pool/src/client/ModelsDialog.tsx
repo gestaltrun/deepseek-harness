@@ -8,6 +8,11 @@ import type { AccountPoolCopy } from './quota-display.ts'
 import css from './ModelsDialog.module.css'
 import poolCss from './AccountPool.module.css'
 
+/**
+ * Show account or provider-scoped model discovery without asserting authentication.
+ * @param props - model rows, discovery scope, localized copy, and dismissal.
+ * @returns the model directory dialog.
+ */
 export function ModelsDialog({
   t,
   name,

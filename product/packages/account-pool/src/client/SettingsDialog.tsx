@@ -1,4 +1,4 @@
-/** Auth-file settings dialog: original management-center fields, no secrets. */
+/** Redacted field reads and explicit account editing intents. */
 import clsx from 'clsx'
 import { useState } from 'react'
 import { Button, Input, Switch, writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -11,6 +11,7 @@ import type { AccountPoolCopy } from './quota-display.ts'
 import css from './LoginModal.module.css'
 import poolCss from './AccountPool.module.css'
 
+/** Identity-scoped field reads and mutation outcomes for an account dialog. */
 export interface SettingsDialogProps {
   t: AccountPoolCopy
   account: AccountPoolAccount
@@ -22,6 +23,11 @@ export interface SettingsDialogProps {
   onSave: (name: AccountPoolAccountName, fields: AccountPoolFieldPatch) => void
 }
 
+/**
+ * Wait for the named field read before allowing edits; failed saves retain the draft.
+ * @param props - account, field read, capabilities, and save outcome.
+ * @returns the field editor or its pending/error state.
+ */
 export function SettingsDialog(props: SettingsDialogProps) {
   const { t, account, details, onClose, error } = props
   if (details === undefined) {

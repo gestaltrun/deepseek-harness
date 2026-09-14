@@ -3,6 +3,7 @@ import clsx from 'clsx'
 import type { CSSProperties } from 'react'
 import css from './QuotaBarWithTimeline.module.css'
 
+/** Observed quota numbers and their localized presentation. */
 export interface QuotaBarWithTimelineProps {
   percentRemaining?: number
   timeRemainingPercent?: number
@@ -14,6 +15,11 @@ export interface QuotaBarWithTimelineProps {
   refreshing?: boolean
 }
 
+/**
+ * Draw a remaining-quota bar only for a reliable numeric sample.
+ * @param props - optional measurements and reliable/refreshing state.
+ * @returns the labeled track; unknown samples have no fill or needle.
+ */
 export function QuotaBarWithTimeline({
   percentRemaining,
   timeRemainingPercent,

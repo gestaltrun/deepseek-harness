@@ -5,11 +5,17 @@ import { Input } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { AccountPoolCopy } from './quota-display.ts'
 import css from './ExcludedModelsPicker.module.css'
 
+/** Model option retained even when an existing exclusion leaves the live catalog. */
 export interface ExcludedModelOption {
   readonly id: string
   readonly name?: string
 }
 
+/**
+ * Select exact model exclusions while preserving existing uncataloged ids.
+ * @param props - catalog, selected ids, supported-edit flag, and change callback.
+ * @returns the searchable exclusion control.
+ */
 export function ExcludedModelsPicker({
   t,
   models,
