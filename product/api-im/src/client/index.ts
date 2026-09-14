@@ -12,7 +12,8 @@ import type {
   ImTargetOperationQueryRequest,
   ImDeliveryFollowRequest,
   ImCreateSimulationInstanceRequest, ImInjectSimulationManagedHumanRequest, ImInjectSimulationMemberRequest,
-  ImSimulationInstanceId, ImSimulationSessionScope,
+  ImSimulationInstanceId,
+  ImSessionId,
 } from '../types.ts'
 import { ImConfigurationModel } from './model.ts'
 import type { ImConfigurationState } from './model.ts'
@@ -22,8 +23,6 @@ import { ImDeliveryReader } from './delivery.ts'
 import type { ImDeliverySource } from './delivery.ts'
 import { ImSimulationInstancesReader, ImSimulationSessionReader } from './simulation.ts'
 import type { ImSimulationInstancesSource, ImSimulationSessionSource } from './simulation.ts'
-
-type SessionId = ImSimulationSessionScope['sessionId']
 
 export type * from '../types.ts'
 export type { ImConfigurationState } from './model.ts'
@@ -51,7 +50,7 @@ export interface IImClient {
   /** @param request - immutable authoritative scope and selected pages. @returns reader; the caller disposes it when navigation changes. */
   watchDelivery(request: ImDeliveryFollowRequest): ImDeliverySource
   /** @param sessionId - exact Session selected by the app. @returns immutable binding reader; the caller disposes it on navigation. */
-  watchSimulationSession(sessionId: SessionId): ImSimulationSessionSource
+  watchSimulationSession(sessionId: ImSessionId): ImSimulationSessionSource
   /** @param platform - platform selected for setup. @param signal - caller cancellation. @returns safe available identities. */
   listAccountCandidates(platform: ImPlatform, signal?: AbortSignal): ReturnType<ImRemote['listAccountCandidates']>
   /** @param request - candidate-bound write-only fields. @param signal - caller cancellation. @returns safe verified identity and a short-lived Host setup identifier. */
@@ -85,7 +84,7 @@ export interface IImClient {
   /** @param instanceId - Host-minted identity. @returns durable state or absence. */
   getSimulationInstance(instanceId: ImSimulationInstanceId): ReturnType<ImRemote['getSimulationInstance']>
   /** @param sessionId - either Session in a pair. @returns Host-authoritative peer and delivery facts. */
-  scopeForSession(sessionId: SessionId): ReturnType<ImRemote['scopeForSession']>
+  scopeForSession(sessionId: ImSessionId): ReturnType<ImRemote['scopeForSession']>
   /** @param request - selected target inputs for the current simulated-user Session. @returns created pair. */
   createSimulationInstance(request: ImCreateSimulationInstanceRequest): ReturnType<ImRemote['createSimulationInstance']>
   /** @param request - allow-listed member input. @returns shared-path inbound message. */
@@ -152,7 +151,7 @@ class ImClient extends Service implements IImClient {
     control.start()
   }
 
-  watchSimulationSession(sessionId: SessionId): ImSimulationSessionSource {
+  watchSimulationSession(sessionId: ImSessionId): ImSimulationSessionSource {
     const reader = new ImSimulationSessionReader(this.ctx.remote, sessionId)
     const source: ImSimulationSessionSource = {
       getSnapshot: reader.getSnapshot,
@@ -232,7 +231,7 @@ class ImClient extends Service implements IImClient {
 
   listSimulationInstances(): ReturnType<ImRemote['listSimulationInstances']> { return this.remote.listSimulationInstances() }
   getSimulationInstance(instanceId: ImSimulationInstanceId): ReturnType<ImRemote['getSimulationInstance']> { return this.remote.getSimulationInstance(instanceId) }
-  scopeForSession(sessionId: SessionId): ReturnType<ImRemote['scopeForSession']> { return this.remote.scopeForSession(sessionId) }
+  scopeForSession(sessionId: ImSessionId): ReturnType<ImRemote['scopeForSession']> { return this.remote.scopeForSession(sessionId) }
   createSimulationInstance(request: ImCreateSimulationInstanceRequest): ReturnType<ImRemote['createSimulationInstance']> { return this.remote.createSimulationInstance(request) }
   injectSimulationMember(request: ImInjectSimulationMemberRequest): ReturnType<ImRemote['injectSimulationMember']> { return this.remote.injectSimulationMember(request) }
   injectSimulationManagedHuman(request: ImInjectSimulationManagedHumanRequest): ReturnType<ImRemote['injectSimulationManagedHuman']> { return this.remote.injectSimulationManagedHuman(request) }

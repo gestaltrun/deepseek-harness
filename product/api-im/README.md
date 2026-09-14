@@ -42,7 +42,7 @@ Provider admission, cursor commits, submission marking, send attempts, and recei
 
 ## Build inputs
 
-Host and Client compile independently. Host declarations and JavaScript precede generation of `lib/typert.host.*` and `lib/typert.remote-client.*`; Client compilation consumes those generated declarations. The packaged Client requests the shared Cordis, Client store, and Gateway identities. Generator and installation checks belong to the product composition. Package tests cover follow ordering and independent results; the built API smoke drives staged setup, lost confirmation replay, receipt queries, real Gateway calls, JSON persistence, reconnection, delayed responses, and a fresh recovery process through a configuration-only test provider.
+Host and Client compile independently. Host declarations and JavaScript precede generation of `lib/typert.host.*` and `lib/typert.remote-client.*`; Client compilation consumes those generated declarations. The simulation Session argument uses `ImSessionId` from the public `./types` leaf so fresh aggregate generation resolves the Remote type. The packaged Client requests the shared Cordis, Client store, and Gateway identities. Generator and installation checks belong to the product composition. Package tests cover follow ordering and independent results; the built API smoke drives staged setup, lost confirmation replay, receipt queries, real Gateway calls, JSON persistence, reconnection, delayed responses, and a fresh recovery process through a configuration-only test provider.
 
 ## Model Experience
 

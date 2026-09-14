@@ -17,13 +17,12 @@ import type {
   ImSimulationInstanceId, ImSimulationInstanceView, ImSimulationInstancesFrame, ImSimulationSessionFrame, ImSimulationSessionScope,
   ImCreateSimulationInstanceRequest, ImInjectSimulationMemberRequest, ImInjectSimulationManagedHumanRequest,
   ImInboundMessageView,
+  ImSessionId,
 } from './types.ts'
 import { SnapshotFeed } from './snapshot-feed.ts'
 import { applyRouteBatch } from './route-batch.ts'
 import { configurationResult } from './configuration-error.ts'
 import { ImDeliveryFeed } from './delivery-feed.ts'
-
-type SessionId = ImSimulationSessionScope['sessionId']
 
 export type * from './types.ts'
 
@@ -227,7 +226,7 @@ export class ImApi extends TypertRemoteService {
 
   /** @param sessionId - either side of a simulation pair. @returns Host-authoritative navigation and delivery facts. */
   @Remote('scopeForSession')
-  scopeForSession(sessionId: SessionId): ImSimulationSessionScope | undefined {
+  scopeForSession(sessionId: ImSessionId): ImSimulationSessionScope | undefined {
     return this.ctx.imRuntime.scopeForSession(sessionId)
   }
 
@@ -238,7 +237,7 @@ export class ImApi extends TypertRemoteService {
    * @returns complete binding baseline followed by durable instance replacements.
    */
   @Remote({ mode: 'stream' })
-  followSimulationSession(sessionId: SessionId, signal: AbortSignal): AsyncIterable<ImSimulationSessionFrame> {
+  followSimulationSession(sessionId: ImSessionId, signal: AbortSignal): AsyncIterable<ImSimulationSessionFrame> {
     const feed = new SnapshotFeed({
       snapshot: () => configurationResult(() => {
         const scope = this.ctx.imRuntime.scopeForSession(sessionId)
