@@ -16,7 +16,7 @@ const workspaceId = brandString<WorkspaceId>('workspace-a')
 const revision = brandString<ImRevision>('revision')
 const account = {
   id: accountId, platform: 'dingtalk' as const, displayName: 'Employee', identity: { platform: 'dingtalk' as const, profile: 'employee', corpId: 'corp', userId: 'employee', displayName: 'Employee' },
-  authorization: { state: 'ready' as const, checkedAt: '2026-09-14T00:00:00Z' }, listener: { state: 'stopped' as const, reason: 'no-enabled-route' as const }, paused: false, revision, createdAt: '2026-09-14T00:00:00Z', updatedAt: '2026-09-14T00:00:00Z',
+  authorization: { state: 'ready' as const, checkedAt: '2026-09-14T00:00:00Z' }, listener: { state: 'stopped' as const, reason: 'no-enabled-route' as const }, paused: false, connectionIntent: 'connected' as const, revision, createdAt: '2026-09-14T00:00:00Z', updatedAt: '2026-09-14T00:00:00Z',
 }
 const snapshot = (routes: readonly ImRouteView[] = []): ImRuntimeSnapshot => ({ revision: 1, accounts: [account], routes, simulationTargets: [] })
 const route = (id: string, target: ImRouteView['target']): ImRouteView => ({ id: brandString<ImRouteId>(id), accountId, platform: 'dingtalk', conversationKind: 'group', target, workspaceId: brandString<WorkspaceId>('workspace-b'), enabled: true, groupTrigger: { mention: true }, revision, createdAt: account.createdAt, updatedAt: account.updatedAt })

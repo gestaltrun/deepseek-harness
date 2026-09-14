@@ -20,7 +20,7 @@ const operationId = brandString<ImOperationId>('operation')
 const target = { workspaceId, accountId, routeId, revision, updatedAt: '2026-09-14T00:00:00Z' }
 const state: ImRuntimeSnapshot = {
   revision: 1,
-  accounts: [{ id: accountId, platform: 'dingtalk', displayName: 'Employee', identity: { platform: 'dingtalk', profile: 'employee', corpId: 'corp', userId: 'employee', displayName: 'Employee' }, authorization: { state: 'unchecked' }, listener: { state: 'stopped', reason: 'no-enabled-route' }, paused: false, revision, createdAt: target.updatedAt, updatedAt: target.updatedAt }],
+  accounts: [{ id: accountId, platform: 'dingtalk', displayName: 'Employee', identity: { platform: 'dingtalk', profile: 'employee', corpId: 'corp', userId: 'employee', displayName: 'Employee' }, authorization: { state: 'unchecked' }, listener: { state: 'stopped', reason: 'no-enabled-route' }, paused: false, connectionIntent: 'connected' as const, revision, createdAt: target.updatedAt, updatedAt: target.updatedAt }],
   routes: [{ id: routeId, accountId, workspaceId: otherWorkspaceId, platform: 'dingtalk', target: { kind: 'all' }, conversationKind: 'direct', enabled: false, revision, createdAt: target.updatedAt, updatedAt: target.updatedAt }],
   simulationTargets: [],
 }

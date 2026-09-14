@@ -18,6 +18,8 @@ const host = new Cordis.Context()
 const client = new Cordis.Context()
 const calls = []
 const heldPause = { received: Promise.withResolvers(), release: Promise.withResolvers() }
+const heldDisconnect = { received: Promise.withResolvers(), release: Promise.withResolvers() }
+let authorizationRefreshes = 0
 let apiFiber
 
 async function bootHost() {
@@ -39,6 +41,8 @@ async function bootHost() {
           authorization: { state: 'unchecked' },
           credentialRecord: { kind: 'grant', payload: { accessKeyId: request.accessKeyId, accessKeySecret: request.accessKeySecret } },
         }),
+        inspectAccount: async account => ({ authorization: account.authorization }),
+        refreshAccount: async () => { authorizationRefreshes++; return { authorization: { state: 'required', reason: 'expired', checkedAt: '2026-09-14T00:00:00Z' } } },
         discoverConversations: async () => ({ items: [] }),
         listen: async () => { throw new Error('Configuration fixture cannot listen') },
         send: async () => { throw new Error('Configuration fixture cannot send') },
@@ -83,6 +87,10 @@ async function bootClient() {
         }
         if (request.payload.args.request?.operations?.some(operation => operation.request.operationId === 'lost-save')) {
           throw new Error('Configuration smoke lost the committed response')
+        }
+        if (request.payload.args.request?.operationId === 'disconnect-old') {
+          heldDisconnect.received.resolve()
+          await heldDisconnect.release.promise
         }
         if (request.payload.args.request?.operationId === 'pause-old') {
           heldPause.received.resolve()
@@ -239,6 +247,30 @@ try {
     operationId: 'invalid-input', accountId, routeId: route.id, observedRevision: ownership.route.revision,
     enabled: 'invalid',
   } } }), error => error.code === 'gateway/input-invalid' && error.field === 'request')
+  const beforeDisconnect = client.im.configuration.getSnapshot().value.accounts[0]
+  const oldDisconnect = client.im.disconnectAccount({ operationId: 'disconnect-old', accountId, observedRevision: beforeDisconnect.revision })
+  await heldDisconnect.received.promise
+  const disconnected = await waitFor(client.im.configuration, state => state.value?.accounts[0]?.connectionIntent === 'disconnected', 'Account disconnection')
+  assert.equal(disconnected.value.routes.length, 2)
+  assert.equal(disconnected.value.accounts[0].paused, false)
+  const reconnect = await client.im.reconnectAccount({ operationId: 'reconnect-current', accountId, observedRevision: disconnected.value.accounts[0].revision })
+  assert(reconnect.ok)
+  assert.equal(reconnect.value.status, 'applied')
+  const connected = await waitFor(client.im.configuration, state => state.value?.accounts[0]?.connectionIntent === 'connected', 'Account reconnection')
+  heldDisconnect.release.resolve()
+  assert((await oldDisconnect).ok)
+  assert.equal(client.im.configuration.getSnapshot().value.accounts[0].connectionIntent, 'connected')
+  const refreshed = await client.im.refreshAccount({ operationId: 'refresh-authorization', accountId, observedRevision: connected.value.accounts[0].revision })
+  assert(refreshed.ok)
+  assert.equal(refreshed.value.status, 'applied')
+  assert.equal(authorizationRefreshes, 1)
+  const refreshedState = await waitFor(client.im.configuration, state => state.value?.accounts[0]?.authorization.state === 'required', 'Account authorization refresh')
+  assert.equal(refreshedState.value.accounts[0].connectionIntent, 'connected')
+  assert.equal(refreshedState.value.routes.length, 2)
+  const retainedHistory = await client.remote.im.history({ scope: { kind: 'real', platform: 'wangwang', accountId, conversationKind: 'direct', conversationId: 'delivery-a' }, limit: 100 })
+  assert(retainedHistory.ok)
+  assert.equal(retainedHistory.value.items.length, 2)
+  assert(!JSON.stringify(refreshedState).includes('fixture-secret'))
   const accountBeforePause = client.im.configuration.getSnapshot().value.accounts[0]
   const oldPause = client.im.setAccountPaused({ operationId: 'pause-old', accountId, observedRevision: accountBeforePause.revision, paused: true })
   await heldPause.received.promise
@@ -261,16 +293,17 @@ try {
   assert.equal(client.get('im'), undefined)
   assert.equal(client.get('remote.im'), undefined)
   assert.equal(retained.getSnapshot().value.routes.length, 2)
-  assert.equal(TYPERT.invocations.length, 17)
+  assert.equal(TYPERT.invocations.length, 20)
   await client.fiber.dispose()
   await host.fiber.dispose()
   const recovered = JSON.parse(execFileSync(process.execPath, [fileURLToPath(new URL('./read-configuration.mjs', import.meta.url)), directory], {
     encoding: 'utf8', timeout: 15000, maxBuffer: 65536,
   }))
   assert.deepEqual(recovered, { accounts: 1, routes: 2, rebound: 'workspace-b' })
-  console.log(JSON.stringify({ methods: 17, builtHost: true, builtClient: true, realGateway: true, durableRuntime: 'json', freshProcessRecovery: recovered, provider: 'configuration fixture, no provider calls', delivery, simulationTargetCas: true, targetsRetained: 2, staleRebind: 'conflict', ordinarySaveRetainsOwner: true, invalidInputRejected: true, lostResponseReconciled: true, lateUnaryIsolated: true, reconnectBaseline: true, secretInClientState: false, disposed: true, calls: [...new Set(calls)] }))
+  console.log(JSON.stringify({ methods: 20, accountLifecycle: { disconnect: true, reconnect: true, authorizationRefresh: true, lateDisconnectIsolated: true, routesAndHistoryRetained: true }, builtHost: true, builtClient: true, realGateway: true, durableRuntime: 'json', freshProcessRecovery: recovered, provider: 'configuration fixture, no external platform or model calls', delivery, simulationTargetCas: true, targetsRetained: 2, staleRebind: 'conflict', ordinarySaveRetainsOwner: true, invalidInputRejected: true, lostResponseReconciled: true, lateUnaryIsolated: true, reconnectBaseline: true, secretInClientState: false, disposed: true, calls: [...new Set(calls)] }))
 } finally {
   heldPause.release.resolve()
+  heldDisconnect.release.resolve()
   await client.fiber.dispose()
   await host.fiber.dispose()
   await rm(directory, { recursive: true, force: true })

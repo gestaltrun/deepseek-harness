@@ -5,6 +5,11 @@ export const NS = 'settings.im'
 
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh = {
+  accountChanged: '账号已更改，请重新确认操作。',
+  accountOperationUnknown: '操作结果尚未确认，暂时不能重复提交。',
+  accountReconnectRequested: '已保存重新连接请求；监听状态以实际结果为准。',
+  accountAuthorizationRefreshed: '授权状态已刷新。',
+  refreshAuthorization: '刷新授权状态',
   identityMissing: '不可用 · 缺少身份资料',
   realChannelIdle: '真实：监听未运行',
   simulationReadyData: '目标资料完整',
@@ -197,6 +202,11 @@ export type ImKey = keyof typeof zh
 
 /** English dictionary, checked complete against the zh key set. */
 export const en = {
+  accountChanged: 'The account changed; review it before confirming again.',
+  accountOperationUnknown: 'The operation result is unconfirmed; repeating it is unavailable.',
+  accountReconnectRequested: 'Reconnect requested; listener status follows the actual result.',
+  accountAuthorizationRefreshed: 'Authorization status refreshed.',
+  refreshAuthorization: 'Refresh authorization',
   identityMissing: 'Unavailable · identity missing',
   realChannelIdle: 'Real: listener stopped',
   simulationReadyData: 'Target identity available',
