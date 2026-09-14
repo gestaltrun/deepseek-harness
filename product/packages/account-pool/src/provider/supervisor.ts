@@ -29,10 +29,14 @@ export interface SupervisorObserver {
   failed(error: unknown): void
 }
 
+class GenerationCleanupError extends Error {}
+
 /** Owns exclusive state, readiness, bounded replacement, and quiescent shutdown. */
 export class Supervisor {
   private readonly lifetime = new AbortController()
   private task: Promise<void> | undefined
+  private cleanupFailure: GenerationCleanupError | undefined
+  private releaseState = true
 
   /**
    * @param subprocess - explicitly local isolated subprocess implementation.
@@ -44,7 +48,10 @@ export class Supervisor {
   /** Start the supervisor once; readiness and errors are reported through the observer. */
   start(): void {
     if (this.task !== undefined) return
-    this.task = this.run().catch(error => { this.observer.failed(error) })
+    this.task = this.run().catch(error => {
+      if (error instanceof GenerationCleanupError) this.cleanupFailure = error
+      this.observer.failed(error)
+    })
   }
 
   /** Withdraw requests, cancel work, and wait until all owned processes and dispatchers have stopped. */
@@ -52,6 +59,7 @@ export class Supervisor {
     this.observer.withdraw()
     this.lifetime.abort()
     await this.task
+    if (this.cleanupFailure !== undefined) throw this.cleanupFailure
   }
 
   private async run(): Promise<void> {
@@ -61,21 +69,22 @@ export class Supervisor {
     try {
       for (let attempt = 0; attempt <= this.spec.restartLimit && !this.lifetime.signal.aborted; attempt += 1) {
         try {
-          await this.runGeneration(binary, state)
+          await this.runGeneration(attempt === 0 ? binary : await verifyResource(this.spec), state)
         } catch (error) {
+          if (error instanceof GenerationCleanupError) throw error
           if (this.lifetime.signal.aborted) return
           if (attempt === this.spec.restartLimit) throw error
           this.observer.failed(new AccountPoolError('unavailable', 'The account engine is restarting.'))
         }
       }
-    } finally { await state.release() }
+    } finally { if (this.releaseState) await state.release() }
   }
 
   private async runGeneration(binary: string, state: AccountState): Promise<void> {
     const directory = await state.generationDirectory()
     const lifetime = new AbortController()
     const signal = AbortSignal.any([lifetime.signal, this.lifetime.signal])
-    let process: SubprocessHandle | undefined
+    let child: SubprocessHandle | undefined
     let transport: GenerationTransport | undefined
     let quiescent = true
     try {
@@ -88,7 +97,7 @@ export class Supervisor {
       const keyFile = join(directory, 'tls.key')
       await writeFile(certFile, certificate.cert, { mode: 0o600, flag: 'wx' })
       await writeFile(keyFile, certificate.private, { mode: 0o600, flag: 'wx' })
-      if (processPlatformHasModes()) await chmod(directory, 0o700)
+      if (process.platform !== 'win32') await chmod(directory, 0o700)
       const port = await reservePort()
       const managementKey = randomBytes(32).toString('hex')
       const inferenceKey = randomBytes(32).toString('hex')
@@ -96,18 +105,18 @@ export class Supervisor {
         host: '127.0.0.1', port, tls: { enable: true, cert: certFile, key: keyFile },
         'remote-management': { 'allow-remote': false, 'secret-key': managementKey, 'disable-control-panel': true },
         'auth-dir': state.authDirectory, 'api-keys': [inferenceKey],
-        debug: false, 'logging-to-file': false, 'usage-statistics-enabled': true,
+        debug: false, 'logging-to-file': false, 'usage-statistics-enabled': false,
       }, this.spec.maxResponseBytes)
       signal.throwIfAborted()
       transport = new GenerationTransport(`https://127.0.0.1:${port}`, certificate.cert,
         managementKey, inferenceKey, signal, this.spec)
-      process = this.subprocess.spawn({
+      child = this.subprocess.spawn({
         argv: [binary, '--config', state.configFile], cwd: directory,
         env: privateEnvironment(directory), graceMs: this.spec.stopGraceMs,
         stdio: { stdin: 'ignore', stdout: { maxBytes: this.spec.maxResponseBytes }, stderr: { maxBytes: this.spec.maxResponseBytes } },
       })
       quiescent = false
-      const outcome = process.done.then(
+      const outcome = child.done.then(
         value => { lifetime.abort(new Error('Account engine exited.')); return value },
         error => { lifetime.abort(new Error('Account engine failed.')); throw error },
       )
@@ -129,19 +138,24 @@ export class Supervisor {
     } finally {
       this.observer.withdraw()
       lifetime.abort()
-      await this.observer.quiesce()
-      await transport?.quiesce()
-      if (process !== undefined) {
-        process.terminate()
-        quiescent = await process.waitForExit()
+      try {
+        await this.observer.quiesce()
+        await transport?.quiesce()
+        if (child !== undefined) {
+          child.terminate()
+          quiescent = await child.waitForExit()
+          if (!quiescent) throw new Error('The account engine process range did not become empty.')
+        }
+        await transport?.close()
+        if (quiescent) await removeGeneration(directory)
+      } catch (cause) {
+        if (!quiescent) this.releaseState = false
+        throw new GenerationCleanupError('The account engine could not complete generation cleanup.', { cause })
       }
-      await transport?.close()
-      if (quiescent) await removeGeneration(directory)
     }
   }
 }
 
-function processPlatformHasModes(): boolean { return process.platform !== 'win32' }
 
 function privateEnvironment(directory: string): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {}

@@ -64,10 +64,11 @@ export interface Spec extends Omit<Config, 'resourceDirectory'> {
  */
 export async function resolve(config: Config): Promise<Spec> {
   if (!isAbsolute(config.stateRoot)) throw new Error('Account pool stateRoot must be absolute.')
+  const packageRoot = new URL('./', import.meta.resolve('@gestaltrun/dsh-account-pool/package.json'))
   const resourceDirectory = config.resourceDirectory
-    ?? fileURLToPath(new URL(`../resources/cliproxyapi/${process.platform}-${process.arch}/`, import.meta.url))
+    ?? fileURLToPath(new URL(`resources/cliproxyapi/${process.platform}-${process.arch}/`, packageRoot))
   if (!isAbsolute(resourceDirectory)) throw new Error('Account pool resourceDirectory must be absolute.')
   const provenance = z.object({ engine: z.object({ commit: z.string().regex(/^[a-f0-9]{40}$/u) }) })
-    .parse(JSON.parse(await readFile(new URL('../UPSTREAM.json', import.meta.url), 'utf8')) as unknown)
+    .parse(JSON.parse(await readFile(new URL('UPSTREAM.json', packageRoot), 'utf8')) as unknown)
   return { ...config, resourceDirectory, expectedSourceSHA: provenance.engine.commit }
 }

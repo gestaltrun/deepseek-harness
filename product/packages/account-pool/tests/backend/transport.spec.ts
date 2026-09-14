@@ -1,4 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { mkdtemp, rm, readFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import LocalAttachments from '@deepseek-ai/dsh-attachment-local'
+import LocalFs from '@deepseek-ai/dsh-fs-local'
 import { Context } from '@deepseek-ai/cordis'
 import { MessageId, type GenerateOptions, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import { createServer, type Server } from 'node:https'
@@ -80,10 +85,10 @@ describe('generation-owned TLS and public PiAi composition', () => {
     const lifetime = new AbortController()
     const current = transport(endpoint.origin, endpoint.cert, lifetime)
     const config = Config({ stateRoot: '/unused-product-state', allowCredentialExport: true })
-    const original = new GenerationAdapter(new Context(), current, [{ id: 'known-model', contextWindow: 8192,
-      maxTokens: 1024, input: ['text'], reasoningEfforts: { high: 'high' }, defaultReasoningLevel: 'high' }], config)
+    const original = new GenerationAdapter(new Context(), current, [{ id: 'known-model', contextWindow: 131072,
+      maxTokens: 64000, input: ['text'], reasoningEfforts: { high: 'high' }, defaultReasoningLevel: 'high' }], config)
     const prepared = await original.prepareCall(ACCOUNT_POOL_ROUTE, 'known-model')
-    expect(prepared.model.context).toEqual({ contextWindow: 8192 })
+    expect(prepared.model.context).toEqual({ contextWindow: 131072 })
     expect(prepared.model.reasoning?.efforts.map(effort => effort.id)).toEqual(['high'])
     expect(prepared.model.reasoning?.defaultEffort).toBe('high')
     const later = new GenerationAdapter(new Context(), current, [], config)
@@ -92,6 +97,7 @@ describe('generation-owned TLS and public PiAi composition', () => {
     expect(calls).toHaveLength(1)
     expect(calls[0]?.key).toBe('Bearer test-inference-key')
     expect(calls[0]?.body.reasoning_effort).toBe('high')
+    expect(calls[0]?.body.max_completion_tokens ?? calls[0]?.body.max_tokens).toBe(16384)
     lifetime.abort()
     await expect(async () => drain(prepared.stream(options))).rejects.toThrow()
     await original.quiesce()
@@ -113,4 +119,43 @@ it('revocation closes an admitted iterator even when its consumer pauses after a
   await current.quiesce()
   expect(finalized).toBe(true)
   expect((await reader.next()).done).toBe(true)
+})
+
+it('uses the public durable image pipeline and does not expose placeholder pricing as free usage', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-pool-image-'))
+  cleanup.push(async () => { await rm(root, { recursive: true, force: true }) })
+  const ctx = new Context()
+  cleanup.push(async () => { await ctx.fiber.dispose() })
+  await ctx.plugin(LocalAttachments, { dshHome: root })
+  await ctx.plugin(LocalFs, { cwd: root })
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEUlEQVQImWP4z8DwH4QZYAwAR8oH+Xm0fdIAAAAASUVORK5CYII=', 'base64')
+  const attachment = await ctx.attachments.saveImage({ data: png, mediaType: 'image/png', name: 'red-square.png' })
+  const hostPath = ctx.attachments.imageHostPath(attachment)!
+  expect((await readFile(hostPath)).equals(Buffer.from((await ctx.attachments.readImage(attachment)).data))).toBe(true)
+  let requestBody = ''
+  const endpoint = await serve(async (request, response) => {
+    for await (const chunk of request) requestBody += String(chunk)
+    response.writeHead(200, { 'content-type': 'text/event-stream' })
+    response.end(`data: ${JSON.stringify({ id: 'image-response', object: 'chat.completion.chunk', created: 1, model: 'known-model',
+      choices: [{ index: 0, delta: { role: 'assistant', content: 'image-received' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 } })}\n\ndata: [DONE]\n\n`)
+  })
+  const current = transport(endpoint.origin, endpoint.cert)
+  const adapter = new GenerationAdapter(ctx, current, [{ id: 'known-model', contextWindow: 8192, maxTokens: 1024, input: ['text', 'image'] }],
+    Config({ stateRoot: root, allowCredentialExport: false }))
+  const prepared = await adapter.prepareCall(ACCOUNT_POOL_ROUTE, 'known-model')
+  expect(prepared.model.inputModalities).toEqual(['text', 'image'])
+  const chunks = await drain(prepared.stream({ ...options, messages: [{ id: MessageId('image-user'), role: 'user', source: { kind: 'user' },
+    content: [{ type: 'image', attachment }] }] }))
+  const body = JSON.parse(requestBody) as { messages: { content: { type: string; image_url?: { url: string }; text?: string }[] }[] }
+  const parts = body.messages.flatMap(message => Array.isArray(message.content) ? message.content : [])
+  expect(parts.some(part => part.image_url?.url.startsWith('data:image/png;base64,'))).toBe(true)
+  expect(parts.some(part => part.text?.includes('2x2'))).toBe(true)
+  expect(requestBody).toContain(hostPath)
+  expect(adapter.imageRequestPricing(ACCOUNT_POOL_ROUTE, 'known-model')).toBeUndefined()
+  const usage = chunks.find(chunk => chunk.type === 'usage')
+  expect(usage).toEqual({ type: 'usage', usage: { inputTokens: 5, outputTokens: 2, totalTokens: 7 } })
+  const publicMetadata = JSON.stringify({ model: prepared.model, provider: adapter.providerInfo(ACCOUNT_POOL_ROUTE) })
+  expect(publicMetadata).not.toContain(endpoint.origin)
+  expect(publicMetadata).not.toContain('test-inference-key')
 })

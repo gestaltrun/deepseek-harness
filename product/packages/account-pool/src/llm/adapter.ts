@@ -66,12 +66,12 @@ export class GenerationAdapter extends LlmAdapter {
       auth: { apiKey: { name: 'Owned inference credential', resolve: () => Promise.resolve({ auth: { apiKey: transport.inferenceKey } }) } },
     })
     const profile: ResolvedPiAiProviderProfile = {
-      provider: ACCOUNT_POOL_ROUTE, displayName: 'Account pool', api: 'openai-completions', baseURL: `${transport.origin}/v1`,
+      provider: ACCOUNT_POOL_ROUTE, displayName: 'Account pool', api: 'openai-completions', transport: 'sse', baseURL: `${transport.origin}/v1`,
       streamIdleTimeoutMs: config.streamIdleTimeoutMs, maxRequestImageBytes: config.maxRequestImageBytes,
       requestImagePixelBudget: config.requestImagePixelBudget, requestImageMaxBytes: config.requestImageMaxBytes,
       retryPolicy: resolveRetryPolicy({ mode: 'normal', maxRetries: config.maxRetries }, 'account-pool'), piProvider,
       modelErrors: new Map(), configuredMaxTokens: new Map(catalog.map(model => [model.id,
-        Math.min(model.maxTokens ?? config.requestTokenBudget, config.requestTokenBudget)])),
+        Math.min(model.maxTokens ?? config.requestTokenBudget, model.contextWindow ?? config.requestTokenBudget, config.requestTokenBudget)])),
     }
     const profiles = new Map([[ACCOUNT_POOL_ROUTE, profile]])
     this.delegate = new PiAiAdapter({
@@ -88,7 +88,12 @@ export class GenerationAdapter extends LlmAdapter {
   override providerInfo(provider: string) { return this.delegate.providerInfo(provider) }
   override providerRetryPolicy(provider: string) { return this.delegate.providerRetryPolicy(provider) }
   override imageRequestPricing(provider: string, model: string) { return this.delegate.imageRequestPricing(provider, model) }
-  override listModels(provider: string) { return this.delegate.listModels(provider) }
+  override async listModels(provider: string) {
+    return (await this.delegate.listModels(provider)).map(({ inputModalities: _input, ...model }) => {
+      const input = this.models.get(model.id)?.input
+      return { ...model, ...input === undefined ? {} : { inputModalities: input } }
+    })
+  }
 
   override async resolveModel(provider: string, model: string, signal?: AbortSignal): Promise<LlmResolvedModelInfo> {
     this.transport.signal.throwIfAborted()
@@ -126,9 +131,11 @@ export class GenerationAdapter extends LlmAdapter {
   private admitted(prepared: PreparedAdapterCall, metadata: LlmResolvedModelInfo, options: GenerateOptions): AsyncIterable<StreamChunk> {
     this.transport.signal.throwIfAborted()
     const effort = options.reasoningEffort ?? metadata.reasoning?.defaultEffort
+    const maxTokens = options.maxTokens ?? metadata.defaultMaxTokens
     return this.transport.ownStream(prepared.stream({ ...options,
       signal: options.signal ? AbortSignal.any([options.signal, this.transport.signal]) : this.transport.signal,
       ...effort === undefined ? {} : { reasoningEffort: effort },
+      ...maxTokens === undefined ? {} : { maxTokens },
     }))
   }
 

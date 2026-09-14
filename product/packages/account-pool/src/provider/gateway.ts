@@ -16,7 +16,7 @@ import { ACCOUNT_POOL_ROUTE, GenerationAdapter, LiveAccountAdapter } from '../ll
 import { parseAccountPoolCatalog, mergeAccountPoolCatalogs, type AccountPoolCatalogModel } from '../llm/catalog.ts'
 import { activeGlmEntries, glmCard, newGlmAccount, patchGlmAccount, type GlmAccount } from './glm.ts'
 import { Config, resolve, type Spec } from './config.ts'
-import { coreFieldPatch, editableFields, roster } from './redaction.ts'
+import { coreFieldPatch, editableFields, fieldValues, oauthRef, roster } from './redaction.ts'
 import { Supervisor, type Generation } from './supervisor.ts'
 import { decodeCoreJson, type CoreMethod } from './transport.ts'
 import { callbackSchema, glmSchema, kindSchema, nameSchema, parseInput, patchSchema, recordSchema, stateSchema } from './validation.ts'
@@ -43,7 +43,6 @@ export class CLIProxyAccountPool extends AccountPool {
   private readonly operations = new Set<Promise<unknown>>()
   private readonly quotas = new Map<AccountPoolAccountRef, QuotaCache>()
   private readonly rawAccounts = new Map<AccountPoolAccountRef, Record<string, unknown>>()
-  private readonly definitions = new Map<string, readonly AccountPoolCatalogModel[]>()
   private readonly lifetime = new AbortController()
   private readonly liveAdapter = new LiveAccountAdapter(() => {
     if (this.adapter === undefined) throw new AccountPoolError('unavailable', 'Account models are unavailable.')
@@ -118,15 +117,23 @@ export class CLIProxyAccountPool extends AccountPool {
 
   override startLogin(kind: AccountPoolLoginKind, signal?: AbortSignal): Promise<AccountPoolLoginStart> {
     parseInput(kindSchema, kind)
+    signal?.throwIfAborted()
     const generation = this.current()
-    this.login?.controller.abort()
+    const previous = this.login
+    previous?.controller.abort()
     const operation: LoginOperation = { kind, generation, controller: new AbortController() }
     this.login = operation
     const flow = kind === 'glm' ? 'glm-key' : kind === 'kimi' || kind === 'xai' ? 'device' : 'pkce'
     this.publish({ ...this.snapshot, login: { kind, flow, status: 'pending' } })
     return this.track((async () => {
-      if (kind === 'glm') return this.snapshot.login!
       try {
+        if (previous?.state !== undefined && !previous.generation.signal.aborted) {
+          await this.json(previous.generation, 'DELETE', `oauth-session?state=${encodeURIComponent(previous.state)}`,
+            undefined, previous.generation.signal)
+        }
+        this.loginSignal(operation, signal).throwIfAborted()
+        if (this.login !== operation) throw new AccountPoolError('conflict', 'The login operation was superseded.')
+        if (kind === 'glm') return this.snapshot.login!
         const payload = parseInput(recordSchema, await this.json(generation, 'GET', LOGIN_PATH[kind], undefined,
           this.loginSignal(operation, signal)))
         const state = brandString<AccountPoolLoginState>(parseInput(stateSchema, payload.state))
@@ -244,7 +251,7 @@ export class CLIProxyAccountPool extends AccountPool {
         const account = await this.glmAccount(this.current(), name)
         return { name, info: { provider: 'glm', site: account.site,
           ...account.organization === undefined ? {} : { organization: account.organization },
-          ...account.project === undefined ? {} : { project: account.project } }, fields: glmCard(account) }
+          ...account.project === undefined ? {} : { project: account.project } }, fields: fieldValues({ ...account, proxy_url: account.proxyUrl }) }
       }
       return editableFields(name, await this.readAuth(this.current(), name, signal))
     })())
@@ -287,7 +294,6 @@ export class CLIProxyAccountPool extends AccountPool {
     this.supervisor = new Supervisor(this.ctx.subprocess, spec, {
       ready: async generation => {
         this.generation = generation
-        this.definitions.clear()
         await this.refresh()
         void this.track(this.pollCatalog(generation)).catch(() => undefined)
       },
@@ -347,7 +353,7 @@ export class CLIProxyAccountPool extends AccountPool {
     this.rawAccounts.clear()
     for (const value of raw) {
       const record = parseInput(recordSchema, value)
-      this.rawAccounts.set(brandString<AccountPoolAccountRef>(`oauth:${String(record.auth_index)}`), record)
+      this.rawAccounts.set(oauthRef(String(record.auth_index)), record)
     }
     const refs = new Set(accounts.map(account => account.ref))
     for (const ref of this.quotas.keys()) if (!refs.has(ref)) this.quotas.delete(ref)
@@ -358,15 +364,15 @@ export class CLIProxyAccountPool extends AccountPool {
   private async refreshCatalog(generation: Generation, signal?: AbortSignal): Promise<void> {
     try {
       let catalog = parseAccountPoolCatalog(await generation.transport.catalog(signal))
+      const definitions: (readonly AccountPoolCatalogModel[])[] = []
       for (const provider of new Set(this.snapshot.accounts.map(account => account.provider))) {
-        const channel = DEFINITION_CHANNEL[provider]
-        if (channel === undefined || this.definitions.has(channel)) continue
+        const channel = Object.hasOwn(DEFINITION_CHANNEL, provider) ? DEFINITION_CHANNEL[provider] : undefined
+        if (channel === undefined) continue
         const payload = await this.json(generation, 'GET', `model-definitions/${channel}`, undefined, signal)
-        this.definitions.set(channel, parseAccountPoolCatalog(payload))
+        definitions.push(parseAccountPoolCatalog(payload))
       }
-      const definitions = mergeAccountPoolCatalogs(...this.definitions.values())
       const availableIds = new Set(catalog.map(model => model.id))
-      catalog = mergeAccountPoolCatalogs(catalog, definitions.filter(model => availableIds.has(model.id)))
+      catalog = mergeAccountPoolCatalogs(catalog, mergeAccountPoolCatalogs(...definitions).filter(model => availableIds.has(model.id)))
       generation.signal.throwIfAborted()
       if (this.generation !== generation) return
       const key = JSON.stringify(catalog)
@@ -379,6 +385,9 @@ export class CLIProxyAccountPool extends AccountPool {
         const next = new GenerationAdapter(this.ctx, generation.transport, catalog, this.config)
         this.adapter = next
         if (this.registration === undefined) {
+          if (this.ctx.llm.listProviders().some(provider => provider.id === ACCOUNT_POOL_ROUTE)) {
+            throw new AccountPoolError('conflict', 'The account-pool model route is already owned by another plugin.')
+          }
           this.registration = this.ctx.llm.registerAdapter([ACCOUNT_POOL_ROUTE], this.liveAdapter)
         }
       }
@@ -403,7 +412,7 @@ export class CLIProxyAccountPool extends AccountPool {
 
   private async observe(generation: Generation, account: AccountPoolAccount, signal?: AbortSignal): Promise<void> {
     if (!account.capabilities.quota) return
-    const provider = QUOTA_PROVIDER[account.provider]
+    const provider = Object.hasOwn(QUOTA_PROVIDER, account.provider) ? QUOTA_PROVIDER[account.provider] : undefined
     if (provider === undefined) throw new AccountPoolError('invalid-input', 'This account has no supported quota observation.')
     let metadata = this.rawAccounts.get(account.ref) ?? {}
     if (provider === 'xai') metadata = { ...metadata, ...await this.readAuth(generation, account.name, signal) }
@@ -570,3 +579,5 @@ function windows(observation: QuotaObservation): AccountPoolQuotaWindow[] {
     }
   })
 }
+
+export default CLIProxyAccountPool

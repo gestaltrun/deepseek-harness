@@ -20,7 +20,8 @@ describe('account metadata and explicit credential download', () => {
     }
     expect(fields.fields.proxyCredentialsConfigured).toBe(true)
     expect(fields.fields.headers?.authorization).toEqual({ kind: 'secret', configured: true })
-    expect(snapshot[0]?.ref).toBe('oauth:opaque-core-index')
+    expect(snapshot[0]?.ref).toMatch(/^oauth:[a-f0-9]{64}$/)
+    expect(exposed).not.toContain('opaque-core-index')
     expect(coreFieldPatch({ headers: { authorization: { kind: 'keep' }, 'x-arbitrary-secret': { kind: 'remove' } },
       proxyUrl: { kind: 'keep' } }, raw)).toEqual({ headers: { authorization: 'Bearer hidden', accept: 'application/json' } })
     expect(coreFieldPatch({ headers: { Authorization: { kind: 'replace', value: 'Bearer new' } } }, raw)).toEqual({

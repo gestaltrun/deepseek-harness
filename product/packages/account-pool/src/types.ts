@@ -23,3 +23,4 @@ export type {
   AccountPoolCallback,
   AccountPoolGlmKey,
 } from './account-pool.ts'
+export type { AccountPoolRejectionDetails } from './rpc/errors.ts'

@@ -24,10 +24,10 @@ export function parseAccountPoolCatalog(value: unknown): readonly AccountPoolCat
   if (rows === undefined) throw new Error('account-pool catalog JSON is invalid')
   const models: AccountPoolCatalogModel[] = []
   for (const entry of rows) {
-    if (entry === null || typeof entry !== 'object') continue
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) throw new Error('account-pool catalog row is invalid')
     const record = entry as Record<string, unknown>
     const id = label(record.id, record.slug)
-    if (id === undefined) continue
+    if (id === undefined) throw new Error('account-pool catalog model id is missing')
     const name = label(record.name, record.display_name)
     const contextWindow = capacity(record.context_window, record.context_length, record.max_context_length, record.inputTokenLimit)
     const maxTokens = capacity(record.max_output_tokens, record.max_tokens, record.max_completion_tokens, record.outputTokenLimit)

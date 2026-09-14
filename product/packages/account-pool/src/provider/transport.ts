@@ -53,7 +53,7 @@ export class GenerationTransport {
     if (url.protocol !== 'https:' || url.hostname !== '127.0.0.1' || url.origin !== origin) {
       throw new AccountPoolError('failed', 'The account engine must use an exact local HTTPS origin.')
     }
-    this.dispatcher = new Agent({ connect: { ca: certificate } })
+    this.dispatcher = new Agent({ connect: { ca: certificate, rejectUnauthorized: true } })
     this.fetch = async (input, init) => {
       this.signal.throwIfAborted()
       const request = new Request(input, init)

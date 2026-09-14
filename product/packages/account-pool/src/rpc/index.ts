@@ -10,6 +10,7 @@ import type {
   AccountPoolModel, AccountPoolSnapshot,
 } from '../account-pool.ts'
 import { ACCOUNT_POOL_EXPORT_PATH, accountPoolExportResponse } from './export.ts'
+import { accountPoolRemoteError } from './errors.ts'
 import { watchAccountPool } from './watch.ts'
 
 /** Explicit credential export policy; no implicit Web enablement. */
@@ -59,7 +60,7 @@ export class AccountPoolController extends TypertRemoteService {
    */
   @Remote
   refresh(signal?: AbortSignal): Promise<AccountPoolSnapshot> {
-    return this.ctx.accountPool.refresh(signal)
+    return this.call(() => this.ctx.accountPool.refresh(signal))
   }
 
   /**
@@ -71,7 +72,7 @@ export class AccountPoolController extends TypertRemoteService {
    */
   @Remote
   setEnabled(name: AccountPoolAccountName, enabled: boolean, signal?: AbortSignal): Promise<AccountPoolSnapshot> {
-    return this.ctx.accountPool.setEnabled(name, enabled, signal)
+    return this.call(() => this.ctx.accountPool.setEnabled(name, enabled, signal))
   }
 
   /**
@@ -82,7 +83,7 @@ export class AccountPoolController extends TypertRemoteService {
    */
   @Remote
   deleteAccount(name: AccountPoolAccountName, signal?: AbortSignal): Promise<AccountPoolSnapshot> {
-    return this.ctx.accountPool.deleteAccount(name, signal)
+    return this.call(() => this.ctx.accountPool.deleteAccount(name, signal))
   }
 
   /**
@@ -93,7 +94,7 @@ export class AccountPoolController extends TypertRemoteService {
    */
   @Remote
   startLogin(kind: AccountPoolLoginKind, signal?: AbortSignal): Promise<AccountPoolLoginStart> {
-    return this.ctx.accountPool.startLogin(kind, signal)
+    return this.call(() => this.ctx.accountPool.startLogin(kind, signal))
   }
 
   /**
@@ -104,7 +105,7 @@ export class AccountPoolController extends TypertRemoteService {
    */
   @Remote
   loginStatus(state: AccountPoolLoginState, signal?: AbortSignal): Promise<AccountPoolSnapshot> {
-    return this.ctx.accountPool.loginStatus(state, signal)
+    return this.call(() => this.ctx.accountPool.loginStatus(state, signal))
   }
 
   /**
@@ -115,7 +116,7 @@ export class AccountPoolController extends TypertRemoteService {
    */
   @Remote
   cancelLogin(state: AccountPoolLoginState, signal?: AbortSignal): Promise<AccountPoolSnapshot> {
-    return this.ctx.accountPool.cancelLogin(state, signal)
+    return this.call(() => this.ctx.accountPool.cancelLogin(state, signal))
   }
 
   /**
@@ -125,7 +126,7 @@ export class AccountPoolController extends TypertRemoteService {
    */
   @Remote
   dismissLogin(signal?: AbortSignal): Promise<AccountPoolSnapshot> {
-    return this.ctx.accountPool.dismissLogin(signal)
+    return this.call(() => this.ctx.accountPool.dismissLogin(signal))
   }
 
   /**
@@ -136,7 +137,7 @@ export class AccountPoolController extends TypertRemoteService {
    */
   @Remote
   submitCallback(input: AccountPoolCallback, signal?: AbortSignal): Promise<AccountPoolSnapshot> {
-    return this.ctx.accountPool.submitCallback(input, signal)
+    return this.call(() => this.ctx.accountPool.submitCallback(input, signal))
   }
 
   /**
@@ -147,7 +148,7 @@ export class AccountPoolController extends TypertRemoteService {
    */
   @Remote
   submitGlmKey(input: AccountPoolGlmKey, signal?: AbortSignal): Promise<AccountPoolSnapshot> {
-    return this.ctx.accountPool.submitGlmKey(input, signal)
+    return this.call(() => this.ctx.accountPool.submitGlmKey(input, signal))
   }
 
   /**
@@ -158,7 +159,7 @@ export class AccountPoolController extends TypertRemoteService {
    */
   @Remote
   refreshQuota(ref: AccountPoolAccountRef, signal?: AbortSignal): Promise<AccountPoolSnapshot> {
-    return this.ctx.accountPool.refreshQuota(ref, signal)
+    return this.call(() => this.ctx.accountPool.refreshQuota(ref, signal))
   }
 
   /**
@@ -168,7 +169,7 @@ export class AccountPoolController extends TypertRemoteService {
    */
   @Remote
   refreshAllQuota(signal?: AbortSignal): Promise<AccountPoolSnapshot> {
-    return this.ctx.accountPool.refreshAllQuota(signal)
+    return this.call(() => this.ctx.accountPool.refreshAllQuota(signal))
   }
 
   /**
@@ -179,7 +180,7 @@ export class AccountPoolController extends TypertRemoteService {
    */
   @Remote
   listModels(name: AccountPoolAccountName, signal?: AbortSignal): Promise<readonly AccountPoolModel[]> {
-    return this.ctx.accountPool.listModels(name, signal)
+    return this.call(() => this.ctx.accountPool.listModels(name, signal))
   }
 
   /**
@@ -190,7 +191,7 @@ export class AccountPoolController extends TypertRemoteService {
    */
   @Remote
   readFields(name: AccountPoolAccountName, signal?: AbortSignal): Promise<AccountPoolEditableFields> {
-    return this.ctx.accountPool.readFields(name, signal)
+    return this.call(() => this.ctx.accountPool.readFields(name, signal))
   }
 
   /**
@@ -202,7 +203,11 @@ export class AccountPoolController extends TypertRemoteService {
    */
   @Remote
   patchFields(name: AccountPoolAccountName, fields: AccountPoolFieldPatch, signal?: AbortSignal): Promise<AccountPoolSnapshot> {
-    return this.ctx.accountPool.patchFields(name, fields, signal)
+    return this.call(() => this.ctx.accountPool.patchFields(name, fields, signal))
+  }
+
+  private async call<T>(operation: () => Promise<T>): Promise<T> {
+    try { return await operation() } catch (error) { throw accountPoolRemoteError(error) }
   }
 
   /**

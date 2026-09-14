@@ -1,4 +1,5 @@
 /** Allowlisted account projections and explicit secret-field patch materialization. */
+import { createHash } from 'node:crypto'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import {
   AccountPoolError,
@@ -9,13 +10,22 @@ import {
 import { nameSchema, parseInput, recordSchema } from './validation.ts'
 
 const SAFE_HEADER_NAMES = new Set(['accept', 'accept-language', 'content-type', 'user-agent'])
-const INFO_KEYS = ['account', 'account_type', 'auth_index', 'created_at', 'disabled', 'email',
+const INFO_KEYS = ['account', 'account_type', 'created_at', 'disabled', 'email',
   'failed', 'type', 'prefix', 'priority', 'weight', 'note', 'websockets', 'disable_cooling',
   'success', 'status', 'provider'] as const
 
 function string(value: unknown): string | undefined { return typeof value === 'string' ? value : undefined }
 function number(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+/**
+ * Derive a stable product reference from an observed core identity without exposing that identity.
+ * @param coreIndex - auth_index received from the core roster, never guessed from credentials.
+ * @returns an opaque product reference stable across generation replacement.
+ */
+export function oauthRef(coreIndex: string): AccountPoolAccountRef {
+  return brandString<AccountPoolAccountRef>(`oauth:${createHash('sha256').update(coreIndex).digest('hex')}`)
 }
 
 /**
@@ -55,7 +65,7 @@ export function fieldValues(record: Record<string, unknown>): AccountPoolFieldVa
   if (typeof record.proxy_url === 'string') Object.assign(result, redactProxy(record.proxy_url))
   const headers = recordSchema.safeParse(record.headers)
   if (headers.success) {
-    const values: Record<string, AccountPoolHeaderValue> = {}
+    const values = Object.create(null) as Record<string, AccountPoolHeaderValue>
     for (const [key, value] of Object.entries(headers.data)) {
       if (typeof value !== 'string') continue
       values[key] = SAFE_HEADER_NAMES.has(key.toLowerCase())
@@ -110,7 +120,7 @@ export function roster(payload: unknown): AccountPoolAccount[] {
     const recent = Array.isArray(account.recent_requests) ? account.recent_requests : []
     return {
       ...fieldValues(account), ...details,
-      ref: brandString<AccountPoolAccountRef>(`oauth:${account.auth_index}`), name,
+      ref: oauthRef(account.auth_index), name,
       capabilities: { models: 'account', quota: true, export: 'auth-file',
         editableFields: ['note', 'prefix', 'proxyUrl', 'priority', 'weight', 'disableCooling', 'websockets', 'excludedModels', 'headers'] },
       provider: string(account.provider) ?? string(account.type) ?? 'unknown',
@@ -153,7 +163,7 @@ export function coreFieldPatch(fields: AccountPoolFieldPatch, existing: Record<s
   }
   if (fields.headers !== undefined) {
     const parsed = recordSchema.safeParse(existing.headers)
-    const headers: Record<string, string> = {}
+    const headers = Object.create(null) as Record<string, string>
     if (parsed.success) {
       for (const [key, value] of Object.entries(parsed.data)) if (typeof value === 'string') headers[key] = value
     }
