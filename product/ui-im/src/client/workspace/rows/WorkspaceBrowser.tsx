@@ -28,6 +28,7 @@ import {
 import { ProjectRowItem, SearchResultItem, SessionNodeItem } from './Rows.tsx'
 import { FLAT_SESSION_ORDER_KEY } from '../stores.ts'
 import { WorkspacePickFlow } from '../WorkspacePicker.tsx'
+import { WorkspaceSettingsDialog } from '../WorkspaceSettingsDialog.tsx'
 import css from './WorkspaceBrowser.module.css'
 
 /**
@@ -1332,14 +1333,14 @@ export function WorkspaceBrowser({
             ))}
       </div>
 
-      <Modal
+      <WorkspaceSettingsDialog
         open={settingsWorkspaceId !== null && workspaces.some(workspace => workspace.workspaceId === settingsWorkspaceId)}
         onClose={() => { setSettingsWorkspaceId(null) }}
         closeLabel={t('close')}
         title={t('settings.title')}
       >
         {settingsWorkspaceId !== null && renderSlot('sidebar.workspaces.imSettings', { workspaceId: settingsWorkspaceId })}
-      </Modal>
+      </WorkspaceSettingsDialog>
 
       <Modal
         open={renameTarget !== null}
