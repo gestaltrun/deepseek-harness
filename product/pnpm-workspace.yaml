@@ -1,5 +1,11 @@
 packages:
   - model-center
+  - im-runtime
+  - im-dingtalk
+  - im-wangwang
+  - api-im
+  - ui-im
+  - im-bundle
 autoInstallPeers: false
 nodeLinker: hoisted
 allowBuilds:
