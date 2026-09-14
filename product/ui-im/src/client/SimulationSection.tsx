@@ -1,7 +1,7 @@
 /** Configured simulation targets reference authoritative routes and preserve CAS outcomes. */
 import { useState, type ReactElement } from 'react'
 import type { InjectFace, PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
-import type { ImConfigurationSource, ImOperationId, ImRouteView, ImSimulationTargetMutationResult } from '@gestaltrun/dsh-api-im/client'
+import type { ImAccountView, ImConfigurationSource, ImOperationId, ImRouteView, ImSimulationTargetMutationResult } from '@gestaltrun/dsh-api-im/client'
 import { Button, Input, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {} from './locale-types.ts'
 import type {} from './workspace/contract/slots.ts'
@@ -20,6 +20,20 @@ export interface SimulationFace {
 
 /** Derived target settings props share only editable state with the takeover card. */
 export type SimulationSectionProps = PropsRuntime<'sidebar.workspaces.imSettings'> & PropsLocale<'settings.im'> & PropsStore<ReturnType<typeof createRouteUiStore>> & InjectFace<SimulationFace>
+
+function TargetStatus({ account, enabled, t }: {
+  readonly account: ImAccountView | undefined
+  readonly enabled: boolean
+  readonly t: SimulationSectionProps['t']
+}): ReactElement {
+  if (account === undefined) return <Tag tone="danger">{t('identityMissing')}</Tag>
+  return <span className={css.targetStatus}>
+    {account.connectionIntent === 'disconnected' && <Tag tone="neutral">{t('realChannelDisconnected')}</Tag>}
+    {account.authorization.state === 'required' && account.authorization.reason === 'expired' && <Tag tone="neutral">{t('realChannelExpired')}</Tag>}
+    {!enabled && <Tag tone="warning">{t('realHandlingDisabled')}</Tag>}
+    <Tag tone="success">{t('simulatable')}</Tag>
+  </span>
+}
 
 /** @param props - real Workspace identity, authoritative routes, and target commands. @returns the target selection card. */
 export function SimulationSection(props: SimulationSectionProps): ReactElement {
@@ -52,7 +66,7 @@ export function SimulationSection(props: SimulationSectionProps): ReactElement {
   const selected = matches.find(route => route.id === editor.selected)
   const t = props.t
   return <section className={css.card} data-im-simulation>
-    <div className={css.title}>{t('simulationTitle')}</div><p className={css.intro}>{t('simulationIntro')}</p><p role="status" className={css.hint}>{t('simulationEngineUnavailable')}</p>
+    <div className={css.title}>{t('simulationTitle')}</div><p className={css.intro}>{t('simulationIntro')}</p>
     {feedback !== undefined && <p role="status">{feedback}</p>}
     {editor.error !== undefined && <p role="alert" className={css.error}>{editor.error}</p>}
     {editor.unknown !== undefined && <p role="status">{t('draftUnknown')}<Button disabled={editor.busy} onClick={() => { void execute(editor.unknown!, true) }}>{t('queryAndRetry')}</Button></p>}
@@ -60,8 +74,14 @@ export function SimulationSection(props: SimulationSectionProps): ReactElement {
       <Input aria-label={t('pickerSearchPlaceholder')} placeholder={t('pickerSearchPlaceholder')} value={editor.query} disabled={editor.busy || editor.unknown !== undefined}
         onChange={event => { props.actions.setSimulation(props.workspaceId, { ...editor, query: event.target.value }) }} />
       {([true, false] as const).map(own => <div key={String(own)}><div className={css.pickerGroup}>{own ? t('groupThisWorkspace').replace('{ws}', ownerName(props.workspaceId)) : t('groupOtherWorkspaces')}</div>
-        {matches.filter(route => (route.workspaceId === props.workspaceId) === own).map(route => <button key={route.id} type="button" className={css.pickerRow} aria-pressed={editor.selected === route.id}
-          disabled={editor.busy || editor.unknown !== undefined || accountFor(route) === undefined} onClick={() => { props.actions.setSimulation(props.workspaceId, { ...editor, selected: route.id }) }}>{label(route)} · {ownerName(route.workspaceId)}</button>)}
+        {matches.filter(route => (route.workspaceId === props.workspaceId) === own).map(route => {
+          const account = accountFor(route)
+          return <button key={route.id} type="button" className={css.pickerRow} aria-pressed={editor.selected === route.id}
+            disabled={editor.busy || editor.unknown !== undefined || account === undefined} onClick={() => { props.actions.setSimulation(props.workspaceId, { ...editor, selected: route.id }) }}>
+            <span>{label(route)} · {ownerName(route.workspaceId)}</span>
+            <TargetStatus account={account} enabled={route.enabled} t={t} />
+          </button>
+        })}
       </div>)}
       {matches.length === 0 && <p className={css.hint}>{t('pickerNoMatch')}</p>}
       <div className={css.acts}><Button disabled={editor.busy} onClick={() => { props.actions.setSimulation(props.workspaceId, { ...editor, picking: false }) }}>{t('cancel')}</Button>
@@ -73,11 +93,7 @@ export function SimulationSection(props: SimulationSectionProps): ReactElement {
       <p className={css.hint}>{t('simulationUnconfiguredHint')}</p>
       <Button variant="primary" disabled={configuration === undefined || editor.unknown !== undefined} onClick={openPicker}>{t('selectTarget')}</Button>
     </> : <div className={css.row}><div className={css.main}><div className={css.name}>{label(current)}</div><p>{t('targetOwner').replace('{owner}', ownerName(current.workspaceId))}</p>
-      {accountFor(current) === undefined ? <Tag tone="danger">{t('identityMissing')}</Tag> : <>
-        {accountFor(current)?.listener.state !== 'running' && <Tag tone="neutral">{t('realChannelIdle')}</Tag>}
-        {accountFor(current)?.authorization.state === 'required' && <Tag tone="neutral">{t('realChannelExpired')}</Tag>}
-        {!current.enabled && <Tag tone="warning">{t('realHandlingDisabled')}</Tag>}<Tag tone="success">{t('simulationReadyData')}</Tag>
-      </>}
+      <TargetStatus account={accountFor(current)} enabled={current.enabled} t={t} />
       {confirmClear && saved !== undefined && <InlineConfirm disabled={editor.busy || editor.unknown !== undefined} cancelLabel={t('cancel')} confirmLabel={t('clearTarget')} onCancel={() => { setConfirmClear(false) }} onConfirm={() => { void execute({ kind: 'remove', request: { operationId: props.operationId(), workspaceId: props.workspaceId, observedRevision: saved.revision } }) }}>{t('clearTargetHint')}</InlineConfirm>}
     </div><div className={css.acts}><Button disabled={editor.busy || editor.unknown !== undefined} onClick={openPicker}>{t('changeTarget')}</Button><Button disabled={editor.busy || editor.unknown !== undefined} onClick={() => { setConfirmClear(true) }}>{t('clearTarget')}</Button></div></div>}
   </section>

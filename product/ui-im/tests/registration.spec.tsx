@@ -36,6 +36,7 @@ describe('product IM slot ownership', () => {
       'settings.section': { kind: 'list', scope: 'root' },
       'sidebar.workspaces': { kind: 'single', scope: 'root' },
       'sidebar.right.pane.tab': { kind: 'keyed', scope: 'session' },
+      'tool.call.toolview': { kind: 'keyed', scope: 'session' },
     } } as never, (() => null) as never)
     const originalBrowser = () => null
     const original = ctx.slots.register({ name: 'sidebar.workspaces', children: { 'sidebar.workspaces.directoryFlow': { kind: 'single', scope: 'root' } } } as never, originalBrowser as never)
@@ -58,11 +59,15 @@ describe('product IM slot ownership', () => {
       expect(ctx.slots.entries('sidebar.workspaces').map(entry => entry.options.priority ?? 0)).toEqual([-10, 0])
       expect(ctx.slots.entries('sidebar.workspaces.imSettings')).toHaveLength(2)
       expect(ctx.slots.entries('sidebar.workspaces.imDirectoryFlow')).toHaveLength(1)
+      expect(ctx.slots.entries('tool.call.toolview').map(entry => entry.options.key)).toEqual([
+        'im_sim_create', 'im_sim_send_as_member', 'im_sim_send_as_managed_human', 'im_sim_stop',
+      ])
       expect(tabs.has('@gestaltrun/dsh-ui-im/conversation')).toBe(true)
       await product.dispose()
       expect(ctx.slots.entries('sidebar.workspaces')).toHaveLength(1)
       expect(ctx.slots.entries('sidebar.workspaces')[0]?.component).toBe(originalBrowser)
       expect(ctx.slots.entries('sidebar.workspaces.imSettings')).toHaveLength(0)
+      expect(ctx.slots.entries('tool.call.toolview')).toHaveLength(0)
       expect(tabs.size).toBe(0)
       const flow = ctx.slots.register({ name: 'sidebar.workspaces.directoryFlow' } as never, (() => null) as never)
       flow()
