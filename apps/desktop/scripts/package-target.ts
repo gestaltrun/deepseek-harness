@@ -21,10 +21,9 @@ const WINDOWS_SIGNING_ENV_NAMES = [
   'DSH_DESKTOP_WINDOWS_TOKEN_PIN',
 ] as const
 const DESKTOP_UPLOAD_CREDENTIAL_ENV_NAMES = new Set([
-  'DOWNLOAD_TEST_COS_SECRET_ID',
-  'DOWNLOAD_TEST_COS_SECRET_KEY',
-  'DOWNLOAD_PROD_COS_SECRET_ID',
-  'DOWNLOAD_PROD_COS_SECRET_KEY',
+  'ALIBABA_CLOUD_ACCESS_KEY_ID',
+  'ALIBABA_CLOUD_ACCESS_KEY_SECRET',
+  'ALIBABA_CLOUD_SECURITY_TOKEN',
 ])
 
 /** Fixed platform and architecture identifiers exposed by package scripts. */
@@ -93,7 +92,7 @@ export function desktopElectronBuilderEnvironment(environment: NodeJS.ProcessEnv
 }
 
 /**
- * Remove upload-only COS credentials from every packaging subprocess.
+ * Remove upload-only OSS credentials from every packaging subprocess.
  * @param environment - Packaging command environment.
  * @returns A copy without Desktop upload credentials.
  */

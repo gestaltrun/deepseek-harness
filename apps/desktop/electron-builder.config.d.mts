@@ -1,3 +1,5 @@
+import type { AfterPackContext } from 'electron-builder'
+
 /** Electron-builder fields asserted by the Desktop release tests. */
 export interface DesktopElectronBuilderConfig {
   readonly appId: string
@@ -22,9 +24,17 @@ export interface DesktopElectronBuilderConfig {
   readonly nsis: {
     readonly include: string
   }
+  readonly afterPack: (context: AfterPackContext) => Promise<void>
   readonly artifactBuildCompleted: (artifact: { readonly file: string }) => Promise<void> | undefined
   readonly publish: readonly [{ readonly provider: 'generic', readonly url: string }] | null
 }
+
+/**
+ * Write electron-builder's resolved updater configuration into the unpacked macOS application.
+ * @param context - Application state before signing.
+ * @returns Resolves after the updater configuration is part of the unsigned bundle.
+ */
+export function writeDesktopAppUpdateConfig(context: AfterPackContext): Promise<void>
 
 /**
  * Create electron-builder configuration from one release environment.

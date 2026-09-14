@@ -8,6 +8,7 @@ import { load } from 'js-yaml'
 import type { DesktopPackageTargetName } from './package-target.ts'
 import {
   desktopBuildRecordFilename,
+  desktopReleaseArtifactBase,
   desktopUpdateMetadataFilename,
   resolveDesktopUploadConfig,
 } from './desktop-auto-update-environment.mjs'
@@ -16,13 +17,12 @@ import { desktopTargetBuildPaths } from './desktop-build-paths.mjs'
 const APP_ROOT = resolve(import.meta.dirname, '..')
 const REPOSITORY_ROOT = resolve(APP_ROOT, '..', '..')
 const TARGETS = {
-  'mac-arm64': { platform: 'darwin', arch: 'arm64', os: 'mac' },
-  'mac-x64': { platform: 'darwin', arch: 'x64', os: 'mac' },
-  'win-x64': { platform: 'win32', arch: 'x64', os: 'win' },
+  'mac-arm64': { platform: 'darwin', arch: 'arm64' },
+  'mac-x64': { platform: 'darwin', arch: 'x64' },
+  'win-x64': { platform: 'win32', arch: 'x64' },
 } as const satisfies Record<DesktopPackageTargetName, {
   readonly platform: NodeJS.Platform
   readonly arch: string
-  readonly os: string
 }>
 
 /** One local file and its final object metadata. */
@@ -30,6 +30,8 @@ export interface DesktopUploadArtifact {
   readonly path: string
   readonly filename: string
   readonly key: string
+  readonly size: number
+  readonly sha512: string
   readonly contentType: string
   readonly cacheControl: string
   readonly channelMetadata: boolean
@@ -42,8 +44,9 @@ export interface DesktopUploadPlan {
   readonly version: string
   readonly publicUrl: string
   readonly bucket: string
-  readonly secretIdEnvName: string
-  readonly secretKeyEnvName: string
+  readonly endpoint: string
+  readonly region: string
+  readonly timeoutMs: number
   readonly artifacts: readonly DesktopUploadArtifact[]
 }
 
@@ -144,17 +147,20 @@ async function requireArtifact(artifactsRoot: string, filename: string): Promise
   return path
 }
 
-function uploadArtifact(
+async function uploadArtifact(
   path: string,
   keyPrefix: string,
   contentType: string,
   channelMetadata = false,
-): DesktopUploadArtifact {
+): Promise<DesktopUploadArtifact> {
   const filename = basename(path)
+  const details = await stat(path)
   return {
     path,
     filename,
     key: `${keyPrefix}/${filename}`,
+    size: details.size,
+    sha512: await sha512(path),
     contentType,
     cacheControl: channelMetadata
       ? 'no-cache'
@@ -218,7 +224,7 @@ export async function createDesktopUploadPlan(
     throw new Error(`desktop upload: ${metadataFilename}.files must contain exactly one target update file`)
   }
 
-  const base = `deepseek-harness-${dshVersion}-${target.os}-${target.arch}`
+  const base = desktopReleaseArtifactBase(dshVersion, targetName)
   const updaterExtension = target.platform === 'darwin' ? 'zip' : 'exe'
   const updaterInfo = updateFileInfo(metadata.files[0], `${metadataFilename}.files[0]`, `${base}.${updaterExtension}`)
   const updaterPath = await verifyChecksummedArtifact(artifactsRoot, updaterInfo)
@@ -228,30 +234,31 @@ export async function createDesktopUploadPlan(
     const dmgPath = await requireArtifact(artifactsRoot, `${base}.dmg`)
     const blockmapPath = await requireArtifact(artifactsRoot, `${base}.zip.blockmap`)
     artifacts.push(
-      uploadArtifact(dmgPath, update.keyPrefix, 'application/x-apple-diskimage'),
-      uploadArtifact(updaterPath, update.keyPrefix, 'application/zip'),
-      uploadArtifact(blockmapPath, update.keyPrefix, 'application/octet-stream'),
+      await uploadArtifact(dmgPath, update.keyPrefix, 'application/x-apple-diskimage'),
+      await uploadArtifact(updaterPath, update.keyPrefix, 'application/zip'),
+      await uploadArtifact(blockmapPath, update.keyPrefix, 'application/octet-stream'),
     )
   }
   else {
     const blockMapSize = object(metadata.files[0], `${metadataFilename}.files[0]`).blockMapSize
     numberField(blockMapSize, `${metadataFilename}.files[0].blockMapSize`)
-    artifacts.push(uploadArtifact(
+    artifacts.push(await uploadArtifact(
       updaterPath,
       update.keyPrefix,
       'application/vnd.microsoft.portable-executable',
     ))
   }
 
-  artifacts.push(uploadArtifact(metadataPath, update.keyPrefix, 'application/yaml', true))
+  artifacts.push(await uploadArtifact(metadataPath, update.keyPrefix, 'application/yaml', true))
   return {
     environment: update.environment,
     target: targetName,
     version: dshVersion,
     publicUrl: update.publicUrl,
     bucket: update.bucket,
-    secretIdEnvName: update.secretIdEnvName,
-    secretKeyEnvName: update.secretKeyEnvName,
+    endpoint: update.endpoint,
+    region: update.region,
+    timeoutMs: update.timeoutMs,
     artifacts,
   }
 }

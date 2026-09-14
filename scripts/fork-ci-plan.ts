@@ -108,6 +108,20 @@ function dependencyNames(manifest: Record<string, unknown>): string[] {
   return sections.flatMap(section => Object.keys(record(manifest[section] ?? {})))
 }
 
+function packageNameFromSnapshotKey(key: string): string | undefined {
+  return /^(@[^/]+\/[^@]+|[^@]+)@/u.exec(key)?.[1]
+}
+
+function dependencySnapshotKey(
+  name: string,
+  reference: unknown,
+  snapshots: Record<string, unknown>,
+): string | undefined {
+  if (typeof reference !== 'string') return undefined
+  const key = reference.startsWith('npm:') ? reference.slice('npm:'.length) : `${name}@${reference}`
+  return Object.hasOwn(snapshots, key) ? key : undefined
+}
+
 function unique(values: Iterable<string>): string[] {
   return [...new Set(values)].sort()
 }
@@ -245,29 +259,35 @@ export function planForkCi(input: ScopeInput): ForkCiPlan {
       else if (manifests.has(root)) affected.add(root)
       else throw new Error(`No CI owner for lockfile importer ${root}`)
     }
-    const changedDependencies = new Set<string>()
+    const changedSnapshotKeys = new Set<string>()
     for (const section of ['packages', 'snapshots']) {
       for (const key of changedKeys(record(oldLock[section] ?? {}), record(newLock[section] ?? {}))) {
-        const name = /^(@[^/]+\/[^@]+|[^@]+)@/u.exec(key)?.[1]
-        if (name !== undefined) changedDependencies.add(name)
+        if (packageNameFromSnapshotKey(key) !== undefined) changedSnapshotKeys.add(key)
       }
     }
-    // Walk lockfile dependency edges backwards before matching workspace imports.
+    // Walk exact resolved identities backwards. A newly added `statuses@1` must
+    // not invalidate an unchanged consumer of `statuses@2` merely because the
+    // package names match.
     for (const lock of [oldLock, newLock]) {
       const snapshots = record(lock.snapshots ?? {})
       let grew = true
       while (grew) {
         grew = false
         for (const [key, value] of Object.entries(snapshots)) {
-          const name = /^(@[^/]+\/[^@]+|[^@]+)@/u.exec(key)?.[1]
-          if (name !== undefined && !changedDependencies.has(name)
-            && dependencyNames(record(value)).some(dep => changedDependencies.has(dep))) {
-            changedDependencies.add(name)
+          if (!changedSnapshotKeys.has(key)
+            && sections.some(section => Object.entries(record(record(value)[section] ?? {}))
+              .some(([name, reference]) => changedSnapshotKeys.has(
+                dependencySnapshotKey(name, reference, snapshots) ?? '',
+              )))) {
+            changedSnapshotKeys.add(key)
             grew = true
           }
         }
       }
     }
+    const changedDependencies = new Set(
+      [...changedSnapshotKeys].map(packageNameFromSnapshotKey).filter(name => name !== undefined),
+    )
     for (const manifest of manifests.values()) {
       if ([...manifest.dependencies].some(dep => changedDependencies.has(dep))) affected.add(manifest.root)
     }

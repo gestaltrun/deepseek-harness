@@ -8,6 +8,10 @@ describe('desktop locale dictionaries', () => {
     expect(resolveDesktopLocale('zh-Hans-CN')).toEqual({ id: 'zh-CN', messages: zh })
     expect(resolveDesktopLocale('en-US')).toEqual({ id: 'en', messages: en })
     expect(resolveDesktopLocale('fr-FR')).toEqual({ id: 'en', messages: en })
+    expect(en.application).toBe('DeepSeek Gestalt')
+    expect(zh.application).toBe('DeepSeek Gestalt')
+    expect(en.quitApplication).toBe('Quit DeepSeek Gestalt')
+    expect(zh.quitApplication).toBe('退出 DeepSeek Gestalt')
   })
 
   it('formats named values without consuming unknown placeholders', () => {

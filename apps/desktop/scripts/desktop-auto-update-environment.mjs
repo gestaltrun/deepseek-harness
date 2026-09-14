@@ -1,4 +1,4 @@
-/** Resolve the Desktop auto-update channel and its Tencent COS destination. */
+/** Resolve the Desktop auto-update channel and its Alibaba Cloud OSS destination. */
 
 import { prerelease, valid } from 'semver'
 
@@ -7,20 +7,20 @@ export const DESKTOP_AUTO_UPDATE_ENV = 'DSH_DESKTOP_AUTO_UPDATE_ENV'
 
 const UPDATE_ENVIRONMENTS = {
   test: {
-    originEnvName: 'DOWNLOAD_TEST_ORIGIN',
-    fixedOrigin: undefined,
-    bucketEnvName: 'DOWNLOAD_TEST_COS_BUCKET',
-    secretIdEnvName: 'DOWNLOAD_TEST_COS_SECRET_ID',
-    secretKeyEnvName: 'DOWNLOAD_TEST_COS_SECRET_KEY',
+    feedUrlEnvName: 'DESKTOP_RELEASE_TEST_FEED_URL',
+    objectPrefixEnvName: 'DESKTOP_RELEASE_TEST_OSS_PREFIX',
   },
   production: {
-    originEnvName: undefined,
-    fixedOrigin: 'https://download.deepseek.com',
-    bucketEnvName: 'DOWNLOAD_PROD_COS_BUCKET',
-    secretIdEnvName: 'DOWNLOAD_PROD_COS_SECRET_ID',
-    secretKeyEnvName: 'DOWNLOAD_PROD_COS_SECRET_KEY',
+    feedUrlEnvName: 'DESKTOP_RELEASE_PRODUCTION_FEED_URL',
+    objectPrefixEnvName: 'DESKTOP_RELEASE_PRODUCTION_OSS_PREFIX',
   },
 }
+
+const OSS_BUCKET_ENV = 'DESKTOP_RELEASE_OSS_BUCKET'
+const OSS_ENDPOINT_ENV = 'DESKTOP_RELEASE_OSS_ENDPOINT'
+const ALIYUN_REGION_ENV = 'DESKTOP_RELEASE_ALIYUN_REGION'
+const OSS_TIMEOUT_ENV = 'DESKTOP_RELEASE_OSS_TIMEOUT_MS'
+const DEFAULT_OSS_TIMEOUT_MS = 600_000
 
 const UPDATE_TARGETS = new Set(['mac-arm64', 'mac-x64', 'win-x64'])
 
@@ -83,6 +83,23 @@ export function desktopUpdateMetadataFilename(version, platform) {
 }
 
 /**
+ * Return the branded installer basename for one Desktop version and target.
+ * @param {string} version - Desktop semantic version.
+ * @param {'mac-arm64' | 'mac-x64' | 'win-x64'} target - Supported release target.
+ * @returns {string} Filename without its installer extension.
+ */
+export function desktopReleaseArtifactBase(version, target) {
+  if (valid(version) === null) {
+    throw new Error(`desktop auto-update: invalid Desktop version ${JSON.stringify(version)}`)
+  }
+  if (!UPDATE_TARGETS.has(target)) {
+    throw new Error(`desktop auto-update: unsupported target ${target}`)
+  }
+  if (target === 'win-x64') return `DeepSeekGestalt-Setup-${version}-x64`
+  return `DeepSeek-Gestalt-${version}-${target === 'mac-arm64' ? 'arm64' : 'x64'}`
+}
+
+/**
  * Read one required release setting without accepting whitespace-only values.
  * @param {NodeJS.ProcessEnv} env - Packaging or upload environment.
  * @param {string} name - Environment variable to read.
@@ -97,28 +114,70 @@ function requiredEnvironmentValue(env, name) {
 }
 
 /**
- * Normalize an HTTPS origin and reject paths or credentials.
+ * Normalize an HTTPS base URL and reject credentials, queries, or fragments.
  * @param {string} value - Candidate origin.
  * @param {string} name - Environment variable used in diagnostics.
  * @returns {string} Normalized HTTPS origin without a trailing slash.
  */
-function httpsOrigin(value, name) {
+function httpsBaseUrl(value, name) {
   let parsed
   try {
     parsed = new URL(value)
   }
   catch {
-    throw new Error(`desktop auto-update: ${name} must be an absolute HTTPS origin`)
+    throw new Error(`desktop auto-update: ${name} must be an absolute HTTPS URL`)
   }
   if (parsed.protocol !== 'https:'
     || parsed.username !== ''
     || parsed.password !== ''
-    || parsed.pathname !== '/'
     || parsed.search !== ''
     || parsed.hash !== '') {
-    throw new Error(`desktop auto-update: ${name} must be an absolute HTTPS origin without a path, credentials, query, or fragment`)
+    throw new Error(`desktop auto-update: ${name} must be an absolute HTTPS URL without credentials, query, or fragment`)
+  }
+  return parsed.href.replace(/\/+$/u, '')
+}
+
+function httpsEndpoint(value, name) {
+  const url = httpsBaseUrl(value, name)
+  const parsed = new URL(url)
+  if (parsed.pathname !== '/') {
+    throw new Error(`desktop auto-update: ${name} must be an HTTPS origin without a path`)
   }
   return parsed.origin
+}
+
+/**
+ * Normalize an OSS object prefix without permitting ambiguous path segments.
+ * @param {string} value - Candidate object prefix.
+ * @param {string} name - Environment variable used in diagnostics.
+ * @returns {string} Normalized non-empty prefix without outer slashes.
+ */
+function objectPrefix(value, name) {
+  const normalized = value.replace(/^\/+|\/+$/gu, '')
+  const segments = normalized.split('/')
+  if (normalized === ''
+    || segments.some(segment => segment === '' || segment === '.' || segment === '..')
+    || !/^[A-Za-z0-9._/-]+$/u.test(normalized)) {
+    throw new Error(`desktop auto-update: ${name} must be a non-empty OSS object prefix without empty, ".", or ".." segments`)
+  }
+  return normalized
+}
+
+function ossRegion(value) {
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)+$/u.test(value) || value.startsWith('oss-')) {
+    throw new Error(`desktop auto-update: ${ALIYUN_REGION_ENV} must use the Alibaba Cloud region ID form, such as "cn-hangzhou"`)
+  }
+  return `oss-${value}`
+}
+
+function positiveInteger(env, name) {
+  const value = env[name]?.trim()
+  if (value === undefined || value === '') return DEFAULT_OSS_TIMEOUT_MS
+  const parsed = Number(value)
+  if (!/^[1-9]\d*$/u.test(value) || !Number.isSafeInteger(parsed)) {
+    throw new Error(`desktop auto-update: ${name} must be a positive integer`)
+  }
+  return parsed
 }
 
 /**
@@ -126,44 +185,45 @@ function httpsOrigin(value, name) {
  * @param {NodeJS.ProcessEnv} env - Packaging or upload environment.
  * @param {NodeJS.Platform} platform - Target Node.js platform.
  * @param {string} arch - Target Node.js architecture.
- * @returns {{ environment: 'test' | 'production', target: 'mac-arm64' | 'mac-x64' | 'win-x64', origin: string, publicUrl: string, keyPrefix: string }} Resolved updater configuration.
- * @throws {Error} When the test deployment lacks a valid HTTPS origin.
+ * @returns {{ environment: 'test' | 'production', target: 'mac-arm64' | 'mac-x64' | 'win-x64', feedBaseUrl: string, publicUrl: string }} Resolved updater configuration.
+ * @throws {Error} When the selected deployment lacks a valid HTTPS feed URL.
  */
 export function resolveDesktopAutoUpdateConfig(env, platform, arch) {
   const environment = resolveDesktopAutoUpdateEnvironment(env)
   const target = resolveDesktopAutoUpdateTarget(platform, arch)
   const deployment = UPDATE_ENVIRONMENTS[environment]
-  let origin = deployment.fixedOrigin
-  if (origin === undefined) {
-    const { originEnvName } = deployment
-    if (originEnvName === undefined) throw new Error('desktop auto-update: selected deployment has no origin')
-    origin = httpsOrigin(requiredEnvironmentValue(env, originEnvName), originEnvName)
-  }
-  const keyPrefix = `_/harness/desktop/stable/${target}`
+  const feedBaseUrl = httpsBaseUrl(
+    requiredEnvironmentValue(env, deployment.feedUrlEnvName),
+    deployment.feedUrlEnvName,
+  )
   return {
     environment,
     target,
-    origin,
-    keyPrefix,
-    publicUrl: `${origin}/${keyPrefix}/`,
+    feedBaseUrl,
+    publicUrl: `${feedBaseUrl}/${target}/`,
   }
 }
 
 /**
- * Resolve the public updater URL and private COS destination for one upload target.
+ * Resolve the public updater URL and private OSS destination for one upload target.
  * @param {NodeJS.ProcessEnv} env - Upload environment.
  * @param {NodeJS.Platform} platform - Target Node.js platform.
  * @param {string} arch - Target Node.js architecture.
- * @returns {{ environment: 'test' | 'production', target: 'mac-arm64' | 'mac-x64' | 'win-x64', origin: string, publicUrl: string, keyPrefix: string, bucket: string, secretIdEnvName: string, secretKeyEnvName: string }} Resolved upload configuration.
- * @throws {Error} When the selected deployment lacks a required origin or bucket, or the test origin is not HTTPS.
+ * @returns {{ environment: 'test' | 'production', target: 'mac-arm64' | 'mac-x64' | 'win-x64', feedBaseUrl: string, publicUrl: string, keyPrefix: string, bucket: string, endpoint: string, region: string, timeoutMs: number }} Resolved upload configuration.
+ * @throws {Error} When the selected deployment lacks a valid feed URL or OSS setting.
  */
 export function resolveDesktopUploadConfig(env, platform, arch) {
   const update = resolveDesktopAutoUpdateConfig(env, platform, arch)
   const deployment = UPDATE_ENVIRONMENTS[update.environment]
   return {
     ...update,
-    bucket: requiredEnvironmentValue(env, deployment.bucketEnvName),
-    secretIdEnvName: deployment.secretIdEnvName,
-    secretKeyEnvName: deployment.secretKeyEnvName,
+    keyPrefix: `${objectPrefix(
+      requiredEnvironmentValue(env, deployment.objectPrefixEnvName),
+      deployment.objectPrefixEnvName,
+    )}/${update.target}`,
+    bucket: requiredEnvironmentValue(env, OSS_BUCKET_ENV),
+    endpoint: httpsEndpoint(requiredEnvironmentValue(env, OSS_ENDPOINT_ENV), OSS_ENDPOINT_ENV),
+    region: ossRegion(requiredEnvironmentValue(env, ALIYUN_REGION_ENV)),
+    timeoutMs: positiveInteger(env, OSS_TIMEOUT_ENV),
   }
 }

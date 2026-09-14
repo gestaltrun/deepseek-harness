@@ -6,6 +6,10 @@ Status: implemented
 
 profile 修改与恢复遵循[直接修改 profile 决策](2026-09-09-desktop-in-place-profile.zh.md)。
 
+Gestaltrun OSS 和 GitHub Release 流程遵循 [Gestaltrun Desktop 发布决策](../process/2026-09-14-gestaltrun-desktop-release.zh.md)。
+
+发布环境保存 electron-builder 使用的证书 qualifier，不包含 `Developer ID Application:` 前缀。直接调用 `codesign` 时会将其展开为完整的 Developer ID Application 身份，避免同 qualifier 的其他证书造成选择歧义。
+
 ## 问题
 
 DeepSeek Harness 需要一个复用 Web UI 的 Electron 桌面应用。该应用无需系统 Node.js 或 pnpm 即可工作，通过应用内置 pnpm 安装 dsh 与桌面插件，并通过一个面向用户的流程更新完整桌面发布。
@@ -79,7 +83,7 @@ Electron 更新只使用一个 `electron-updater` 发布流和签名 `electron-b
 
 [立即显示窗口决策](2026-09-09-desktop-immediate-window-and-direct-start.zh.md)负责本地加载页、直接启动 Host 和主窗口恢复。profile 协调遵循[内置运行时决策](2026-09-08-desktop-bundled-runtime-and-external-plugins.zh.md)。
 
-`DSH_DESKTOP_AUTO_UPDATE_ENV` 默认为测试部署，也可以选择生产部署，并同时决定目标专用的 generic-provider URL 与 COS 目标。发布自动化通过 `DOWNLOAD_TEST_ORIGIN` 提供测试 HTTPS origin，并通过 `DOWNLOAD_TEST_COS_BUCKET` 或 `DOWNLOAD_PROD_COS_BUCKET` 提供各部署的 bucket；可变的测试路由与 COS 存储身份不写入源码，部署基础设施变更时无需发布新代码，而公开的生产 origin 仍固定。打包只解析公开更新 URL、禁止 electron-builder 发布、从子进程环境中删除每个 COS 凭据字段，并且只有在 electron-builder 以及每个签名或公证 hook 成功后才写入完成记录。目标上传还必须提供所选 bucket，随后会先要求完成记录、根 dsh 版本、Desktop 版本、根据版本得出的频道元数据、产物名称、大小与 SHA-512 全部一致，再读取所选凭据或发送数据。它先上传不可变且带版本的更新载荷与所有独立 blockmap，最后替换 electron-builder 生成的频道元数据，并且不会删除历史对象。稳定版本使用 `latest` 元数据名称，预发布版本则使用语义化版本的第一个预发布标识符。NSIS 把 blockmap 嵌入已签名的可执行文件，macOS ZIP 则使用独立 blockmap；两者都让 electron-updater 在平台支持时只下载变化的数据块，而应用替换与本地 pnpm 包操作仍是两个独立操作。
+`DSH_DESKTOP_AUTO_UPDATE_ENV` 默认选择测试部署，也可以选择生产部署，并决定目标专用的 generic-provider URL 与 OSS 前缀。每个部署通过发布环境变量提供公开 feed 根地址和对象前缀，共用的 bucket、endpoint 与 region 也由部署配置提供。打包只解析公开更新 URL、禁止 electron-builder 发布、从每个子进程中移除短期阿里云凭据字段，并且只有在 electron-builder 以及每个签名或公证 hook 成功后才写入完成记录。手动 Desktop Release 工作流接受准确的提交以及绑定的 Desktop/dsh 版本；候选打包保留官方签名要求，而发布只接受已包含在 `master` 中的提交，并通过仓库范围的 OIDC 角色获得 OSS 权限。目标上传会在发送数据前要求完成记录、根 dsh 版本、Desktop 版本、根据版本得出的频道元数据、产物名称、大小与 SHA-512 全部一致。所有所选的不可变更新载荷与独立 blockmap 均完成上传和验证后，流程才会替换任何所选频道的元数据。不可变 key 会拒绝不同内容，并保存 SHA-512 以便重试时验证；频道元数据是唯一可以替换的对象。生产发布会创建一个包含 OSS 安装包链接的 `gestalt-v<version>` GitHub Release，并拒绝复用属于其他提交的 tag 或草稿。稳定版本使用 `latest` 元数据名称，预发布版本使用语义化版本中的第一个预发布标识符。NSIS 把 blockmap 嵌入已签名的可执行文件，macOS ZIP 使用独立 blockmap；两者都让 electron-updater 在平台支持时只下载变化的数据块，而应用替换与本地 pnpm 包操作仍是两个独立操作。
 
 ## 安全与发布策略
 

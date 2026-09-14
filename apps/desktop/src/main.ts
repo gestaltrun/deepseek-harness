@@ -22,6 +22,7 @@ import { claimDesktopSingleInstance } from './single-instance.ts'
 import { DesktopUpdateCoordinator } from './update-coordinator.ts'
 import { desktopErrorState } from './startup-error.ts'
 import { startupFailureDocument } from './startup-document.ts'
+import { desktopIconOptions } from './app-icon.ts'
 
 const SCHEME = 'dsh-app'
 let focusPrimaryWindow = (): void => {}
@@ -89,6 +90,13 @@ function developmentHostInspectPort(enabled: boolean): number | undefined {
 
 function createWindow(preload: string, show = false): BrowserWindow {
   const window = new BrowserWindow({
+    ...desktopIconOptions({
+      platform: process.platform,
+      packaged: app.isPackaged,
+      appPath: app.getAppPath(),
+      resourcesPath: process.resourcesPath,
+      setDockIcon: (path) => { app.dock?.setIcon(path) },
+    }),
     width: 1280,
     height: 840,
     minWidth: 880,
@@ -435,7 +443,7 @@ async function main(): Promise<void> {
   }
 
   Menu.setApplicationMenu(Menu.buildFromTemplate([{
-    label: process.platform === 'darwin' ? app.name : messages.application,
+    label: messages.application,
     submenu: [
       {
         label: development === undefined ? messages.pluginsMenu : messages.pluginsMenuPackagedOnly,
@@ -445,7 +453,7 @@ async function main(): Promise<void> {
       },
       { label: messages.checkUpdatesMenu, click: () => { void checkAndPrompt(true) } },
       { type: 'separator' },
-      { role: 'quit' },
+      { label: messages.quitApplication, role: 'quit' },
     ],
   }]))
 

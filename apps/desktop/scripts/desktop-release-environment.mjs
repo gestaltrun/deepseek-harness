@@ -46,6 +46,18 @@ export function resolveDesktopAppId(env) {
 }
 
 /**
+ * Derive the packaged application's internal name from its release identifier.
+ * @param {string} appId - Validated reverse-DNS application identifier.
+ * @returns {string} Lowercase internal name used for Electron-owned directories.
+ */
+export function desktopInternalName(appId) {
+  if (!/^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/u.test(appId)) {
+    throw new Error('desktop release environment: internal name requires a reverse-DNS application identifier')
+  }
+  return appId.toLowerCase().replaceAll('.', '-')
+}
+
+/**
  * Resolve and validate the public identity expected on a macOS release.
  * @param {NodeJS.ProcessEnv} env - Packaging environment.
  * @returns {{ signingIdentity: string, teamId: string }} Expected certificate qualifier and Team ID.

@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/process/2026-09-14-gestaltrun-desktop-release.md
+2026-09-14-gestaltrun-desktop-release.md: b88f83774325da76e3c1a0c6d27bce7f9676d208
+2026-09-14-gestaltrun-desktop-release.zh.md: bb60f5cd74602c18a65d2caed407209d3d79dc26
