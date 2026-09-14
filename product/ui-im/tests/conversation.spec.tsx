@@ -127,7 +127,7 @@ function mount(options: {
   render(<ConversationTab {...({
     sessionId, t: makeTranslate(zh), useStore: bindSnapshotSelector(store), actions: store.actions,
     useConfiguration: bindSnapshotSelector(source({ phase: 'ready', value: snapshot, error: undefined })),
-    useWorkspaces: bindSnapshotSelector(source({ items: [{ workspaceId, sessionIds: [sessionId], title: 'Sim' }] })),
+    useWorkspaces: bindSnapshotSelector(source({ items: [{ workspaceId, sessionIds: [sessionId], title: 'Sim' }, { workspaceId: testedWorkspaceId, sessionIds: [testedSessionId], title: '售后工作区' }] })),
     watchSession: () => source({ phase: 'ready', value: { sessionId, ...(scope === undefined ? {} : { scope }), ...(bound === undefined ? {} : { instance: bound }) }, error: undefined }),
     watchRealSession: () => source({ phase: 'ready', value: { sessionId, ...(options.binding === undefined ? {} : { binding: options.binding }) }, error: undefined }),
     watchDelivery: () => source({ phase: 'ready', value: options.delivery ?? emptyDelivery, error: undefined }),
@@ -184,6 +184,12 @@ describe('simulation conversation sidebar', () => {
     fireEvent.change(screen.getByLabelText(zh.simulationParticipants), { target: { value: 'buyer-77|Buyer' } })
     fireEvent.click(screen.getByRole('button', { name: zh.createSimulation }))
     await waitFor(() => { expect(create).toHaveBeenCalledWith({ simUserSessionId: sessionId, conversationId: 'buyer-77', speakingMembers: [{ actorId: 'buyer-77', displayName: 'Buyer' }] }) })
+  })
+
+  it('names the frozen account and tested workspace instead of their ids', () => {
+    mount({ status: 'running' })
+    expect(screen.getByText(`${zh.simulationTarget}: ${zh.wangwang} · 张伟`)).toBeTruthy()
+    expect(screen.getByText(`${zh.simulationTestedWorkspace}: 售后工作区`)).toBeTruthy()
   })
 
   it('uses Host peer identity, injects one allow-listed member, and stops by begin then wait', async () => {

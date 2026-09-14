@@ -251,6 +251,8 @@ function SimulationConversation(props: ConversationTabProps & {
 }): ReactElement {
   const { instance, scope, t, ui } = props
   const target = props.useConfiguration(value => value.value?.simulationTargets.find(item => item.workspaceId === instance.simUserWorkspaceId))
+  const accountName = props.useConfiguration(value => value.value?.accounts.find(item => item.id === instance.target.accountId)?.displayName) ?? instance.target.accountId
+  const testedWorkspaceName = props.useWorkspaces(value => value.items.find(item => item.workspaceId === instance.target.workspaceId)?.title) ?? instance.target.workspaceId
   const diverged = target === undefined || target.accountId !== instance.target.accountId || target.routeId !== instance.target.routeId
   const stop = async (): Promise<void> => {
     props.actions.patch({ stopping: true, stopConfirmation: false, error: undefined })
@@ -269,8 +271,8 @@ function SimulationConversation(props: ConversationTabProps & {
   return <section className={css.pane} data-im-conversation data-simulation-status={instance.status}>
     <header className={css.head}>
       <div className={css.title}>{t(instance.target.conversationKind === 'group' ? 'kindGroup' : 'kindDirect')}: {instance.target.conversationId} <Tag tone="neutral">{t('simulationBadge')}</Tag></div>
-      <div className={css.meta}><span>{t('simulationTarget')}: {instance.target.platform} · {instance.target.accountId}</span><span>{t('simulationTestedWorkspace')}: {instance.target.workspaceId}</span></div>
-      <div className={css.simBanner}>{t('simulationFrozen').replace('{instance}', instance.instanceId).replace('{target}', instance.target.conversationId).replace('{workspace}', instance.target.workspaceId)}{diverged && <strong>{t('simulationDivergedNote')}</strong>}</div>
+      <div className={css.meta}><span>{t('simulationTarget')}: {t(instance.target.platform)} · {accountName}</span><span>{t('simulationTestedWorkspace')}: {testedWorkspaceName}</span></div>
+      <div className={css.simBanner}>{t('simulationFrozen').replace('{instance}', instance.instanceId).replace('{target}', instance.target.conversationId).replace('{workspace}', testedWorkspaceName)}{diverged && <strong>{t('simulationDivergedNote')}</strong>}</div>
       <nav className={css.roles} aria-label={t('simulationRoles')}>
         <Button size="sm" variant={scope.role === 'tested' ? 'primary' : 'outline'} onClick={() => { props.openSession(scope.role === 'tested' ? scope.sessionId : scope.peerSessionId) }}>{t('openTested')}</Button>
         <Button size="sm" variant={scope.role === 'sim-user' ? 'primary' : 'outline'} onClick={() => { props.openSession(scope.role === 'sim-user' ? scope.sessionId : scope.peerSessionId) }}>{t('openSimuser')}</Button>
