@@ -154,7 +154,7 @@ describe('Wangwang transport', () => {
     const { credentials, transport } = boot(fetch)
     store(credentials)
     const admitted: ImTransportInboundPage[] = []
-    const dispose = await transport.listen(account(), allDirectPlan(), {
+    const listener = await transport.listen(account(), allDirectPlan(), {
       receivePage: async page => {
         admitted.push(page)
         return {
@@ -182,7 +182,8 @@ describe('Wangwang transport', () => {
         { conversationId: 'conversation-2', messages: [{ externalMessageId: 'message-2' }] },
       ],
     })
-    await dispose()
+    await listener.dispose()
+    await listener.done
   })
 
   it('filters a specific route while still advancing the whole merchant page cursor', async () => {
@@ -203,7 +204,7 @@ describe('Wangwang transport', () => {
       target: { kind: 'specific', conversationId: 'conversation-1', directRecipient: { providerActorId: 'buyer-1' } },
       needsMentionEvidence: false,
     }] }
-    const dispose = await transport.listen(account(), plan, {
+    const listener = await transport.listen(account(), plan, {
       receivePage: async page => {
         admitted.push(page)
         return {
@@ -223,7 +224,39 @@ describe('Wangwang transport', () => {
     expect(admitted).toHaveLength(1)
     expect(admitted[0]?.nextCursor).toBe('11')
     expect(admitted[0]?.conversations.map(group => group.conversationId)).toEqual(['conversation-1'])
-    await dispose()
+    await listener.dispose()
+    await listener.done
+  })
+
+  it('rejects the listener terminal signal when polling fails after readiness', async () => {
+    vi.useFakeTimers()
+    try {
+      let calls = 0
+      const { credentials, transport } = boot(async () => {
+        calls++
+        if (calls === 1) return success({ events: [], nextSinceId: 0, hasMore: false })
+        throw new Error('controlled polling failure')
+      })
+      store(credentials)
+      const listener = await transport.listen(account(), allDirectPlan(), {
+        receivePage: async page => ({
+          conversations: [],
+          cursor: {
+            operationId: page.operationId,
+            status: 'applied',
+            cursor: {
+              id: brandString<ImProviderCursorId>('cursor-ready'), owner: page.owner,
+              cursor: page.nextCursor, updatedAt: '2026-09-14T00:00:00.000Z',
+            },
+          },
+        }),
+      }, new AbortController().signal)
+      const terminal = expect(listener.done).rejects.toMatchObject({ code: 'WANGWANG_NETWORK_ERROR' })
+      await vi.advanceTimersByTimeAsync(60_000)
+      await terminal
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('keeps ambiguous sends unknown until the provider status endpoint confirms a fact', async () => {

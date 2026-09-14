@@ -19,7 +19,17 @@ async function waitFor(description, predicate) {
 const root = await mkdtemp(join(tmpdir(), 'dsh-im-wangwang-loader-'))
 const server = createServer((_request, response) => {
   response.writeHead(200, { 'Content-Type': 'application/json' })
-  response.end(JSON.stringify({ code: 0, data: { events: [], nextSinceId: 0, hasMore: false } }))
+  response.end(JSON.stringify({
+    code: 0,
+    data: {
+      events: [
+        { eventId: 'event-1', merchantId: 'fixture-merchant', senderType: 1, messageId: 'message-1', customerId: 'buyer-1', conversationId: 'conversation-1', msgType: 1, textContent: 'first', msgTime: 1726000000000 },
+        { eventId: 'event-2', merchantId: 'fixture-merchant', senderType: 1, messageId: 'message-2', customerId: 'buyer-future', conversationId: 'conversation-future', msgType: 1, textContent: 'future', msgTime: 1726000001000 },
+      ],
+      nextSinceId: 2,
+      hasMore: false,
+    },
+  }))
 })
 await new Promise((resolve, reject) => {
   server.once('error', reject)
@@ -100,7 +110,14 @@ try {
   if (route.status !== 'applied') throw new Error(`runtime did not create the fixture route: ${route.status}`)
   await waitFor('provider listener readiness', () => runtime.snapshot().accounts.find(value => value.id === account.id)?.listener.state === 'running')
   const owner = { platform: 'wangwang', accountId: account.id, streamId: 'fixture-merchant' }
-  if (runtime.getProviderCursor(owner).cursor !== '0') throw new Error('provider listener did not commit the fixture merchant cursor')
+  await waitFor('complete merchant page receipt', () => runtime.getProviderCursor(owner).cursor === '2')
+  const firstScope = { kind: 'real', platform: 'wangwang', accountId: account.id, conversationKind: 'direct', conversationId: 'conversation-1' }
+  const futureScope = { kind: 'real', platform: 'wangwang', accountId: account.id, conversationKind: 'direct', conversationId: 'conversation-future' }
+  const first = runtime.queryHistory({ scope: firstScope, limit: 10 })
+  const future = runtime.queryHistory({ scope: futureScope, limit: 10 })
+  if (first.items.length !== 1 || future.items.length !== 1 || future.items[0]?.sender.kind !== 'external' || future.items[0].sender.senderId !== 'buyer-future') {
+    throw new Error('all-conversation route did not durably admit every conversation in the merchant page')
+  }
   const current = runtime.snapshot().accounts.find(value => value.id === account.id)
   if (current === undefined) throw new Error('runtime lost the fixture Wangwang account')
   const disconnected = await runtime.disconnectAccount({
@@ -108,6 +125,19 @@ try {
   })
   if (disconnected.status !== 'applied') throw new Error(`runtime did not persist disconnect intent: ${disconnected.status}`)
   await waitFor('provider listener teardown', () => runtime.snapshot().accounts.find(value => value.id === account.id)?.listener.state === 'stopped')
+  const reconnected = await runtime.reconnectAccount({
+    operationId: 'fixture-reconnect', accountId: account.id, observedRevision: disconnected.account.revision,
+  })
+  if (reconnected.status !== 'applied') throw new Error(`runtime did not persist reconnect intent: ${reconnected.status}`)
+  await waitFor('reconnected provider readiness', () => runtime.snapshot().accounts.find(value => value.id === account.id)?.listener.state === 'running')
+  if (runtime.queryHistory({ scope: firstScope, limit: 10 }).items.length !== 1 || runtime.queryHistory({ scope: futureScope, limit: 10 }).items.length !== 1) {
+    throw new Error('merchant replay after reconnect duplicated durable messages')
+  }
+  const connected = runtime.snapshot().accounts.find(value => value.id === account.id)
+  if (connected === undefined) throw new Error('runtime lost the reconnected Wangwang account')
+  const stopped = await runtime.disconnectAccount({ operationId: 'fixture-stop', accountId: account.id, observedRevision: connected.revision })
+  if (stopped.status !== 'applied') throw new Error(`runtime did not stop the reconnected Wangwang account: ${stopped.status}`)
+  await waitFor('reconnected provider teardown', () => runtime.snapshot().accounts.find(value => value.id === account.id)?.listener.state === 'stopped')
 } finally {
   await ctx.fiber.dispose()
   await new Promise((resolve, reject) => { server.close(error => { if (error === undefined) resolve(); else reject(error) }) })

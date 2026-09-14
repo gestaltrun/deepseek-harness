@@ -16,9 +16,10 @@ import type {
   ImTransportInboundMessage,
   ImTransportInboundPage,
   ImTransportInboundPageReceipt,
+  ImTransportListener,
+  ImTransportListenPlan,
   ImTransportSendRequest,
   ImTransportSendResult,
-  ImTransportListenPlan,
   ImTransportSink,
 } from '@gestaltrun/dsh-im-runtime'
 import { z } from 'zod'
@@ -306,7 +307,7 @@ export class WangwangTransport implements ImTransport {
   }
 
   /** @inheritdoc */
-  async listen(account: ImAccountView, plan: ImTransportListenPlan, sink: ImTransportSink, signal: AbortSignal): Promise<() => Promise<void>> {
+  async listen(account: ImAccountView, plan: ImTransportListenPlan, sink: ImTransportSink, signal: AbortSignal): Promise<ImTransportListener> {
     const key = String(account.id)
     if (this.listeners.has(key)) throw new WangwangProtocolError('WANGWANG_LISTENER_CONFLICT', 'Wangwang account listener is already running')
     if (!plan.routes.some(route => route.conversationKind === 'direct')) {
@@ -326,14 +327,19 @@ export class WangwangTransport implements ImTransport {
       const resumedCursor = await this.admitPage(first, sink, candidate, account, plan, null)
       const done = this.poll(candidate, account, plan, sink, resumedCursor, abort.signal)
         .catch((error: unknown) => {
-          if (!abort.signal.aborted) this.ctx.logger('imWangwang').warn(`Wangwang listener stopped: ${error instanceof Error ? error.message : 'unknown failure'}`)
+          if (abort.signal.aborted) return
+          this.ctx.logger('imWangwang').warn(`Wangwang listener stopped: ${error instanceof Error ? error.message : 'unknown failure'}`)
+          throw error
         })
         .finally(() => {
           signal.removeEventListener('abort', relayAbort)
           if (this.listeners.get(key)?.abort === abort) this.listeners.delete(key)
         })
       this.listeners.set(key, { abort, done })
-      return async () => { abort.abort(new Error('Wangwang listener disposed')); await done }
+      return {
+        done,
+        dispose: async () => { abort.abort(new Error('Wangwang listener disposed')); await done },
+      }
     } catch (error) {
       signal.removeEventListener('abort', relayAbort)
       abort.abort(error)
