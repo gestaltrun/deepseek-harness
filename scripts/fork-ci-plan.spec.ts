@@ -1,6 +1,12 @@
 /** Regression cases for dependency-aware fork check selection. */
 import { describe, expect, it } from 'vitest'
-import { planForkCi, type ScopeInput } from './fork-ci-plan.ts'
+import { formatForkCiSummary, planForkCi, type ScopeInput } from './fork-ci-plan.ts'
+
+const ciTests = [
+  'scripts/fork-ci-plan.spec.ts', 'scripts/fork-ci-run.spec.ts', 'scripts/fork-ci-workflow.spec.ts',
+  'scripts/ci-workflow.spec.ts', 'scripts/ci-compatible-selfhosted.spec.ts',
+  'scripts/tests/ci-master-platforms.spec.ts', 'scripts/tests/ci-release-selfhosted.spec.ts',
+].sort()
 
 function fixture(changed: string[] = []): ScopeInput {
   const after: Record<string, string> = {
@@ -9,9 +15,7 @@ function fixture(changed: string[] = []): ScopeInput {
     'packages/core/other/package.json': JSON.stringify({ name: '@test/other' }),
     'apps/desktop/package.json': JSON.stringify({ name: '@test/desktop' }),
     'apps/desktop-host/package.json': JSON.stringify({ name: '@test/desktop-host' }),
-    'scripts/fork-ci-plan.spec.ts': '',
-    'scripts/fork-ci-run.spec.ts': '',
-    'scripts/fork-ci-workflow.spec.ts': '',
+    ...Object.fromEntries(ciTests.map(path => [path, ''])),
     'package.json': JSON.stringify({ scripts: {} }),
   }
   const files = [
@@ -20,6 +24,17 @@ function fixture(changed: string[] = []): ScopeInput {
     'apps/desktop/tests/package.spec.ts', 'apps/desktop-host/tests/transport.spec.ts',
   ]
   return { changed, files, before: { ...after }, after }
+}
+
+function desktopReleaseFixture(changed: string[]): ScopeInput {
+  const input = fixture(changed)
+  Object.assign(input.after, {
+    '.github/workflows/desktop-release.yml': 'name: Desktop Release\n',
+    'apps/desktop/tests/desktop-release-workflow.spec.ts': "import { describe } from 'vitest'\nvoid describe\n",
+  })
+  input.before = { ...input.before, ...input.after }
+  input.files.push('.github/workflows/desktop-release.yml', 'apps/desktop/tests/desktop-release-workflow.spec.ts')
+  return input
 }
 
 describe('fork CI scope', () => {
@@ -74,6 +89,120 @@ describe('fork CI scope', () => {
     expect(plan.jobs.product).toBe(true)
     expect(plan.scripts).toContain('scripts/fork-ci-plan.spec.ts')
     expect(plan.affectedPackages).toEqual([])
+  })
+
+  it('runs a changed workflow and its static owner entirely in quality', () => {
+    const plan = planForkCi(desktopReleaseFixture([
+      '.github/workflows/desktop-release.yml',
+      'apps/desktop/tests/desktop-release-workflow.spec.ts',
+    ]))
+    expect(plan.scripts).toEqual(['apps/desktop/tests/desktop-release-workflow.spec.ts'])
+    expect(plan.affectedPackages).toEqual([])
+    expect(plan.build).toBe(false)
+    expect(plan.jobs).toMatchObject({ quality: true, affected: false, product: false, desktop: false })
+    expect(plan.reasons).toContain('static workflow owner: .github/workflows/desktop-release.yml -> apps/desktop/tests/desktop-release-workflow.spec.ts')
+  })
+
+  it('keeps Desktop source and shared test fixtures on the package-owned path', () => {
+    for (const path of ['apps/desktop/src/main.ts', 'apps/desktop/tests/fixture.ts']) {
+      const input = desktopReleaseFixture([path])
+      input.files.push(path)
+      const plan = planForkCi(input)
+      expect(plan.affectedPackages).toEqual(['apps/desktop'])
+      expect(plan.jobs.product).toBe(true)
+      expect(plan.jobs.desktop).toBe(true)
+      expect(plan.scripts).toEqual([])
+    }
+  })
+
+  it('rejects a mapped static owner that imports package or shared fixture code', () => {
+    const input = desktopReleaseFixture(['apps/desktop/tests/desktop-release-workflow.spec.ts'])
+    input.after['apps/desktop/tests/desktop-release-workflow.spec.ts'] = "import './fixture.ts'"
+    input.files.push('apps/desktop/tests/fixture.ts')
+    expect(() => planForkCi(input)).toThrow('must not import local or workspace code: ./fixture.ts')
+    input.after['apps/desktop/tests/desktop-release-workflow.spec.ts'] = "import '@test/value/testing'"
+    expect(() => planForkCi(input)).toThrow('must not import local or workspace code: @test/value/testing')
+  })
+
+  it('fails loud when a retained static workflow loses its owner', () => {
+    const input = desktopReleaseFixture(['apps/desktop/tests/desktop-release-workflow.spec.ts'])
+    delete input.after['apps/desktop/tests/desktop-release-workflow.spec.ts']
+    input.files = input.files.filter(path => path !== 'apps/desktop/tests/desktop-release-workflow.spec.ts')
+    expect(() => planForkCi(input)).toThrow('Static workflow ownership must include')
+  })
+
+  it('fails loud when a retained static owner loses its workflow', () => {
+    const input = desktopReleaseFixture(['.github/workflows/desktop-release.yml'])
+    delete input.after['.github/workflows/desktop-release.yml']
+    input.files = input.files.filter(path => path !== '.github/workflows/desktop-release.yml')
+    expect(() => planForkCi(input)).toThrow('Static workflow ownership must include')
+  })
+
+  it('broadens a removed workflow-owner pair through its original owners', () => {
+    const input = desktopReleaseFixture([
+      '.github/workflows/desktop-release.yml', 'apps/desktop/tests/desktop-release-workflow.spec.ts',
+    ])
+    delete input.after['.github/workflows/desktop-release.yml']
+    delete input.after['apps/desktop/tests/desktop-release-workflow.spec.ts']
+    input.files = input.files.filter(file => ![
+      '.github/workflows/desktop-release.yml', 'apps/desktop/tests/desktop-release-workflow.spec.ts',
+    ].includes(file))
+    const plan = planForkCi(input)
+    expect(plan.jobs.product).toBe(true)
+    expect(plan.jobs.desktop).toBe(true)
+    expect(plan.scripts).toEqual(ciTests)
+  })
+
+  it('rejects a renamed workflow until the new path has an explicit owner', () => {
+    const input = desktopReleaseFixture([
+      '.github/workflows/desktop-release.yml', 'apps/desktop/tests/desktop-release-workflow.spec.ts',
+      '.github/workflows/renamed.yml', 'apps/desktop/tests/renamed-workflow.spec.ts',
+    ])
+    delete input.after['.github/workflows/desktop-release.yml']
+    delete input.after['apps/desktop/tests/desktop-release-workflow.spec.ts']
+    input.files = input.files.filter(file => ![
+      '.github/workflows/desktop-release.yml', 'apps/desktop/tests/desktop-release-workflow.spec.ts',
+    ].includes(file))
+    input.after['.github/workflows/renamed.yml'] = 'name: renamed\n'
+    input.after['apps/desktop/tests/renamed-workflow.spec.ts'] = ''
+    input.files.push('.github/workflows/renamed.yml', 'apps/desktop/tests/renamed-workflow.spec.ts')
+    expect(() => planForkCi(input)).toThrow('No CI owner for .github/workflows/renamed.yml')
+  })
+
+  it('rejects a new GitHub workflow without an explicit owner mapping', () => {
+    const input = fixture(['.github/workflows/unknown.yml'])
+    input.after['.github/workflows/unknown.yml'] = 'name: unknown\n'
+    input.files.push('.github/workflows/unknown.yml')
+    expect(() => planForkCi(input)).toThrow('add an explicit GitHub policy mapping')
+  })
+
+  it('selects the fixed CI regression set when the planner changes', () => {
+    const input = fixture(['scripts/fork-ci-plan.ts'])
+    input.after['scripts/fork-ci-plan.ts'] = ''
+    input.before['scripts/fork-ci-plan.ts'] = ''
+    input.files.push('scripts/fork-ci-plan.ts')
+    expect(planForkCi(input).scripts).toEqual(ciTests)
+  })
+
+  it('summarizes every run and skip without embedding the complete plan', () => {
+    const plan = planForkCi(desktopReleaseFixture(['.github/workflows/desktop-release.yml']))
+    const summary = formatForkCiSummary({ ...plan, base: 'base', head: 'head', mergeBase: 'merge-base' })
+    expect(summary).toContain('- run `quality`')
+    expect(summary).toContain('- skip `product`')
+    expect(summary).toContain('- skip `desktop`')
+    expect(summary).toContain('- run `all checks passed`')
+    expect(summary).toContain('complete plan is retained')
+    expect(summary).not.toContain('"changed"')
+  })
+
+  it('describes docs and shared product checks by the actions they run', () => {
+    const docs = planForkCi(fixture(['packages/util/value/README.md']))
+    expect(docs.jobReasons.quality).toEqual([
+      'diff integrity check', 'documentation checks selected',
+    ])
+    const shared = planForkCi(fixture(['tsconfig.base.json']))
+    expect(shared.jobs.product).toBe(true)
+    expect(shared.jobReasons.product).toEqual(['product-owned build, lint, and composition checks selected'])
   })
 
   it('keeps README changes on documentation checks without running owner behavior tests', () => {

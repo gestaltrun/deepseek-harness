@@ -1,8 +1,15 @@
 /** Selected jobs and test invocations must supply actual passing evidence. */
 import { describe, expect, it } from 'vitest'
-import { verifyForkCiResults, verifyTestExecution } from './fork-ci-run.ts'
+import { qualityLintFiles, verifyForkCiResults, verifyTestExecution } from './fork-ci-run.ts'
 
 describe('fork CI verdict', () => {
+  it('lints a changed static owner routed from Desktop to quality', () => {
+    expect(qualityLintFiles({
+      changed: ['apps/desktop/tests/desktop-release-workflow.spec.ts', 'apps/desktop/tests/package.spec.ts'],
+      scripts: ['apps/desktop/tests/desktop-release-workflow.spec.ts'],
+    })).toEqual(['apps/desktop/tests/desktop-release-workflow.spec.ts'])
+  })
+
   it('accepts required successes and only explicitly unselected skips', () => {
     expect(() =>{  verifyForkCiResults({ quality: true, product: false }, {
       plan: { result: 'success' }, quality: { result: 'success' }, product: { result: 'skipped' },
