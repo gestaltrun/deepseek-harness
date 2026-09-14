@@ -1,0 +1,132 @@
+/* Better Sidebar IM conversation tab. */
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  color: var(--dsw-alias-label-primary);
+}
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+
+.title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.roles {
+  display: flex;
+  gap: 8px;
+}
+
+.strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  font-size: 12px;
+}
+
+.live {
+  background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 12%, transparent);
+}
+
+.disabled {
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.offline {
+  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 12%, transparent);
+}
+
+.unknown {
+  background: color-mix(in srgb, var(--dsw-alias-state-warn-label) 12%, transparent);
+}
+
+.flow {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.text {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px 14px;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+}
+
+.input {
+  width: 100%;
+  min-height: 40px;
+  resize: vertical;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+  background: var(--dsw-alias-bg-layer-1);
+  color: inherit;
+}
+
+.empty {
+  padding: 24px 16px;
+  font-size: 13px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.time {
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.identityLine {
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.divergedBanner {
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 6px 14px;
+  background: color-mix(in srgb, var(--dsw-alias-state-warn-label) 12%, transparent);
+  color: var(--dsw-alias-state-warn-label);
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+
+.stoppedStrip {
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-tertiary);
+}
