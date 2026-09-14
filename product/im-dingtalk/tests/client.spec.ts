@@ -45,7 +45,10 @@ describe('DWS client argv', () => {
   it('uses the direct peer identity only as the direct send target', async () => {
     const { runner, calls } = runnerFor(fixtureOutput)
     const client = new DwsClient(runner)
-    await client.send('corp-a:user-2', { kind: 'direct', openDingTalkId: 'D-peer' }, 'hello', 'request-2', new AbortController().signal)
+    await client.send('corp-a:user-2', { kind: 'direct-open', openDingTalkId: 'D-peer' }, 'hello', 'request-2', new AbortController().signal)
     expect(calls).toContainEqual(['chat', 'message', 'send', '--open-dingtalk-id', 'D-peer', '--content', 'hello', '--idempotency-key', 'request-2', '--ai-tag=true', '--format', 'json', '--profile', 'corp-a:user-2'])
+
+    await client.send('corp-a:user-2', { kind: 'direct-user', userId: 'user-peer' }, 'hello', 'request-3', new AbortController().signal)
+    expect(calls).toContainEqual(['chat', 'message', 'send', '--user', 'user-peer', '--content', 'hello', '--idempotency-key', 'request-3', '--ai-tag=true', '--format', 'json', '--profile', 'corp-a:user-2'])
   })
 })

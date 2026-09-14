@@ -96,7 +96,7 @@ export class DwsClient {
   /**
    * Submit one text message with the caller's idempotency key.
    * @param profile - stable corpId:userId selector.
-   * @param target - group conversation ID or direct peer openDingTalkId.
+   * @param target - group conversation ID or one direct peer identifier published by DWS.
    * @param text - exact outbound text.
    * @param requestId - stable send intent.
    * @param signal - caller cancellation.
@@ -104,7 +104,9 @@ export class DwsClient {
    */
   async send(
     profile: string,
-    target: { readonly kind: 'group'; readonly conversationId: string } | { readonly kind: 'direct'; readonly openDingTalkId: string },
+    target: { readonly kind: 'group'; readonly conversationId: string }
+      | { readonly kind: 'direct-open'; readonly openDingTalkId: string }
+      | { readonly kind: 'direct-user'; readonly userId: string },
     text: string,
     requestId: string,
     signal: AbortSignal,
@@ -112,7 +114,8 @@ export class DwsClient {
     await this.ensureCapabilities(signal)
     const args = ['chat', 'message', 'send']
     if (target.kind === 'group') args.push('--conversation-id', target.conversationId)
-    else args.push('--open-dingtalk-id', target.openDingTalkId)
+    else if (target.kind === 'direct-open') args.push('--open-dingtalk-id', target.openDingTalkId)
+    else args.push('--user', target.userId)
     args.push('--content', text, '--idempotency-key', requestId, '--ai-tag=true', '--format', 'json', '--profile', profile)
     return parseDwsSendResult((await this.runner.run(args, signal)).stdout)
   }
