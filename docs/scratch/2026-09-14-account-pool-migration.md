@@ -4,7 +4,7 @@ English | [中文](2026-09-14-account-pool-migration.zh.md)
 
 ## Summary
 
-This temporary delivery reference tracks the accepted account-pool migration to `gestaltrun/deepseek-harness`. The [proposed Agent Note](../../.agents/notes/proposed/architecture/2026-09-14-plugin-account-pool.md) owns architecture and acceptance criteria. The record expires when the migration's accepted candidate and final evidence are recorded in its delivery PR.
+This temporary delivery reference tracks the proposed account-pool migration to `gestaltrun/deepseek-harness`. The [proposed Agent Note](../../.agents/notes/proposed/architecture/2026-09-14-plugin-account-pool.md) owns architecture and acceptance criteria. The record expires when the migration's accepted candidate and final evidence are recorded in its delivery PR.
 
 ## Table of Contents
 
@@ -33,13 +33,17 @@ The source remains read-only. The migration excludes unrelated fork capabilities
 
 ## Delivery ownership
 
-One end-to-end migration ticket owns the complete account-management and model-use path. Backend, UI, and packaging are internal responsibilities of that single delivery unit.
+One end-to-end migration ticket owns the complete account-management and model-use path. Implementation is paused for the user's review of the revised product-only plan; no owner is ready to implement. The existing worktrees and uncommitted scaffolds are retained without moving or deleting them.
 
-| Responsibility | Owner | Writable scope | Input and state | Completion evidence |
+| Responsibility | Owner | Authorized future implementation scope | Current state | Next check |
 | --- | --- | --- | --- | --- |
-| Backend and API | Backend owner, assigned after planning publication | Account-pool service, CLIProxyAPI provider, quota library, narrow Typert API, owning tests and package docs | Accepted interfaces in the proposed Agent Note; isolated branch and worktree follow the planning revision | Generation lifetime, durable configuration, secret exclusion, adapter registration, API authorization, focused tests and Loader composition. |
-| Shared Settings UI | UI owner, assigned after planning publication | Account-pool client package, locale dictionaries, owning tests and package docs | Accepted service/API declarations; isolated branch and worktree follow the planning revision | Account and quota controls, independent Settings section, Read-only Models footer, localized failures, recorded output and real product interaction. |
-| Integration and packaging | Delivery/environment owner | Integration branch, bundle/profile and Desktop packaging, source pin, aggregate manifests/catalogs, delivery docs and acceptance environment | Baseline frozen; implementation awaits planning publication | Exact engine artifact, default Desktop composition, optional Web composition, built smoke, isolated native acceptance, reviewed GIF and delivery PR. |
+| Domain, runtime and RPC | Backend owner | Internal modules of `product/packages/account-pool` only | Paused; old new-package scaffolds excluded | Published adapter/transport feasibility verified; wait for user plan review. |
+| Shared Settings UI | UI owner | Product package Client, controller, locales and tests | Paused; old upstream-client scaffold excluded | Public package-mode Remote and Client loading plan verified; wait for user review. |
+| Product artifact and integration | Delivery/environment owner | Product-owned source pin, Go resources/build, independent product lock/build, the two allowed Desktop product glue files and their tests | Planning revision in progress; no Go build or packaging authorized this round | Publish the complete revised ownership and public-API design for user review. |
+
+The hard constraint excludes all `packages/**` and `vendor/**` implementation changes, root workspace/compiler/dependency additions, upstream `patchedDependencies` or postinstall patches, edited upstream `node_modules`, and upstream `/src` imports. CLIProxyAPI code and resources belong to `product/packages/account-pool`; no upstream application owns its business logic or build tools.
+
+At the scope audit, integration, backend, and UI worktrees all remained at planning commit `5dfe635bc7cfc70b665e0c76825f1b1b6061b7d0`, with no tracked or staged changes under `packages/**` or `vendor/**`. Integration retained untracked `catalog/` and a build-test scaffold. Backend retained untracked account-pool service/API directories, and UI retained an untracked account-pool client directory. These retained paths are not implementation inputs and must not enter a commit.
 
 <a id="acceptance-evidence"></a>
 
@@ -55,4 +59,4 @@ Verification records must name the exact candidate, launch mode, private state r
 
 ## Dev Note
 
-Non-authoritative execution scratch: the planning revision publishes the accepted service/API, TLS, durable configuration, and owner scopes. Exact worker and acceptance identities are recorded in the delivery PR ledger as work proceeds.
+Non-authoritative planning scratch: the public inference composition passed an isolated TLS/SSE feasibility probe without a real provider account or upstream changes. The published prior plan is superseded as implementation guidance. The PR remains draft, issue readiness is removed, and this round authorizes only plan revision and its documentation checks/publication after review.

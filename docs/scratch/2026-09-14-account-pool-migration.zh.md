@@ -4,7 +4,7 @@
 
 ## 摘要
 
-本临时交付参考记录已接受的账号池能力向 `gestaltrun/deepseek-harness` 的迁移。[提议中的 Agent Note](../../.agents/notes/proposed/architecture/2026-09-14-plugin-account-pool.zh.md)拥有架构和验收标准。当迁移的已接受候选版本及最终证据记入交付 PR（Pull Request）后，本记录到期。
+本临时交付参考记录提议中的账号池能力向 `gestaltrun/deepseek-harness` 的迁移。[提议中的 Agent Note](../../.agents/notes/proposed/architecture/2026-09-14-plugin-account-pool.zh.md)拥有架构和验收标准。当迁移的已接受候选版本及最终证据记入交付 PR（Pull Request）后，本记录到期。
 
 ## 目录
 
@@ -33,13 +33,17 @@
 
 ## 交付所有权
 
-一个端到端迁移 ticket 拥有完整账号管理和模型使用路径。后端、UI 和打包是同一交付单元的内部职责。
+一个端到端迁移 ticket 拥有完整账号管理和模型使用路径。实施暂停，等待用户审阅修订后的纯产品包方案；没有负责人处于可实施状态。既有 worktree 和未提交脚手架原地保留，不移动或删除。
 
-| 职责 | 负责人 | 可写范围 | 输入和状态 | 完成证据 |
+| 职责 | 负责人 | 未来允许的实施范围 | 当前状态 | 下一检查 |
 | --- | --- | --- | --- | --- |
-| 后端和 API | 方案发布后指定后端负责人 | 账号池服务、CLIProxyAPI 实现、配额库、窄范围 Typert API、所属测试和包文档 | 已接受接口见提议中的 Agent Note；隔离分支和 worktree 从规划版本创建 | 代次生命周期、持久配置、凭据隔离、适配器注册、API 授权、聚焦测试和 Loader 组合。 |
-| 共享设置 UI | 方案发布后指定 UI 负责人 | 账号池客户端包、本地化字典、所属测试和包文档 | 已接受服务/API 声明；隔离分支和 worktree 从规划版本创建 | 账号和配额控件、独立设置页、只读模型页页脚、本地化失败反馈、录制输出及真实产品交互。 |
-| 集成和打包 | 交付/环境负责人 | 集成分支、bundle/profile 与 Desktop 打包、来源固定、汇总清单/目录、交付文档和验收环境 | 基线已冻结；实施等待方案发布 | 精确引擎产物、默认 Desktop 组合、可选 Web 组合、构建产物冒烟、隔离原生验收、已审阅 GIF 和交付 PR。 |
+| 领域、运行时和 RPC | 后端负责人 | 仅限 `product/packages/account-pool` 内部模块 | 暂停；旧新增包脚手架被排除 | 已验证发布版适配器/传输可行性；等待用户审阅方案。 |
+| 共享设置 UI | UI 负责人 | 产品包 Client、控制器、字典和测试 | 暂停；旧上游客户端脚手架被排除 | 已核验公共 package-mode Remote 和 Client 装载方案；等待用户审阅。 |
+| 产品产物与集成 | 交付/环境负责人 | 产品拥有的来源固定、Go 资源/构建、独立 product 锁文件/构建、两个准许的 Desktop 产品胶水文件及其测试 | 规划修订中；本轮未授权 Go 构建或打包 | 发布完整修订所有权和公共 API 方案供用户审阅。 |
+
+硬约束排除所有 `packages/**` 和 `vendor/**` 实现修改、根工作区/编译/依赖新增、上游 `patchedDependencies` 或 postinstall 补丁、修改上游 `node_modules`，以及上游 `/src` 导入。CLIProxyAPI 代码和资源归 `product/packages/account-pool`；上游应用不拥有其业务逻辑或构建工具。
+
+范围审计时，integration、backend 和 UI 工作区均停留在规划提交 `5dfe635bc7cfc70b665e0c76825f1b1b6061b7d0`，`packages/**` 和 `vendor/**` 下没有已跟踪或已暂存修改。Integration 保留未跟踪的 `catalog/` 和构建测试脚手架；backend 保留未跟踪的账号池服务/API 目录；UI 保留未跟踪的账号池客户端目录。这些保留路径不是实施输入，不得纳入提交。
 
 <a id="acceptance-evidence"></a>
 
@@ -55,4 +59,4 @@
 
 ## 开发笔记
 
-非权威执行草稿：规划版本发布已接受的服务/API、TLS、持久配置和负责人范围。工作进行时，精确实施及验收标识记入交付 PR 台账。
+非权威规划草稿：公共推理组合已通过隔离 TLS/SSE 可行性探测，不使用真实供应商账号，也不修改上游。此前已发布方案不再作为实施指导。PR 保持 draft，issue 的 ready 状态已移除，本轮仅授权方案修订及审阅后的文档检查/发布。
