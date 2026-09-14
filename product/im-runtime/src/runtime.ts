@@ -19,7 +19,7 @@ import { ImRuntimeError } from './errors.ts'
 import { imRuntimeDomainSpec } from './schema.ts'
 import type { ImAccountAggregate, ImAccountRecord, ImSimulationTargetAggregate } from './schema.ts'
 import { ImTransports } from './transports.ts'
-import type { ImTransportInboundPage, ImTransportInboundPageReceipt, ImTransportSink } from './transport.ts'
+import type { ImTransportInboundPage, ImTransportInboundPageReceipt, ImTransportListener, ImTransportSink } from './transport.ts'
 import type {
   ImBeginOutboundAttemptRequest,
   ImBeginOutboundAttemptResult,
@@ -153,7 +153,8 @@ function accountView(record: ImAccountRecord, routes: Readonly<Record<string, Im
 interface ActiveListener {
   readonly controller: AbortController
   readonly planFingerprint: string
-  dispose?: () => Promise<void>
+  handle?: ImTransportListener
+  stopping: boolean
 }
 
 function routeResult(operationId: ImOperationId, status: ImRouteMutationResult['status'], options: Omit<ImRouteMutationResult, 'operationId' | 'status'> = {}): ImRouteMutationResult {
@@ -873,8 +874,8 @@ export class ImRuntime extends Service implements ImRuntimeService {
   private scheduleListener(id: ImAccountId): void {
     const prior = this.listenerTails.get(id) ?? Promise.resolve()
     const next = prior.then(() => this.reconcileListener(id))
-    this.listenerTails.set(id, next.then(() => {}, error => {
-      this.ctx.logger.warn(`IM account '${id}' listener reconciliation failed: ${String(error)}`)
+    this.listenerTails.set(id, next.then(() => {}, () => {
+      this.ctx.logger.warn(`IM account '${id}' listener reconciliation failed`)
     }))
   }
 
@@ -907,23 +908,25 @@ export class ImRuntime extends Service implements ImRuntimeService {
     if (current?.planFingerprint === planFingerprint) return
     if (current !== undefined) await this.stopListener(id, current)
     const controller = new AbortController()
-    const active: ActiveListener = { controller, planFingerprint }
+    const active: ActiveListener = { controller, planFingerprint, stopping: false }
     this.activeListeners.set(id, active)
     this.listenerStates.set(id, { state: 'starting', since: now() })
     this.publishListener(id)
     try {
       const view = accountView(aggregate.account, aggregate.routes, this.listenerStates.get(id))
-      const dispose = await transport.listen(view, plan, this.transportSink(id, aggregate.account.platform), controller.signal)
+      const handle = await transport.listen(view, plan, this.transportSink(id, aggregate.account.platform), controller.signal)
+      active.handle = handle
       if (controller.signal.aborted) {
-        await dispose()
+        await this.closeListenerHandle(id, handle)
         return
       }
-      active.dispose = dispose
+      this.observeListener(id, active, handle)
       this.listenerStates.set(id, { state: 'running', readyAt: now() })
       this.publishListener(id)
     } catch {
-      this.activeListeners.delete(id)
-      if (!controller.signal.aborted) {
+      const ownsAccount = this.activeListeners.get(id) === active
+      if (ownsAccount) this.activeListeners.delete(id)
+      if (ownsAccount && !controller.signal.aborted && !active.stopping) {
         this.listenerStates.set(id, { state: 'failed', attempts: 1, lastError: 'provider listener failed' })
         this.ctx.logger.warn(`IM account '${id}' listener failed`)
         this.publishListener(id)
@@ -933,11 +936,43 @@ export class ImRuntime extends Service implements ImRuntimeService {
 
   /** Stop one exact listener before publishing a later start for the same account. */
   private async stopListener(id: ImAccountId, active: ActiveListener): Promise<void> {
+    active.stopping = true
     active.controller.abort(new Error(`IM account '${id}' listener stopped`))
-    if (active.dispose !== undefined) await active.dispose()
-    if (this.activeListeners.get(id) === active) this.activeListeners.delete(id)
-    this.listenerStates.delete(id)
+    if (active.handle !== undefined) await this.closeListenerHandle(id, active.handle)
+    if (this.activeListeners.get(id) === active) {
+      this.activeListeners.delete(id)
+      this.listenerStates.delete(id)
+      this.publishListener(id)
+    }
+  }
+
+  /** Observe an established listener without turning completion into automatic retry. */
+  private observeListener(id: ImAccountId, active: ActiveListener, handle: ImTransportListener): void {
+    void handle.done.then(
+      () => { this.finishListener(id, active, false) },
+      () => { this.finishListener(id, active, true) },
+    )
+  }
+
+  /** Publish one exact listener generation's terminal state. */
+  private finishListener(id: ImAccountId, active: ActiveListener, failed: boolean): void {
+    if (active.stopping || this.activeListeners.get(id) !== active) return
+    this.activeListeners.delete(id)
+    if (failed) {
+      this.listenerStates.set(id, { state: 'failed', attempts: 1, lastError: 'provider listener failed' })
+      this.ctx.logger.warn(`IM account '${id}' listener failed`)
+    } else {
+      this.listenerStates.delete(id)
+    }
     this.publishListener(id)
+  }
+
+  /** Stop one ready provider handle and consume its terminal signal without exposing provider errors. */
+  private async closeListenerHandle(id: ImAccountId, handle: ImTransportListener): Promise<void> {
+    let failed = false
+    try { await handle.dispose() } catch { failed = true }
+    try { await handle.done } catch { failed = true }
+    if (failed) this.ctx.logger.warn(`IM account '${id}' listener stop failed`)
   }
 
   /** Drain every provider listener owned by this runtime. */
