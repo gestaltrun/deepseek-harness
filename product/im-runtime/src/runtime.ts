@@ -9,11 +9,11 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import { ImRuntimeError } from './errors.ts'
 import { imRuntimeDomainSpec } from './schema.ts'
 import type { ImAccountAggregate, ImAccountRecord, ImSimulationTargetAggregate } from './schema.ts'
-import type { ImAccountSetupRequest } from './transport.ts'
 import { ImTransports } from './transports.ts'
 import type {
   ImAccountId,
   ImAccountCandidate,
+  ImAccountSetupRequest,
   ImAccountMutationResult,
   ImAccountView,
   ImConversationKind,
