@@ -76,13 +76,23 @@ function lintPackages(plan: ForkCiPlan): void {
   if (targets.length) command(['exec', 'tsx', 'scripts/run-oxlint.ts', ...targets])
 }
 
+/** Select changed TypeScript files whose checks execute in the quality lane.
+ * @param plan - Planned changed files and quality-owned tests.
+ * @returns Changed scripts plus changed tests explicitly routed to quality.
+ */
+export function qualityLintFiles(plan: Pick<ForkCiPlan, 'changed' | 'scripts'>): string[] {
+  const selected = new Set(plan.scripts)
+  return [...new Set(plan.changed.filter(path => path.endsWith('.ts')
+    && (path.startsWith('scripts/') || selected.has(path))))].sort()
+}
+
 function execute(plan: ForkCiPlan, lane: string): void {
   if (!plan.jobs[lane as keyof ForkCiPlan['jobs']]) throw new Error(`CI lane is not selected: ${lane}`)
   const head = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
   if (head !== plan.head) throw new Error(`Plan head ${plan.head} does not match checkout ${head}`)
   if (lane === 'quality') {
     execFileSync('git', ['diff', '--check', plan.mergeBase, plan.head], { stdio: 'inherit' })
-    const lintFiles = plan.changed.filter(path => path.startsWith('scripts/') && path.endsWith('.ts') && existsSync(path))
+    const lintFiles = qualityLintFiles(plan).filter(path => existsSync(path))
     if (lintFiles.length) command(['exec', 'tsx', 'scripts/run-oxlint.ts', '--config', '.oxlintrc.staged.json', ...lintFiles])
     tests(plan.scripts)
     if (plan.changed.some(path => path.startsWith('.github/issue-management/'))) command(['run', 'test:issue-management'])

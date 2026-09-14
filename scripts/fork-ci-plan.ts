@@ -19,6 +19,23 @@ const ciTests = [
   'scripts/ci-workflow.spec.ts', 'scripts/ci-compatible-selfhosted.spec.ts',
   'scripts/tests/ci-master-platforms.spec.ts', 'scripts/tests/ci-release-selfhosted.spec.ts',
 ]
+const staticWorkflowOwners = new Map<string, readonly string[]>([
+  ['.github/workflows/desktop-release.yml', ['apps/desktop/tests/desktop-release-workflow.spec.ts']],
+])
+const genericCiWorkflows = new Set([
+  'build-exe-for-python-sdk.yml', 'ci-master.yml', 'ci.yml', 'docs-pages.yml', 'e2b-e2e.yml', 'e2e.yml',
+  'expected-filenames.yml', 'fork-ci.yml', 'issue-lifecycle.yml', 'issue-policy.yml', 'node-addon-system-release.yml',
+  'node-addon-system.yml', 'pi-ai-provider-e2e.yml', 'python-release.yml', 'release-publish.yml',
+  'release-vendor-publish.yml', 'release-vendor.yml', 'release.yml', 'sandbox.yml',
+  'weighted-approval-review-event.yml', 'weighted-approval.yml',
+].map(name => `.github/workflows/${name}`))
+const staticWorkflowPaths = new Set([...staticWorkflowOwners].flatMap(([workflow, owners]) => [workflow, ...owners]))
+const forkCiSources = new Set(['scripts/fork-ci-plan.ts', 'scripts/fork-ci-run.ts'])
+const jobNames = [
+  'quality', 'affected', 'product', 'desktop', 'windows', 'native',
+  'python', 'pythonSdk', 'provider', 'sandbox', 'benchmark',
+] as const
+type ForkCiJob = typeof jobNames[number]
 // CLI subprocesses do not create static TypeScript import edges to their entry points.
 const cliScriptTests = new Map<string, readonly string[]>([
   ['scripts/verify-translation-pairing.ts', ['scripts/translation-pairing.spec.ts', 'scripts/git-submodules.spec.ts']],
@@ -52,10 +69,8 @@ export interface ForkCiPlan {
   scripts: string[]
   docs: boolean
   build: boolean
-  jobs: Record<
-    'quality' | 'affected' | 'product' | 'desktop' | 'windows' | 'native' | 'python' | 'pythonSdk' | 'provider' | 'sandbox' | 'benchmark',
-    boolean
-  >
+  jobs: Record<ForkCiJob, boolean>
+  jobReasons: Record<ForkCiJob, string[]>
   reasons: string[]
 }
 
@@ -137,6 +152,71 @@ function docsOnly(path: string): boolean {
     || /^(?:docs\/|\.agents\/|website\/)/u.test(path)
 }
 
+function verifyStaticOwnerImports(path: string, text: string, workspaceNames: ReadonlySet<string>): void {
+  const local = ts.preProcessFile(text, true, true).importedFiles
+    .map(file => file.fileName)
+    .find(request => request.startsWith('.') || request.startsWith('/') || request.startsWith('#')
+      || [...workspaceNames].some(name => request === name || request.startsWith(name + '/')))
+  if (local !== undefined) throw new Error(`Static workflow owner ${path} must not import local or workspace code: ${local}`)
+}
+
+function emptyJobReasons(): Record<ForkCiJob, string[]> {
+  return {
+    quality: [], affected: [], product: [], desktop: [], windows: [], native: [],
+    python: [], pythonSdk: [], provider: [], sandbox: [], benchmark: [],
+  }
+}
+
+function populateJobReasons(plan: ForkCiPlan): void {
+  plan.jobReasons.quality.push('diff integrity check')
+  if (plan.scripts.length > 0) {
+    plan.jobReasons.quality.push(`${String(plan.scripts.length)} repository-policy or static-owner test files selected`)
+  }
+  if (plan.docs) plan.jobReasons.quality.push('documentation checks selected')
+  if (plan.jobs.affected) {
+    plan.jobReasons.affected.push(`${String(plan.unit.length + plan.expected.length + plan.web.length + plan.snapshots.length)} affected non-Desktop test files selected`)
+    if (plan.build) plan.jobReasons.affected.push('affected build and lint checks selected')
+  } else {
+    plan.jobReasons.affected.push('no affected non-Desktop package checks')
+  }
+  plan.jobReasons.product.push(plan.jobs.product
+    ? 'product-owned build, lint, and composition checks selected'
+    : 'no product-owned checks selected')
+  plan.jobReasons.desktop.push(plan.jobs.desktop
+    ? `${String(plan.desktop.length)} Desktop test files selected`
+    : 'no Desktop implementation owner affected')
+  plan.jobReasons.windows.push(plan.jobs.windows ? 'affected owners require Windows checks' : 'no affected Windows owner')
+  plan.jobReasons.native.push(plan.jobs.native ? 'native system owner affected' : 'no native system owner affected')
+  plan.jobReasons.python.push(plan.jobs.python ? 'Python or shared SDK owner affected' : 'no Python or shared SDK owner affected')
+  plan.jobReasons.pythonSdk.push(plan.jobs.pythonSdk ? 'Python SDK contracts selected' : 'no Python SDK contracts selected')
+  plan.jobReasons.provider.push(plan.jobs.provider
+    ? `${String(plan.e2e.length)} real-provider test files selected`
+    : 'no real-provider tests selected')
+  plan.jobReasons.sandbox.push(plan.jobs.sandbox ? 'sandbox owner affected' : 'no sandbox owner affected')
+  plan.jobReasons.benchmark.push(plan.jobs.benchmark
+    ? `${String(plan.bench.length)} benchmark files selected`
+    : 'no benchmark files selected')
+}
+
+/** Render the review summary while the complete plan remains in its artifact.
+ * @param plan - Deterministic affected-check plan.
+ * @returns A bounded Markdown summary of every selected and skipped job.
+ */
+export function formatForkCiSummary(plan: ForkCiPlan): string {
+  const jobs = jobNames.map((name) => {
+    const reasons = plan.jobReasons[name]
+    return `- ${plan.jobs[name] ? 'run' : 'skip'} \`${name}\` — ${reasons.join('; ')}`
+  })
+  return [
+    '## Selected fork checks', '', `Base: ${plan.mergeBase}`, '', `Head: ${plan.head}`, '',
+    '- run `plan` — computes the immutable affected-check plan',
+    ...jobs,
+    '- run `all checks passed` — verifies every selected success and planned skip', '',
+    `Selected files: scripts ${String(plan.scripts.length)}, unit ${String(plan.unit.length)}, Desktop ${String(plan.desktop.length)}, e2e ${String(plan.e2e.length)}, benchmark ${String(plan.bench.length)}.`, '',
+    'The complete plan is retained in the `fork-ci-plan` artifact.', '',
+  ].join('\n')
+}
+
 /** Compute selected checks without reading files, launching tools, or changing process state.
  * @param input - Committed file inventory and relevant before/after contents.
  * @returns A deterministic plan; unowned implementation changes throw instead of passing unchecked.
@@ -150,6 +230,7 @@ export function planForkCi(input: ScopeInput): ForkCiPlan {
       quality: true, affected: false, product: false, desktop: false,
       windows: false, native: false, python: false, pythonSdk: false, provider: false, sandbox: false, benchmark: false,
     },
+    jobReasons: emptyJobReasons(),
     reasons: [],
   }
   const files = new Set(input.files)
@@ -168,10 +249,19 @@ export function planForkCi(input: ScopeInput): ForkCiPlan {
     }
   }
   const roots = [...manifests.keys()].sort((a, b) => b.length - a.length)
+  const workspaceNames = new Set([...manifests.values()].map(manifest => manifest.name))
   const owner = (path: string): string | undefined => roots.find(root => path === root || path.startsWith(root + '/'))
   const affected = new Set<string>()
   const selectedScripts = new Set<string>()
   const scriptsChanged: string[] = []
+  const selectedStaticWorkflows = new Set<string>()
+  const selectCiTests = (reason: string): void => {
+    for (const test of ciTests) {
+      if (!files.has(test)) throw new Error(`Missing fork CI regression owner ${test}`)
+      selectedScripts.add(test)
+    }
+    plan.reasons.push(reason)
+  }
   const selectProduct = (reason: string): void => {
     plan.jobs.product = true
     plan.reasons.push(reason)
@@ -182,6 +272,30 @@ export function planForkCi(input: ScopeInput): ForkCiPlan {
     plan.reasons.push(reason)
   }
   for (const path of plan.changed) {
+    const staticWorkflow = staticWorkflowOwners.has(path)
+      ? path
+      : [...staticWorkflowOwners].find(([, owners]) => owners.includes(path))?.[0]
+    if (staticWorkflow !== undefined) {
+      const owners = staticWorkflowOwners.get(staticWorkflow) ?? []
+      const workflowPresent = files.has(staticWorkflow)
+      const presentOwners = owners.filter(owner => files.has(owner))
+      if (workflowPresent !== (presentOwners.length === owners.length)) {
+        throw new Error(`Static workflow ownership must include ${staticWorkflow} and ${owners.join(', ')}`)
+      }
+      if (workflowPresent) {
+        for (const test of owners) {
+          const source = input.after[test]
+          if (source === undefined) throw new Error(`Static workflow owner content is unavailable: ${test}`)
+          verifyStaticOwnerImports(test, source, workspaceNames)
+          selectedScripts.add(test)
+        }
+        if (!selectedStaticWorkflows.has(staticWorkflow)) {
+          plan.reasons.push(`static workflow owner: ${staticWorkflow} -> ${owners.join(', ')}`)
+          selectedStaticWorkflows.add(staticWorkflow)
+        }
+        continue
+      }
+    }
     if (composition.test(path)) {
       selectProduct(`product composition: ${path}`)
       continue
@@ -191,7 +305,13 @@ export function planForkCi(input: ScopeInput): ForkCiPlan {
       continue
     }
     if (path.startsWith('.github/')) {
-      for (const test of ciTests) if (files.has(test)) selectedScripts.add(test)
+      const knownPolicy = genericCiWorkflows.has(path)
+        || path === '.github/ISSUE_TEMPLATE/config.yml'
+        || /^\.github\/(?:issue-management|review-ownership)\//u.test(path)
+      if (!knownPolicy && files.has(path)) {
+        throw new Error(`No CI owner for ${path}; add an explicit GitHub policy mapping`)
+      }
+      selectCiTests(`repository CI policy: ${path}`)
       continue
     }
     if (path === 'pnpm-lock.yaml') continue
@@ -202,7 +322,7 @@ export function planForkCi(input: ScopeInput): ForkCiPlan {
       const scripts = changedKeys(record(before.scripts ?? {}), record(after.scripts ?? {}))
       if (scripts.some(name => name.startsWith('community:'))) selectProduct('community package scripts')
       if (scripts.some(name => ['ci:plan', 'ci:run'].includes(name))) {
-        for (const test of ciTests) if (files.has(test)) selectedScripts.add(test)
+        selectCiTests('fork CI package scripts changed')
       }
       if (keys.some(key => key !== 'scripts') || scripts.some(name => !name.startsWith('community:') && !['ci:plan', 'ci:run'].includes(name))) {
         affectAll('shared root manifest/toolchain changed')
@@ -223,7 +343,7 @@ export function planForkCi(input: ScopeInput): ForkCiPlan {
       continue
     }
     if (/^(?:\.gitignore|\.gitattributes|\.npmrc|lefthook\.yml|\.jscpd\.json)$/u.test(path)) {
-      for (const test of ciTests) if (files.has(test)) selectedScripts.add(test)
+      selectCiTests(`repository CI policy: ${path}`)
       continue
     }
     if (path.startsWith('snapshots/')) {
@@ -237,6 +357,7 @@ export function planForkCi(input: ScopeInput): ForkCiPlan {
       continue
     }
     if (path.startsWith('scripts/')) {
+      if (forkCiSources.has(path) || ciTests.includes(path)) selectCiTests(`fork CI implementation: ${path}`)
       scriptsChanged.push(path)
       continue
     }
@@ -399,6 +520,7 @@ export function planForkCi(input: ScopeInput): ForkCiPlan {
     || (plan.build && [...affected].some(root => !desktopRoot.test(root)))
   if (plan.coverage.length > 0 && plan.unit.length === 0) throw new Error('Affected package sources have no selected unit tests')
   if (plan.reasons.length === 0) plan.reasons.push('only changed repository policy and its owning checks')
+  populateJobReasons(plan)
   return plan
 }
 
@@ -421,7 +543,7 @@ export function planGitChange(root: string, base: string, head: string): ForkCiP
   const after: Record<string, string> = {}
   const relevant = unique([...baseFiles, ...files]).filter(path => isWorkspaceManifest(path)
     || ['package.json', 'pnpm-lock.yaml'].includes(path) || /^tsconfig[^/]*\.json$/u.test(path)
-    || /^scripts\/.*\.(?:ts|mjs|cjs)$/u.test(path))
+    || /^scripts\/.*\.(?:ts|mjs|cjs)$/u.test(path) || staticWorkflowPaths.has(path))
   for (const path of relevant) {
     if (files.includes(path)) after[path] = git(['show', `${headSha}:${path}`])
     const current = after[path]
@@ -436,6 +558,7 @@ if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(p
   const plan = planGitChange(process.cwd(), values.base, values.head)
   writeFileSync(values.output, JSON.stringify(plan, null, 2) + '\n')
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `jobs=${JSON.stringify(plan.jobs)}\n`)
-  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## Selected fork checks\n\nBase: ${plan.mergeBase}\n\nHead: ${plan.head}\n\n\`\`\`json\n${JSON.stringify(plan, null, 2)}\n\`\`\`\n`)
-  console.log(JSON.stringify(plan, null, 2))
+  const summary = formatForkCiSummary(plan)
+  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary)
+  console.log(summary)
 }
