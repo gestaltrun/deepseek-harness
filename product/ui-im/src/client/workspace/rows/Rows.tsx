@@ -22,6 +22,12 @@ import css from './Rows.module.css'
 /** The standard locale seat, prop-passed from the browser root. */
 type RowTranslate = WorkspaceBrowserProps['t']
 
+/** Host-derived simulation role and lifecycle shown beside one Session. */
+export interface SessionSimulationBadge {
+  readonly role: 'sim-user' | 'tested'
+  readonly status: 'creating' | 'running' | 'stopping' | 'stopped' | 'failed'
+}
+
 /** Row display title: blank rows show the localized New Session label. */
 function displayTitle(node: SessionNode, t: RowTranslate): string {
   return node.blank ? t('session.new') : node.title
@@ -326,10 +332,11 @@ function SessionHoverContent({ node, now, t }: { node: SessionNode; now: number;
  * @param props.t - Workspace-browser translation seat.
  * @returns the result button.
  */
-export function SearchResultItem({ result, currentId, onOpen, t }: {
+export function SearchResultItem({ result, currentId, onOpen, simulation, t }: {
   result: SearchResultNode
   currentId: string | undefined
   onOpen: (id: SearchResultNode['id']) => void
+  simulation?: SessionSimulationBadge | undefined
   t: RowTranslate
 }) {
   const selected = result.id === currentId
@@ -350,6 +357,7 @@ export function SearchResultItem({ result, currentId, onOpen, t }: {
           )}
         </span>
         <span className={css.searchResultTitle}>{result.title}</span>
+        {simulation !== undefined && <span className={css.simulationBadge}>{t(simulation.status === 'stopped' ? 'simulation.stopped' : 'simulation.badge')}</span>}
         {result.hasActiveSchedule && <ActiveScheduleIndicator t={t} search />}
       </span>
       <span className={css.searchResultMeta}>
@@ -379,7 +387,7 @@ export function SearchResultItem({ result, currentId, onOpen, t }: {
  * @returns the session row.
  */
 export function SessionNodeItem({
-  node, currentId, now, onOpen, onRename, onFork, onArchive, onReveal, drag, flat = false, t,
+  node, currentId, now, onOpen, onRename, onFork, onArchive, onReveal, drag, flat = false, simulation, t,
 }: {
   node: SessionNode
   currentId: string | undefined
@@ -397,6 +405,8 @@ export function SessionNodeItem({
   drag?: RowDragProps | undefined
   /** The row is rendered without a parent Workspace header. */
   flat?: boolean | undefined
+  /** Host-derived simulation lifecycle for this exact Session. */
+  simulation?: SessionSimulationBadge | undefined
   t: RowTranslate
 }) {
   const row = node
@@ -467,6 +477,7 @@ export function SessionNodeItem({
         </span>
       )}
       <span className={css.title}>{title}</span>
+      {simulation !== undefined && <span className={css.simulationBadge}>{t(simulation.status === 'stopped' ? 'simulation.stopped' : 'simulation.badge')}</span>}
       {row.hasActiveSchedule && <ActiveScheduleIndicator t={t} />}
       {/* A blank New Session row is a provisional placeholder: nothing has
           happened in it yet, so a "now" timestamp and the row verbs

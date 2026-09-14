@@ -3,7 +3,9 @@ import type {} from '@gestaltrun/dsh-im-runtime'
 import type { Context } from '@deepseek-ai/cordis'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {
-  ImAccountCandidate, ImAccountLifecycleRequest, ImAccountMutationResult, ImAccountSetupRequest, ImAccountView, ImPlatform,
+  ImAccountCandidate, ImAccountLifecycleRequest, ImAccountMutationResult, ImAccountOperationQuery,
+  ImAccountOperationQueryRequest, ImAccountSetupId, ImAccountSetupPreview, ImAccountSetupRequest,
+  ImCancelAccountSetupResult, ImConfirmAccountSetupRequest, ImPlatform,
   ImConfigurationFrame, ImCreateRouteRequest, ImDeleteRouteRequest,
   ImRebindRouteRequest, ImRemoveSimulationTargetRequest, ImRouteBatchRequest,
   ImRouteBatchResult, ImRouteMutationResult, ImRouteOperationQuery,
@@ -12,6 +14,10 @@ import type {
   ImSimulationTargetMutationResult, ImSimulationTargetOperationQuery,
   ImTargetOperationQueryRequest,
   ImDeliveryFollowFrame, ImDeliveryFollowRequest, ImHistoryQueryRequest, ImHistoryPage, ImOutboundQueryRequest, ImOutboundPage,
+  ImSimulationInstanceId, ImSimulationInstanceView, ImSimulationInstancesFrame, ImSimulationSessionFrame, ImSimulationSessionScope,
+  ImCreateSimulationInstanceRequest, ImInjectSimulationMemberRequest, ImInjectSimulationManagedHumanRequest,
+  ImInboundMessageView,
+  ImSessionId,
 } from './types.ts'
 import { SnapshotFeed } from './snapshot-feed.ts'
 import { applyRouteBatch } from './route-batch.ts'
@@ -89,15 +95,22 @@ export class ImApi extends TypertRemoteService {
     return configurationResult(() => this.ctx.imRuntime.listAccountCandidates(platform, signal))
   }
 
-  /**
-   * Verify provider identity and persist its credentials through the Host.
-   * @param request - write-only account setup fields.
-   * @param signal - cancellation before account setup completes.
-   * @returns only safe persisted account facts.
-   */
-  @Remote('connectAccount')
-  connectAccount(request: ImAccountSetupRequest, signal: AbortSignal): Promise<ImAccountView> {
-    return configurationResult(() => this.ctx.imRuntime.addAccount(request, signal))
+  /** @param request - candidate-bound write-only fields. @param signal - caller lifetime. @returns safe verified identity and a short-lived setup identifier. */
+  @Remote('previewAccountSetup')
+  previewAccountSetup(request: ImAccountSetupRequest, signal: AbortSignal): Promise<ImAccountSetupPreview> {
+    return configurationResult(() => this.ctx.imRuntime.previewAccountSetup(request, signal))
+  }
+
+  /** @param request - Host setup and idempotency identifiers. @returns durable account-creation receipt. */
+  @Remote('confirmAccountSetup')
+  confirmAccountSetup(request: ImConfirmAccountSetupRequest): Promise<ImAccountMutationResult> {
+    return configurationResult(() => this.ctx.imRuntime.confirmAccountSetup(request))
+  }
+
+  /** @param setupId - unconfirmed Host setup. @returns its actual release or confirmation state. */
+  @Remote('cancelAccountSetup')
+  cancelAccountSetup(setupId: ImAccountSetupId): Promise<ImCancelAccountSetupResult> {
+    return configurationResult(() => this.ctx.imRuntime.cancelAccountSetup(setupId))
   }
 
   /** @param request - observed account revision and desired pause state. @returns durable receipt. */
@@ -122,6 +135,12 @@ export class ImApi extends TypertRemoteService {
   @Remote('refreshAccount')
   refreshAccount(request: ImAccountLifecycleRequest, signal: AbortSignal): Promise<ImAccountMutationResult> {
     return configurationResult(() => this.ctx.imRuntime.refreshAccount(request, signal))
+  }
+
+  /** @param request - account and operation identifiers retained by the caller. @returns durable receipt or explicit absence. */
+  @Remote('queryAccountOperation')
+  queryAccountOperation(request: ImAccountOperationQueryRequest): Promise<ImAccountOperationQuery> {
+    return configurationResult(() => this.ctx.imRuntime.queryAccountOperation(request.accountId, request.operationId))
   }
 
   /** @param request - new route tuple and owner. @returns durable receipt or conflict. */
@@ -181,6 +200,83 @@ export class ImApi extends TypertRemoteService {
   @Remote('querySimulationTargetOperation')
   querySimulationTargetOperation(request: ImTargetOperationQueryRequest): Promise<ImSimulationTargetOperationQuery> {
     return configurationResult(() => this.ctx.imRuntime.querySimulationTargetOperation(request.workspaceId, request.operationId))
+  }
+
+  /** @returns every durable simulation instance in creation order. */
+  @Remote('listSimulationInstances')
+  listSimulationInstances(): readonly ImSimulationInstanceView[] {
+    return this.ctx.imRuntime.listSimulationInstances()
+  }
+
+  /** @param signal - this connection generation's cancellation. @returns complete instance lists after each durable simulation change. */
+  @Remote({ mode: 'stream' })
+  followSimulationInstances(signal: AbortSignal): AsyncIterable<ImSimulationInstancesFrame> {
+    const feed = new SnapshotFeed({
+      snapshot: () => this.ctx.imRuntime.listSimulationInstances(),
+      subscribe: listener => this.ctx.imRuntime.subscribe(change => { if (change.kind === 'simulation-instance') listener() }),
+    })
+    return feed.follow(signal)
+  }
+
+  /** @param instanceId - Host-minted simulation identity. @returns its durable state or absence. */
+  @Remote('getSimulationInstance')
+  getSimulationInstance(instanceId: ImSimulationInstanceId): ImSimulationInstanceView | undefined {
+    return this.ctx.imRuntime.getSimulationInstance(instanceId)
+  }
+
+  /** @param sessionId - either side of a simulation pair. @returns Host-authoritative navigation and delivery facts. */
+  @Remote('scopeForSession')
+  scopeForSession(sessionId: ImSessionId): ImSimulationSessionScope | undefined {
+    return this.ctx.imRuntime.scopeForSession(sessionId)
+  }
+
+  /**
+   * Follow the simulation bound to one Session without inferring role or peer identity in the Client.
+   * @param sessionId - immutable selected Session identity.
+   * @param signal - this navigation generation's cancellation.
+   * @returns complete binding baseline followed by durable instance replacements.
+   */
+  @Remote({ mode: 'stream' })
+  followSimulationSession(sessionId: ImSessionId, signal: AbortSignal): AsyncIterable<ImSimulationSessionFrame> {
+    const feed = new SnapshotFeed({
+      snapshot: () => configurationResult(() => {
+        const scope = this.ctx.imRuntime.scopeForSession(sessionId)
+        const instance = scope === undefined ? undefined : this.ctx.imRuntime.getSimulationInstance(scope.instanceId)
+        return { sessionId, ...(scope === undefined ? {} : { scope }), ...(instance === undefined ? {} : { instance }) }
+      }),
+      subscribe: listener => this.ctx.imRuntime.subscribe(change => { if (change.kind === 'simulation-instance') listener() }),
+    })
+    return feed.follow(signal)
+  }
+
+  /** @param request - live simulated-user Session and its bounded participant inputs. @returns durable pair after tested Session creation. */
+  @Remote('createSimulationInstance')
+  createSimulationInstance(request: ImCreateSimulationInstanceRequest): Promise<ImSimulationInstanceView> {
+    return configurationResult(() => this.ctx.imRuntime.createSimulationInstance(request))
+  }
+
+  /** @param request - allow-listed simulated participant and text. @returns shared-path inbound message. */
+  @Remote('injectSimulationMember')
+  injectSimulationMember(request: ImInjectSimulationMemberRequest): Promise<ImInboundMessageView> {
+    return configurationResult(() => this.ctx.imRuntime.injectSimulationMember(request))
+  }
+
+  /** @param request - instance and text; Host derives the frozen managed actor. @returns shared-path inbound message. */
+  @Remote('injectSimulationManagedHuman')
+  injectSimulationManagedHuman(request: ImInjectSimulationManagedHumanRequest): Promise<ImInboundMessageView> {
+    return configurationResult(() => this.ctx.imRuntime.injectSimulationManagedHuman(request))
+  }
+
+  /** @param instanceId - exact instance confirmed by the operator. @returns durable stopping or terminal state. */
+  @Remote('beginStopSimulation')
+  beginStopSimulation(instanceId: ImSimulationInstanceId): Promise<ImSimulationInstanceView> {
+    return configurationResult(() => this.ctx.imRuntime.beginStopSimulation(instanceId))
+  }
+
+  /** @param instanceId - already-stopping instance. @returns its terminal state after both Sessions quiesce. */
+  @Remote('waitSimulationStopped')
+  waitSimulationStopped(instanceId: ImSimulationInstanceId): Promise<ImSimulationInstanceView> {
+    return configurationResult(() => this.ctx.imRuntime.waitSimulationStopped(instanceId))
   }
 }
 

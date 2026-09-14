@@ -23,6 +23,7 @@
 
 .roles {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -129,4 +130,77 @@
 .stoppedStrip {
   background: var(--dsw-alias-bg-layer-2);
   color: var(--dsw-alias-label-tertiary);
+}
+
+.simBanner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--dsw-static-deepseek-500) 9%, transparent);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.creating,
+.stopping {
+  background: color-mix(in srgb, var(--dsw-alias-state-warn-label) 12%, transparent);
+}
+
+.running {
+  background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 12%, transparent);
+}
+
+.stopped {
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.failed {
+  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 12%, transparent);
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.inputRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.error {
+  margin: 8px 14px;
+  color: var(--dsw-alias-state-error-primary);
+  font-size: 12px;
+}
+
+.feedback {
+  margin: 8px 14px;
+  color: var(--dsw-alias-state-success-primary);
+  font-size: 12px;
+}
+
+.unknownState {
+  font-size: 11px;
+  color: var(--dsw-alias-state-warn-label);
 }

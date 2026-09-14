@@ -15,11 +15,12 @@ import { encodeImScopeId, ImDeliveryStore } from './delivery.ts'
 import { imDeliveryDomainSpec } from './delivery-schema.ts'
 import type { ImDeliveryAggregate, ImExecutionAggregate, ImProviderCursorAggregate } from './delivery-schema.ts'
 import { ImAgentCoordinator } from './agent-coordinator.ts'
+import { ImSimulationController } from './simulation-controller.ts'
 import { ImRuntimeError } from './errors.ts'
 import { imRuntimeDomainSpec } from './schema.ts'
 import type { ImAccountAggregate, ImAccountRecord, ImSimulationTargetAggregate } from './schema.ts'
 import { ImTransports } from './transports.ts'
-import type { ImPreparedAccount, ImTransportInboundPage, ImTransportInboundPageReceipt, ImTransportListener, ImTransportSink } from './transport.ts'
+import type { ImPreparedAccount, ImTransportInboundPage, ImTransportInboundPageReceipt, ImTransportListener, ImTransportSendResult, ImTransportSink } from './transport.ts'
 import type {
   ImBeginOutboundAttemptRequest,
   ImBeginOutboundAttemptResult,
@@ -43,10 +44,15 @@ import type {
   ImIngestInboundPageRequest,
   ImMarkSubmittedRequest,
   ImMarkSubmittedResult,
+  ImManualMessageQuery,
+  ImManualMessageQueryRequest,
+  ImManualMessageResult,
+  ImManualSendAvailability,
   ImMessageId,
   ImMessageSource,
   ImOutboundPage,
   ImOutboundQueryRequest,
+  ImOutboundAttemptId,
   ImOutboundRequestId,
   ImOutboundRouteBinding,
   ImOutboundView,
@@ -57,11 +63,16 @@ import type {
   ImProviderCursorOwner,
   ImProviderCursorView,
   ImRealDeliveryScope,
+  ImRealSessionBinding,
   ImRegisterOutboundRequest,
+  ImRetryManualMessageRequest,
+  ImSendManualMessageRequest,
   ImSessionReconciliationResult,
   ImSenderAttribution,
   ImSettleOutboundAttemptRequest,
   ImSettleSimulationOutboundRequest,
+  ImSimulationDeliveryScope,
+  ImSimulationInstanceId,
 } from './delivery-types.ts'
 import type {
   ImAccountId,
@@ -96,6 +107,14 @@ import type {
   ImSetAccountPausedRequest,
   ImSimulationTargetMutationResult,
   ImSimulationTargetOperationQuery,
+  ImCreateSimulationInstanceRequest,
+  ImInjectSimulationManagedHumanRequest,
+  ImInjectSimulationMemberRequest,
+  ImImportSimulationHistoryRequest,
+  ImImportSimulationHistoryResult,
+  ImSimulationInstanceView,
+  ImSimulationSessionScope,
+  ImSimulationTargetView,
 } from './types.ts'
 import type { ImRuntimeService } from './service-types.ts'
 
@@ -108,6 +127,29 @@ const revision = (): ImRevision => brandString<ImRevision>(randomUUID())
 const assertNever = (value: never): never => { throw new Error(`unhandled IM value: ${String(value)}`) }
 const DEFAULT_ADMISSION_BATCH_SIZE = 1000
 const DEFAULT_ACCOUNT_SETUP_TTL_MS = 5 * 60 * 1000
+
+function providerActorId(identity: ImAccountView['identity']): string {
+  return identity.platform === 'dingtalk' ? identity.userId : identity.mainServiceAccountId ?? identity.merchantId
+}
+
+function manualSendAvailability(account: ImAccountView, transportAvailable: boolean): ImManualSendAvailability {
+  if (account.connectionIntent === 'disconnected') return { state: 'unavailable', reason: 'disconnected' }
+  if (account.authorization.state === 'required' || account.authorization.state === 'failed') {
+    return { state: 'unavailable', reason: 'authorization-required' }
+  }
+  if (!transportAvailable) return { state: 'unavailable', reason: 'listener-unavailable' }
+  if (account.listener.state === 'running'
+    || (account.listener.state === 'stopped' && (account.listener.reason === 'account-paused' || account.listener.reason === 'no-enabled-route'))) {
+    return { state: 'available' }
+  }
+  if (account.listener.state === 'stopped' && account.listener.reason === 'authorization-required') {
+    return { state: 'unavailable', reason: 'authorization-required' }
+  }
+  if (account.listener.state === 'stopped' && (account.listener.reason === 'disconnected' || account.listener.reason === 'manual')) {
+    return { state: 'unavailable', reason: 'disconnected' }
+  }
+  return { state: 'unavailable', reason: 'listener-unavailable' }
+}
 
 /** Runtime limits applied to one durable Agent admission. */
 export interface Config {
@@ -200,11 +242,13 @@ export class ImRuntime extends Service implements ImRuntimeService {
 
   private accounts?: KvTable<ImAccountId, ImAccountAggregate>
   private simulationTargets?: KvTable<WorkspaceId, ImSimulationTargetAggregate>
+  private simulationInstances?: KvTable<ImSimulationInstanceId, ImSimulationInstanceView>
   private deliveryScopes?: KvTable<import('./delivery-types.ts').ImScopeId, ImDeliveryAggregate>
   private providerCursors?: KvTable<ImProviderCursorId, ImProviderCursorAggregate>
   private executions?: KvTable<ImAgentTaskId, ImExecutionAggregate>
   private delivery?: ImDeliveryStore
   private coordinator: ImAgentCoordinator | undefined
+  private simulationController: ImSimulationController | undefined
   private generation = 0
   private deliveryGeneration = 0
   private simulationTail: Promise<void> = Promise.resolve()
@@ -236,6 +280,7 @@ export class ImRuntime extends Service implements ImRuntimeService {
     this.ctx.effect(() => () => domain.close(), 'imRuntime.domainClose')
     this.accounts = domain.table('accounts')
     this.simulationTargets = domain.table('simulation_targets')
+    this.simulationInstances = domain.table('simulation_instances')
     for (const [, aggregate] of this.accountTable().entries()) {
       for (const route of Object.values(aggregate.routes)) {
         const error = triggerError(route.conversationKind, route.groupTrigger, this.config.admissionBatchSize)
@@ -265,9 +310,14 @@ export class ImRuntime extends Service implements ImRuntimeService {
       agentCtx.effect(async () => {
         const coordinator = new ImAgentCoordinator(agentCtx, this, this.executionTable())
         this.coordinator = coordinator
+        const simulations = new ImSimulationController(agentCtx, this, this.simulationInstanceTable(), this.executionTable(), coordinator)
+        this.simulationController = simulations
+        await simulations.start()
         coordinator.start([...this.deliveryScopeTable().entries()].map(([, aggregate]) => aggregate.scope))
         return async () => {
+          if (this.simulationController === simulations) this.simulationController = undefined
           if (this.coordinator === coordinator) this.coordinator = undefined
+          await simulations.dispose()
           await coordinator.dispose()
         }
       }, 'imRuntime.agentCoordinator()')
@@ -643,6 +693,161 @@ export class ImRuntime extends Service implements ImRuntimeService {
     return result === undefined ? { state: 'not-found' } : { state: 'known', result }
   }
 
+  listSimulationInstances(): readonly ImSimulationInstanceView[] {
+    return [...this.simulationInstanceTable().entries()].map(([, value]) => value)
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+  }
+
+  getSimulationInstance(instanceId: ImSimulationInstanceId): ImSimulationInstanceView | undefined {
+    return this.simulationInstanceTable().get(instanceId)
+  }
+
+  scopeForSession(sessionId: SessionId): ImSimulationSessionScope | undefined {
+    const candidates = this.listSimulationInstances().filter(value =>
+      (value.simUserSessionId === sessionId || value.testedSessionId === sessionId) && value.status !== 'failed')
+    const instance = candidates.findLast(value => value.status === 'creating' || value.status === 'running' || value.status === 'stopping')
+      ?? candidates.at(-1)
+    if (instance === undefined) return undefined
+    const role = instance.simUserSessionId === sessionId ? 'sim-user' : 'tested'
+    return {
+      instanceId: instance.instanceId, role, sessionId,
+      peerSessionId: role === 'sim-user' ? instance.testedSessionId : instance.simUserSessionId,
+      workspaceId: role === 'sim-user' ? instance.simUserWorkspaceId : instance.target.workspaceId,
+      peerWorkspaceId: role === 'sim-user' ? instance.target.workspaceId : instance.simUserWorkspaceId,
+      deliveryScope: this.simulationScope(instance), status: instance.status,
+    }
+  }
+
+  realScopeForSession(sessionId: SessionId): ImRealSessionBinding | undefined {
+    const task = [...this.executionTable().entries()]
+      .map(([, value]) => value)
+      .filter(value => value.sessionId === sessionId && value.scope.kind === 'real')
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt)).at(-1)
+    if (task === undefined || task.scope.kind !== 'real') return undefined
+    const account = this.snapshot().accounts.find(candidate => candidate.id === task.scope.accountId)
+    if (account === undefined) return undefined
+    const delivery = this.deliveryScopeTable().get(task.scopeId)
+    const presentation = delivery?.presentation
+    const destination: ImRealSessionBinding['destination'] = task.scope.conversationKind === 'direct'
+      ? {
+          conversationKind: 'direct', conversationId: task.scope.conversationId,
+          ...(presentation?.displayName === undefined ? {} : { displayName: presentation.displayName }),
+          ...(task.directRecipient === undefined ? {} : { directRecipient: task.directRecipient }),
+        }
+      : {
+          conversationKind: 'group', conversationId: task.scope.conversationId,
+          ...(presentation?.displayName === undefined ? {} : { displayName: presentation.displayName }),
+          ...(presentation?.memberCount === undefined ? {} : { memberCount: presentation.memberCount }),
+        }
+    return {
+      sessionId, scope: task.scope, taskId: task.taskId,
+      routeId: task.routeId, routeRevision: task.routeRevision, accountRevision: task.accountRevision,
+      workspaceId: task.workspaceId,
+      ...(task.directRecipient === undefined ? {} : { directRecipient: task.directRecipient }),
+      senderIdentity: {
+        accountId: account.id, platform: account.platform, displayName: account.displayName,
+        identity: account.identity, providerActorId: providerActorId(account.identity),
+      },
+      accountState: {
+        authorization: account.authorization, connectionIntent: account.connectionIntent,
+        listener: account.listener, paused: account.paused,
+        manualSend: manualSendAvailability(account, this.transports.get(account.platform) !== undefined),
+      },
+      destination,
+      ...(delivery?.cursor.lastSyncedAt === undefined
+        ? {}
+        : { sync: { lastSyncedAt: delivery.cursor.lastSyncedAt, platformCursor: delivery.cursor.platformCursor } }),
+    }
+  }
+
+  async sendManualMessage(request: ImSendManualMessageRequest, signal = new AbortController().signal): Promise<ImManualMessageResult> {
+    signal.throwIfAborted()
+    if (request.text.trim() === '') throw new ImRuntimeError('IM_MANUAL_MESSAGE_INVALID', 'manual message text must not be empty')
+    const binding = this.requireRealSessionBinding(request.sessionId)
+    this.assertManualRequestOwner(binding, request.requestId)
+    return this.dispatchManualMessage(binding, {
+      requestId: request.requestId,
+      content: { text: request.text, format: 'text' },
+    }, signal)
+  }
+
+  queryManualMessage(request: ImManualMessageQueryRequest): ImManualMessageQuery {
+    const binding = this.requireRealSessionBinding(request.sessionId)
+    this.assertManualRequestOwner(binding, request.requestId)
+    const outbound = this.getOutbound({ scope: binding.scope, requestId: request.requestId })
+    if (outbound === undefined) return { state: 'not-found', binding }
+    return { state: 'known', result: this.manualMessageResult(binding, outbound) }
+  }
+
+  async confirmManualMessage(request: ImManualMessageQueryRequest, signal = new AbortController().signal): Promise<ImManualMessageResult> {
+    signal.throwIfAborted()
+    const query = this.queryManualMessage(request)
+    if (query.state === 'not-found') throw new ImRuntimeError('IM_MANUAL_MESSAGE_INVALID', `manual message '${request.requestId}' is unknown for its Session`)
+    const { binding, outbound } = query.result
+    if (outbound.intent !== 'human-manual') throw new ImRuntimeError('IM_MANUAL_MESSAGE_INVALID', `outbound '${request.requestId}' is not a manual message`)
+    if (outbound.status !== 'result-unknown') return query.result
+    const attemptId = outbound.attempt?.attemptId
+    if (attemptId === undefined) throw new ImRuntimeError('IM_MANUAL_MESSAGE_INVALID', `manual message '${request.requestId}' has no provider attempt`)
+    const account = this.requireManualAccount(binding)
+    let result: ImTransportSendResult
+    try {
+      result = await this.transports.require(binding.scope.platform).confirm({
+        account, requestId: request.requestId,
+        ...(outbound.externalMessageId === undefined ? {} : { externalMessageId: outbound.externalMessageId }),
+      }, signal)
+    } catch {
+      result = { state: 'unknown', ...(outbound.externalMessageId === undefined ? {} : { externalMessageId: outbound.externalMessageId }) }
+    }
+    const settledOutbound = await this.settleManualResult(binding.scope, request.requestId, attemptId, result, 'confirm')
+    return this.manualMessageResult(binding, settledOutbound)
+  }
+
+  async retryManualMessage(request: ImRetryManualMessageRequest, signal = new AbortController().signal): Promise<ImManualMessageResult> {
+    signal.throwIfAborted()
+    if (request.requestId === request.retryOfRequestId) throw new ImRuntimeError('IM_MANUAL_RETRY_INVALID', 'manual retry requires a new requestId')
+    const binding = this.requireRealSessionBinding(request.sessionId)
+    this.assertManualRequestOwner(binding, request.requestId)
+    const priorOwner = this.outboundOwner(request.retryOfRequestId)
+    if (priorOwner === undefined || encodeImScopeId(priorOwner.scope) !== encodeImScopeId(binding.scope)
+      || priorOwner.outbound.intent !== 'human-manual' || priorOwner.outbound.status !== 'result-unknown'
+      || priorOwner.outbound.manualBinding?.sessionId !== binding.sessionId || priorOwner.outbound.manualBinding.taskId !== binding.taskId) {
+      throw new ImRuntimeError('IM_MANUAL_RETRY_INVALID', 'manual retry predecessor must be a result-unknown human message from the same Session scope')
+    }
+    return this.dispatchManualMessage(binding, {
+      requestId: request.requestId,
+      content: priorOwner.outbound.content,
+      retryOfRequestId: request.retryOfRequestId,
+    }, signal)
+  }
+
+  createSimulationInstance(request: ImCreateSimulationInstanceRequest): Promise<ImSimulationInstanceView> {
+    return this.requireSimulationController().create(request)
+  }
+
+  injectSimulationMember(request: ImInjectSimulationMemberRequest): Promise<ImInboundMessageView> {
+    return this.requireSimulationController().injectMember(request)
+  }
+
+  injectSimulationManagedHuman(request: ImInjectSimulationManagedHumanRequest): Promise<ImInboundMessageView> {
+    return this.requireSimulationController().injectManagedHuman(request)
+  }
+
+  beginStopSimulation(instanceId: ImSimulationInstanceId): Promise<ImSimulationInstanceView> {
+    return this.requireSimulationController().beginStop(instanceId)
+  }
+
+  async beginStopSimulationForSession(sessionId: SessionId): Promise<ImSimulationInstanceView> {
+    const scope = this.scopeForSession(sessionId)
+    if (scope?.role !== 'sim-user') {
+      throw new ImRuntimeError('IM_SIMULATION_SESSION_INVALID', `Session '${sessionId}' is not the simulated-user side of a simulation instance`)
+    }
+    return this.beginStopSimulation(scope.instanceId)
+  }
+
+  waitSimulationStopped(instanceId: ImSimulationInstanceId): Promise<ImSimulationInstanceView> {
+    return this.requireSimulationController().waitStopped(instanceId)
+  }
+
   subscribeDelivery(listener: (change: ImDeliveryChange) => void): () => void {
     return this.ctx.on('imRuntime/delivery-changed', listener)
   }
@@ -652,11 +857,7 @@ export class ImRuntime extends Service implements ImRuntimeService {
       if (request.observedCursor !== null || request.nextCursor !== null) {
         throw new ImRuntimeError('IM_DELIVERY_SCOPE_INVALID', 'simulation input cannot carry a provider cursor')
       }
-      const resolved = this.resolveRoute(request.scope.accountId, request.scope.conversationKind, request.scope.conversationId)
-      const target = resolved.state === 'matched' ? this.simulationTargetTable().get(resolved.route.workspaceId)?.target : undefined
-      if (resolved.state !== 'matched' || target === undefined || target.accountId !== request.scope.accountId || target.routeId !== resolved.route.id) {
-        throw new ImRuntimeError('IM_DELIVERY_SCOPE_INVALID', 'simulation input must use an enabled configured simulation target')
-      }
+      if (!this.isSimulationScopeRunning(request.scope)) throw new ImRuntimeError('IM_DELIVERY_SCOPE_INVALID', 'simulation input must use its running frozen instance scope')
     }
     return this.deliveryStore().ingestInboundPage(request)
   }
@@ -760,12 +961,46 @@ export class ImRuntime extends Service implements ImRuntimeService {
     return this.deliveryStore().importJsonlHistory(request)
   }
 
+  async importSimulationHistory(request: ImImportSimulationHistoryRequest): Promise<ImImportSimulationHistoryResult> {
+    const instance = this.simulationInstanceTable().get(request.instanceId)
+    if (instance === undefined) throw new ImRuntimeError('IM_SIMULATION_INSTANCE_NOT_FOUND', `simulation instance '${request.instanceId}' is unknown`)
+    const result = await this.importJsonlHistory({
+      operationId: request.operationId,
+      scope: this.simulationScope(instance),
+      fileName: request.fileName,
+      jsonl: request.jsonl,
+    })
+    const source = {
+      operationId: result.operationId, fileName: result.fileName, messageCount: result.messageCount,
+      importedCount: result.importedCount, duplicateCount: result.duplicateCount,
+    }
+    let changed = false
+    const updated = await this.simulationInstanceTable().update(request.instanceId, current => {
+      if (current.historyImports.some(value => value.operationId === source.operationId)) return current
+      changed = true
+      return { ...current, historyImports: [...current.historyImports, source], updatedAt: now() }
+    }).catch(error => {
+      if ((error as { code?: unknown } | null)?.code === 'missing-key') {
+        throw new ImRuntimeError('IM_SIMULATION_INSTANCE_NOT_FOUND', `simulation instance '${request.instanceId}' is unknown`)
+      }
+      throw error
+    })
+    if (changed) this.publishSimulationInstanceChange(request.instanceId)
+    return { source: updated.historyImports.find(value => value.operationId === source.operationId) ?? source, instance: updated }
+  }
+
   registerOutbound(request: ImRegisterOutboundRequest): Promise<ImOutboundView> {
+    if (request.scope.kind === 'simulation' && this.simulationController !== undefined && !this.isSimulationScopeRunning(request.scope)) {
+      throw new ImRuntimeError('IM_SIMULATION_INSTANCE_NOT_RUNNING', `simulation instance '${request.scope.instanceId}' is not running`)
+    }
     return this.deliveryStore().registerOutbound(request)
   }
 
   /** @param request - scope-fixed automated intent. @param binding - task generation recorded before Agent execution. @returns durable intent or a route-changed rejection. */
   registerAgentOutbound(request: ImRegisterOutboundRequest, binding: ImOutboundRouteBinding): Promise<ImOutboundView> {
+    if (request.scope.kind === 'simulation' && !this.isSimulationScopeRunning(request.scope)) {
+      throw new ImRuntimeError('IM_SIMULATION_INSTANCE_NOT_RUNNING', `simulation instance '${request.scope.instanceId}' is not running`)
+    }
     return this.deliveryStore().registerOutbound(request, binding)
   }
 
@@ -777,8 +1012,12 @@ export class ImRuntime extends Service implements ImRuntimeService {
     return this.deliveryStore().settleOutboundAttempt(request)
   }
 
-  settleSimulationOutbound(request: ImSettleSimulationOutboundRequest): Promise<ImOutboundView> {
-    return this.deliveryStore().settleSimulationOutbound(request)
+  async settleSimulationOutbound(request: ImSettleSimulationOutboundRequest): Promise<ImOutboundView> {
+    const outbound = await this.deliveryStore().settleSimulationOutbound(request)
+    if (outbound.intent === 'ai' && this.simulationController !== undefined && this.isSimulationScopeRunning(request.scope)) {
+      await this.simulationController.deliverTestedReply(request.scope, outbound)
+    }
+    return outbound
   }
 
   getOutbound(request: ImGetOutboundRequest): ImOutboundView | undefined {
@@ -813,7 +1052,10 @@ export class ImRuntime extends Service implements ImRuntimeService {
         if (outbound === undefined) return { kind: 'unknown', reason: 'unmatched-echo', ...(evidence.observedSenderId === undefined ? {} : { observedSenderId: evidence.observedSenderId }) }
         return outbound.intent === 'ai'
           ? { kind: 'ai', outboundRequestId: outbound.requestId }
-          : { kind: 'human-dsh', outboundRequestId: outbound.requestId }
+          : outbound.sender ?? {
+              kind: 'human-dsh', outboundRequestId: outbound.requestId,
+              providerActorId: providerActorId(this.requireAccount(scope.accountId).account.identity),
+            }
       }
       case 'configured-self':
         return { kind: 'unknown', reason: 'unmatched-self', ...(evidence.observedSenderId === undefined ? {} : { observedSenderId: evidence.observedSenderId }) }
@@ -822,6 +1064,139 @@ export class ImRuntime extends Service implements ImRuntimeService {
       default:
         return assertNever(evidence)
     }
+  }
+
+  /** @param workspaceId - simulated-user Workspace. @returns its current target setting. */
+  simulationTargetForWorkspace(workspaceId: WorkspaceId): ImSimulationTargetView | undefined {
+    return this.simulationTargetTable().get(workspaceId)?.target
+  }
+
+  /** @param target - current workspace target setting. @returns its exact route when still present. */
+  routeForSimulationTarget(target: ImSimulationTargetView): ImRouteView | undefined {
+    return this.accountTable().get(target.accountId)?.routes[target.routeId]
+  }
+
+  /** @param target - current workspace target setting. @returns its exact safe account when still present. */
+  accountForSimulationTarget(target: ImSimulationTargetView): ImAccountView | undefined {
+    const aggregate = this.accountTable().get(target.accountId)
+    return aggregate === undefined ? undefined : accountView(aggregate.account, aggregate.routes, this.listenerStates.get(target.accountId))
+  }
+
+  /** @param scope - claimed frozen simulation scope. @returns whether its exact instance accepts delivery. */
+  isSimulationScopeRunning(scope: ImSimulationDeliveryScope): boolean {
+    const instance = this.simulationInstanceTable().get(scope.instanceId)
+    return instance?.status === 'running' && encodeImScopeId(this.simulationScope(instance)) === encodeImScopeId(scope)
+  }
+
+  /** Emit a post-commit instance notification for BFF followers. @param instanceId - changed instance. */
+  publishSimulationInstanceChange(instanceId: ImSimulationInstanceId): void {
+    this.publish({ kind: 'simulation-instance', instanceId })
+  }
+
+  private requireRealSessionBinding(sessionId: SessionId): ImRealSessionBinding {
+    const binding = this.realScopeForSession(sessionId)
+    if (binding === undefined) throw new ImRuntimeError('IM_REAL_SESSION_NOT_FOUND', `Session '${sessionId}' has no durable real IM task binding`)
+    return binding
+  }
+
+  private requireManualAccount(binding: ImRealSessionBinding): ImAccountView {
+    const account = this.snapshot().accounts.find(candidate => candidate.id === binding.scope.accountId)
+    if (account === undefined) throw new ImRuntimeError('IM_ACCOUNT_NOT_FOUND', `IM account '${binding.scope.accountId}' is unknown`)
+    return account
+  }
+
+  private outboundOwner(requestId: ImOutboundRequestId): { readonly scope: ImDeliveryScope; readonly outbound: ImOutboundView } | undefined {
+    for (const [, aggregate] of this.deliveryScopeTable().entries()) {
+      const outbound = aggregate.outbounds[requestId]
+      if (outbound !== undefined) return { scope: aggregate.scope, outbound }
+    }
+    return undefined
+  }
+
+  private assertManualRequestOwner(binding: ImRealSessionBinding, requestId: ImOutboundRequestId): void {
+    const owner = this.outboundOwner(requestId)
+    if (owner === undefined) return
+    if (encodeImScopeId(owner.scope) !== encodeImScopeId(binding.scope) || owner.outbound.intent !== 'human-manual'
+      || owner.outbound.manualBinding?.sessionId !== binding.sessionId || owner.outbound.manualBinding.taskId !== binding.taskId) {
+      throw new ImRuntimeError('IM_MANUAL_MESSAGE_INVALID', `manual request '${requestId}' belongs to another scope or sender kind`)
+    }
+  }
+
+  private manualMessageResult(binding: ImRealSessionBinding, outbound: ImOutboundView): ImManualMessageResult {
+    if (outbound.intent !== 'human-manual') throw new ImRuntimeError('IM_MANUAL_MESSAGE_INVALID', `outbound '${outbound.requestId}' is not a manual message`)
+    const sender = outbound.sender ?? {
+      kind: 'human-dsh' as const,
+      outboundRequestId: outbound.requestId,
+      providerActorId: binding.senderIdentity.providerActorId,
+    }
+    return { binding, sender, outbound }
+  }
+
+  private async dispatchManualMessage(
+    binding: ImRealSessionBinding,
+    request: Omit<ImRegisterOutboundRequest, 'scope' | 'intent' | 'sender' | 'manualBinding'>,
+    signal: AbortSignal,
+  ): Promise<ImManualMessageResult> {
+    const sender = {
+      kind: 'human-dsh' as const,
+      outboundRequestId: request.requestId,
+      providerActorId: binding.senderIdentity.providerActorId,
+    }
+    const registration = {
+      ...request, scope: binding.scope, intent: 'human-manual' as const, sender,
+      manualBinding: { sessionId: binding.sessionId, taskId: binding.taskId },
+    }
+    const existing = this.getOutbound({ scope: binding.scope, requestId: request.requestId })
+    if (existing !== undefined) {
+      const replay = await this.registerOutbound(registration)
+      if (replay.status !== 'pending') return this.manualMessageResult(binding, replay)
+    }
+    const account = this.requireManualAccount(binding)
+    const availability = manualSendAvailability(account, this.transports.get(account.platform) !== undefined)
+    if (availability.state === 'unavailable') {
+      throw new ImRuntimeError('IM_MANUAL_ACCOUNT_UNAVAILABLE', `manual send is unavailable while the account is ${availability.reason}`)
+    }
+    const outbound = existing ?? await this.registerOutbound(registration)
+    if (outbound.status !== 'pending') return this.manualMessageResult(binding, outbound)
+    signal.throwIfAborted()
+    const attempt = await this.beginOutboundAttempt({ scope: binding.scope, requestId: request.requestId })
+    if (attempt.state !== 'ready') return this.manualMessageResult(binding, attempt.outbound)
+    let result: ImTransportSendResult
+    try {
+      result = await this.transports.require(binding.scope.platform).send({
+        account,
+        conversationId: binding.scope.conversationId,
+        conversationKind: binding.scope.conversationKind,
+        ...(binding.directRecipient === undefined ? {} : { directRecipient: binding.directRecipient }),
+        requestId: request.requestId,
+        text: request.content.text,
+      }, signal)
+    } catch {
+      result = { state: 'unknown' }
+    }
+    const settledOutbound = await this.settleManualResult(binding.scope, request.requestId, attempt.attemptId, result, 'send')
+    return this.manualMessageResult(binding, settledOutbound)
+  }
+
+  private settleManualResult(
+    scope: ImRealDeliveryScope,
+    requestId: ImOutboundRequestId,
+    attemptId: ImOutboundAttemptId,
+    result: ImTransportSendResult,
+    phase: 'send' | 'confirm',
+  ): Promise<ImOutboundView> {
+    return this.settleOutboundAttempt({
+      scope, requestId, attemptId,
+      status: result.state === 'sent' ? 'sent' : result.state === 'failed' ? 'confirmed-failed' : 'result-unknown',
+      ...((result.state === 'sent' || result.state === 'unknown') && result.externalMessageId !== undefined
+        ? { externalMessageId: result.externalMessageId }
+        : {}),
+      receipt: {
+        providerStatus: result.state === 'sent' && result.rawStatus !== undefined ? result.rawStatus : `${phase}-${result.state}`,
+        ...(result.state === 'failed' ? { errorCode: result.code } : {}),
+        observedAt: now(),
+      },
+    })
   }
 
   private async prepareVerifiedAccount(request: ImAccountSetupRequest, signal: AbortSignal): Promise<ImPreparedAccount> {
@@ -922,6 +1297,24 @@ export class ImRuntime extends Service implements ImRuntimeService {
   private simulationTargetTable(): KvTable<WorkspaceId, ImSimulationTargetAggregate> {
     if (this.simulationTargets === undefined) throw new Error('IM runtime domain is not ready')
     return this.simulationTargets
+  }
+
+  private simulationInstanceTable(): KvTable<ImSimulationInstanceId, ImSimulationInstanceView> {
+    if (this.simulationInstances === undefined) throw new Error('IM runtime domain is not ready')
+    return this.simulationInstances
+  }
+
+  private requireSimulationController(): ImSimulationController {
+    if (this.simulationController === undefined) throw new Error('IM simulation requires Agent, Session, preset, tools, and Workspace services')
+    return this.simulationController
+  }
+
+  private simulationScope(instance: ImSimulationInstanceView): ImSimulationDeliveryScope {
+    return {
+      kind: 'simulation', instanceId: instance.instanceId,
+      platform: instance.target.platform, accountId: instance.target.accountId,
+      conversationKind: instance.target.conversationKind, conversationId: instance.target.conversationId,
+    }
   }
 
   private deliveryStore(): ImDeliveryStore {
@@ -1043,6 +1436,7 @@ export class ImRuntime extends Service implements ImRuntimeService {
         if (aggregate.scope.accountId === change.accountId) this.coordinator?.notify(aggregate.scope)
       }
     }
+    if (change.kind === 'simulation-target' || change.kind === 'simulation-instance') this.simulationController?.refreshAllTools()
   }
 
   private publishDelivery(change: Omit<ImDeliveryChange, 'sequence'>): void {
@@ -1190,10 +1584,11 @@ export class ImRuntime extends Service implements ImRuntimeService {
         scope,
         observedCursor: prior,
         nextCursor: prior,
+        ...(group.presentation === undefined ? {} : { presentation: group.presentation }),
         messages: group.messages.map(message => ({
           externalMessageId: message.externalMessageId,
           sender: this.classifyInboundSender(scope, message.senderEvidence),
-          content: { text: message.text, format: message.format },
+          content: message.content,
           occurredAt: message.occurredAt,
           ...(message.mentionedConfiguredAccount === undefined ? {} : { mentionedConfiguredAccount: message.mentionedConfiguredAccount }),
         })),

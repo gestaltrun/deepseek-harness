@@ -18,7 +18,12 @@
       "packages/im/im-core/tests/delivery/cursor.spec.ts",
       "packages/im/im-core/tests/delivery/inbound.spec.ts",
       "packages/im/im-core/tests/delivery/outbound.spec.ts",
-      "packages/im/im-core/tests/config-service.spec.ts"
+      "packages/im/im-core/tests/config-service.spec.ts",
+      "packages/im/im-core/src/simulation/types.ts",
+      "packages/im/im-core/src/simulation/service.ts",
+      "packages/im/im-core/src/simulation/tools.ts",
+      "packages/im/im-core/tests/simulation/session-pair-persistence.spec.ts",
+      "packages/im/im-core/tests/simulation/transport.spec.ts"
     ],
     "license": "MIT"
   },
@@ -30,7 +35,9 @@
     "explicit route rebind guarded by an observed mutation token",
     "scope-qualified provider message identity and receive ordering",
     "queryable inbound page receipts and outbound result-unknown state",
-    "cursor advancement after durable receive"
+    "cursor advancement after durable receive",
+    "durable two-Session simulation pairing and frozen target identity",
+    "local simulation transport isolation and terminal stop state"
   ],
   "productChanges": [
     "Host-minted account and route lifecycle identifiers",
@@ -45,6 +52,15 @@
     "route-generation Agent admission through public Agent, preset, Workspace, tool, and Session services",
     "scope-bound Agent tools with frozen outbound route and direct-recipient facts",
     "monotonic provider mention-evidence merging for duplicate platform messages",
-    "typed provider listener readiness, completion, and exact-generation shutdown"
+    "typed provider listener readiness, completion, and exact-generation shutdown",
+    "creating-first simulation records with Host-minted tested Session identity and recoverable failure state",
+    "normal Agent, preset, Workspace, Session, history, and outbox paths for isolated simulation delivery",
+    "Host-authoritative peer Session navigation and current-instance tool binding",
+    "separate begin-stop and terminal-wait semantics with instance-scoped cancellation",
+    "durable real-Session binding for identity-confirmed manual platform sends",
+    "provider-known conversation labels, group size, last-sync, and account availability in real-Session binding",
+    "receipt-only confirmation and explicit request-linked retry for uncertain manual sends",
+    "query-only simulation history provenance with Host-counted rows and basename-only display",
+    "durable quote, image-placeholder, and unsupported-message presentation facts"
   ]
 }

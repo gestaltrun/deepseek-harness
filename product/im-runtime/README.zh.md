@@ -62,13 +62,21 @@ kind: "package-reference"
 
 提供方轮询游标由明确的平台账号与 stream 共同拥有。runtime 拥有的监听 sink 接收一个带稳定逐会话 operation id 的提供方页面。它先提交每个会话分组，再带全部页面收据提交提供方游标。如果进程在这些写入之间停止，或后续分组失败，重启后仍读取旧提供方游标，并通过持久去重安全重放各分组。监听器会收到启用路由计划，其中明确是否需要 mention 证据。因此一个旺旺商家页面可以覆盖多个会话，钉钉也可组合全量群消息与 at-me 观察，而不会把提供方游标错误归给某个会话。
 
-`registerOutbound` 在任何平台调用前保存意图。`beginOutboundAttempt` 只授予一次尝试；调度结果未决时重启或重复 begin 会记录 `result-unknown`，调用者随后查询或确认，不盲目重试。自动意图冻结路由与账号 generation。账号或路由暂停时，DSH 人工发送和模拟发送仍可用；暂停或路由变更前的自动意图不能在恢复后继续发送。
+`registerOutbound` 在任何平台调用前保存意图。`beginOutboundAttempt` 只授予一次尝试；调度结果未决时重启或重复 begin 会记录 `result-unknown`，调用者随后查询或确认，不盲目重试。自动意图冻结路由与账号 generation。`realScopeForSession` 只根据持久任务代次解析真实 Session，并返回冻结 scope、工作区、直接收件人、安全账号身份、账号及监听状态、最近会话同步时间，以及提供方已知的会话名称或群人数；未知名称和人数保持缺失。GUI 使用同一个稳定 request id 调用 `sendManualMessage`、`queryManualMessage` 与 `confirmManualMessage`；核验只调用提供方回执查询。`retryManualMessage` 要求新 request id 和同一 Session 任务中处于 `result-unknown` 的前序请求，并持久保存该关联。自动处理暂停时 DSH 人工发送仍可用；账号断连、未授权或监听不可用时拒绝新人工发送意图。自动意图继续受暂停和路由代次检查阻断。
 
 提供方把参与者和回显事实传给 `classifyInboundSender`。匹配已发送自动 outbox 时返回 `ai`，匹配已发送人工 outbox 时返回 `human-dsh`，明确的平台原生操作证据返回 `human-native`。无法匹配的已配置账号观察仍为 `unknown`；文本相等不会改变发送者归因。mention 触发只使用随消息持久保存的提供方明确 mention 元数据。
 
 持久化真实或模拟输入会按路由代次自动启动或恢复一个普通 Agent。私聊立即触发。群聊 mention、`everyN` 与固定周期按 OR 合并成一个批次；固定周期无需等待下一条入站事件。Session source 记录 scope、精确消息标识、发送者证据、触发原因、路由 revision、账号 revision 与工作区。改绑后，在途 Agent 仍留在其已记录工作区，后续输入进入新的任务代次。未变代次的新输入使用 `steer`，在最近安全步骤进入，不取消正在执行的模型或工具工作。
 
-`@gestaltrun/dsh-im-runtime/tools` 入口在可信 Agent 上下文注册 `im_query_history` 和 `im_send_message`。模型参数不包含账号、会话、模拟实例、路由或工作区。自动发送使用任务已记录的路由和对端身份；若该代次已过期，outbox 会在任何提供方调用前记录 `route-changed`。
+`createSimulationInstance` 接受一个已经属于工作区且当前存活的模拟用户 Session，该工作区必须已配置目标。它先持久保存 `creating`，其中包含 Host 生成的被测 Session id、精确目标、两个工作区 id、路由和账号 revision、preset、触发设置与准入参与者；随后通过普通 Agent 与 preset 服务创建被测 Agent，把其 Session 关联到目标工作区，flush 两份 Session 日志，最后发布 `running`。指定路由固定其会话 id；`all` 路由要求调用方提供一个会话 id。目标变更只影响后续实例。不同模拟用户 Session 可以针对同一目标运行互相隔离的实例。
+
+组员和受管人工注入与提供方消息进入同一个持久入站存储与 Agent coordinator。Host 根据冻结账号身份推导受管操作人，并依据冻结准入名单检查组员注入。只有模拟用户 Session 获得 `im_sim_*` 控制工具；被测 Agent 只获得普通的 scope 绑定历史与发送工具，看不到模拟内部控制。被测 Agent 回复使用同一个 scope 绑定 outbox，在本地结算后只返回配对的模拟用户 Session；模拟路径不会调用平台 transport。`importSimulationHistory` 推导冻结 scope，仅在实例上保存来源 basename 与 Host 统计的总数、导入数和重复数，并让所有导入行保持仅可查询。`scopeForSession` 为 Client 导航返回权威角色、对端 Session、工作区对和投递 scope。
+
+入站内容区分文本、Markdown、图片占位与提供方不支持类型。引用只携带可取得的发送者、外部 id 与文本上下文。不支持内容保留原始消息类型及提供方已归一化、可安全展示的 JSON 明细；提供方凭据、transport header 与连接配置不属于此值。这些字段按原样持久保存，供历史展示与 Session 重建。
+
+`beginStopSimulation` 先持久保存 `stopping`，使后续输入和回复投递被拒绝，并且不等待工具调用方的当前 turn。`waitSimulationStopped` 是 GUI 的终态屏障。控制器只取消配对的实时活动与所选 scope 的 coordinator 工作，保留模拟用户 Session 和两份日志，并在静止后保存 `stopped`。GUI 与绑定的 `im_sim_stop` 无论调用顺序如何都会去重。已停止实例永不恢复；runtime 装载也不会只为显示运行中实例而恢复任一 Session。
+
+`@gestaltrun/dsh-im-runtime/tools` 入口在可信被测 Agent 上下文注册 `im_query_history` 和 `im_send_message`。模型参数不包含账号、会话、模拟实例、路由或工作区。符合条件的模拟用户 Agent 获得 `im_sim_create`；运行中配对另有准入组员发送、受管人工发送和 `im_sim_stop`。这些工具绑定实际调用 Session 与当前实例，不从模型参数接受这些身份。真实自动发送使用任务已记录的路由和对端身份；若该代次已过期，outbox 会在任何提供方调用前记录 `route-changed`。
 
 -----
 
@@ -78,7 +86,7 @@ kind: "package-reference"
 <details>
 <summary>实现细节——点击展开</summary>
 
-`gestaltrun_im_runtime` StorageDomain 为每个账号聚合保存一条记录，并为每个工作区模拟目标保存一条记录。独立的 `gestaltrun_im_delivery` 领域为每个完整会话 scope 保存一个聚合，并另存提供方拥有的游标记录与按路由绑定的 Agent 任务代次。会话聚合在一次持久写入中保存入站消息、去重键、操作收据、提交证据和 outbox。提供方游标只在引用的页面收据都存在后提交。任何操作都不声称在凭据、配置、投递、提供方游标、Agent 任务或 Session 记录之间提供原子事务。
+`gestaltrun_im_runtime` StorageDomain 为每个账号聚合、工作区模拟目标和双 Session 模拟实例保存一条记录。独立的 `gestaltrun_im_delivery` 领域为每个完整会话 scope 保存一个聚合，并另存提供方拥有的游标记录与按路由绑定的 Agent 任务代次。会话聚合在一次持久写入中保存入站消息、去重键、操作收据、提交证据和 outbox。提供方游标只在引用的页面收据都存在后提交。任何操作都不声称在凭据、配置、投递、提供方游标、Agent 任务、模拟实例或 Session 记录之间提供原子事务。
 
 `ImTransports` 为每个平台保留一个存活的提供方，并随注册方 Cordis fiber 释放。当账号连接意图为连接、未暂停、存在启用路由且授权状态为 `ready` 或 `unchecked` 时，runtime 启动监听器；明确的 `required` 或 `failed` 授权状态使其保持停止。`unchecked` 允许没有独立身份探针的提供方通过首次真实 listen 或 poll 完成验证，其本身不投影已就绪身份。提供方 `listen` 只在监听器已建立并验证可用后返回，其返回的 `done` promise 报告后续正常结束或失败。主动停止会中止 signal、调用 `dispose` 并等待 `done`；启用路由计划变化时也按此顺序停止旧监听器，再启动替代实例。监听器终止失败不会触发无界重试。`ctx.imRuntime.subscribe` 和类型化 `imRuntime/changed` 事件发布持久变更及后续进程监听状态变化。snapshot revision 只在当前进程 generation 内排序；持久 operation id 与记录 revision 跨重启保留。
 
@@ -93,6 +101,8 @@ kind: "package-reference"
 | `src/delivery-schema.ts` | 持久会话与提供方游标聚合 |
 | `src/transports.ts` | 可逆的平台提供方注册表 |
 | `src/agent-coordinator.ts` | 持久触发判断和普通 Agent 创建、恢复与 steer 生命周期 |
+| `src/simulation-controller.ts` | 持久双 Session 创建、隔离回复投递、恢复与终态停止 |
+| `src/simulation-tools.ts` | 绑定可信 Session 的模拟工具注册 |
 | `src/tools.ts` | scope 绑定的历史与出站 Agent 工具 |
 
 </details>
@@ -112,7 +122,7 @@ kind: "package-reference"
 <a id="model-experience"></a>
 ## 模型体验
 
-每个准入批次通过目标 Agent preset 组装为一条带稳定标识的 user message。其 source 包含崩溃核对所需的完整持久证据。两个 scope 绑定的 IM 工具只暴露已准入会话的历史与出站路径。
+每个准入批次通过目标 Agent preset 组装为一条带稳定标识的 user message。其 source 包含崩溃核对所需的完整持久证据。scope 绑定的 IM 工具只暴露已准入会话的历史与出站路径。模拟工具只对已配置的模拟用户工作区或已有绑定实例可见，其实例身份来自实时 Agent Session。
 
 #### KV Cache 影响
 
@@ -122,7 +132,7 @@ kind: "package-reference"
 ## 已知限制与后续工作
 
 - 提供方包负责在线身份检查、会话发现、监听器、出站发送和回执确认。
-- 面向操作者的双 Session 模拟创建生命周期属于后续产品切片；已配置模拟输入已使用共享准入、历史与 outbox 路径。
+- 部分模拟创建失败会保留安全的 `failed` 记录，供诊断并重新创建；runtime 不删除任何用户拥有的 Session 日志，也不声称跨领域回滚。
 - operation 收据不会自动清理，因为清理后无法区分旧操作与从未收到的操作。
 - 凭据和配置使用不同的持久化服务。账号写入失败时会尝试回滚凭据；若回滚也失败，则同时报告两个错误，不声称存在跨服务事务。
 

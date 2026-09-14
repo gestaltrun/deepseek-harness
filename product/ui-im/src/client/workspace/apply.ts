@@ -49,7 +49,7 @@ export function registerWorkspaceBrowser(ctx: Context, directoryPicker: 'native'
     archiveSession: sessionId => ctx.uiWorkspace.archiveSession(sessionId),
     insertSessionBefore: async (workspaceId, sessionId, beforeSessionId) => { await ctx.workspaces.insertSessionBefore(workspaceId, sessionId, beforeSessionId) },
     createWorkspace: input => ctx.workspaces.create(input),
-    hooks: { directoryFlow, hostInfo },
+    hooks: { directoryFlow, hostInfo, simulationInstances: ctx.im.simulationInstances },
   })
   ctx.slots.inject('sidebar.workspaces', () => ctx.slots.register({
     name: 'sidebar.workspaces', priority: -10, locale: 'gestaltrun.imWorkspace', store: createWorkspaceViewStore(), inject: injected,

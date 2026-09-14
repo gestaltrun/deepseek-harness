@@ -1,7 +1,9 @@
 /** Client-safe identifiers, views, and mutation requests for the IM runtime. */
 import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { CredentialKey } from '@deepseek-ai/dsh-credentials/types'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
+import type { ImDeliveryOperationId, ImSimulationDeliveryScope, ImSimulationInstanceId } from './delivery-types.ts'
 
 export type * from './delivery-types.ts'
 
@@ -264,6 +266,99 @@ export interface ImSimulationTargetView {
   readonly updatedAt: string
 }
 
+/** One simulated participant whose identity may be used for inbound injection. */
+export interface ImSimulationParticipant {
+  readonly actorId: string
+  readonly displayName?: string
+}
+
+/** Target and execution policy frozen when one simulation instance is created. */
+export interface ImSimulationFrozenTarget {
+  readonly platform: ImPlatform
+  readonly accountId: ImAccountId
+  readonly routeId: ImRouteId
+  readonly routeRevision: ImRevision
+  readonly accountRevision: ImRevision
+  readonly conversationKind: ImConversationKind
+  readonly conversationId: string
+  readonly workspaceId: WorkspaceId
+  readonly agentPreset: string
+  readonly groupTrigger?: ImGroupTrigger
+  readonly directRecipient?: ImDirectRecipient
+}
+
+/** Durable two-Session simulation instance. `stopped` and `failed` are terminal. */
+export interface ImSimulationInstanceView {
+  readonly instanceId: ImSimulationInstanceId
+  readonly status: 'creating' | 'running' | 'stopping' | 'stopped' | 'failed'
+  readonly simUserSessionId: SessionId
+  readonly simUserWorkspaceId: WorkspaceId
+  readonly testedSessionId: SessionId
+  readonly target: ImSimulationFrozenTarget
+  readonly speakingMembers: readonly ImSimulationParticipant[]
+  readonly historyImports: readonly ImSimulationHistoryImport[]
+  readonly createdAt: string
+  readonly updatedAt: string
+  readonly stoppedAt?: string
+  readonly failure?: { readonly code: string; readonly message: string }
+}
+
+/** Durable display facts for one query-only simulation history import. */
+export interface ImSimulationHistoryImport {
+  readonly operationId: ImDeliveryOperationId
+  readonly fileName: string
+  readonly messageCount: number
+  readonly importedCount: number
+  readonly duplicateCount: number
+}
+
+/** Scope-free local history import; the Host derives the frozen instance scope. */
+export interface ImImportSimulationHistoryRequest {
+  readonly instanceId: ImSimulationInstanceId
+  readonly operationId: ImDeliveryOperationId
+  readonly fileName: string
+  readonly jsonl: string
+}
+
+/** Updated instance and exact durable receipt for one local history import. */
+export interface ImImportSimulationHistoryResult {
+  readonly source: ImSimulationHistoryImport
+  readonly instance: ImSimulationInstanceView
+}
+
+/** Create a simulation from one live, workspace-owned simulated-user Session. */
+export interface ImCreateSimulationInstanceRequest {
+  readonly simUserSessionId: SessionId
+  /** Required only when the configured route targets every conversation. */
+  readonly conversationId?: string
+  readonly speakingMembers?: readonly ImSimulationParticipant[]
+}
+
+/** Trusted navigation and delivery facts for either Session in one instance. */
+export interface ImSimulationSessionScope {
+  readonly instanceId: ImSimulationInstanceId
+  readonly role: 'sim-user' | 'tested'
+  readonly sessionId: SessionId
+  readonly peerSessionId: SessionId
+  readonly workspaceId: WorkspaceId
+  readonly peerWorkspaceId: WorkspaceId
+  readonly deliveryScope: ImSimulationDeliveryScope
+  readonly status: ImSimulationInstanceView['status']
+}
+
+/** Inject one allow-listed simulated participant message through normal IM admission. */
+export interface ImInjectSimulationMemberRequest {
+  readonly instanceId: ImSimulationInstanceId
+  readonly actorId: string
+  readonly text: string
+}
+
+/** Inject the managed human actor through normal IM admission. */
+export interface ImInjectSimulationManagedHumanRequest {
+  readonly instanceId: ImSimulationInstanceId
+  readonly text: string
+}
+
 /** Save or replace a simulation target with absent-or-current CAS. */
 export interface ImSaveSimulationTargetRequest {
   readonly operationId: ImOperationId
@@ -306,11 +401,12 @@ export interface ImRuntimeSnapshot {
 /** Post-commit configuration change notification. */
 export interface ImRuntimeChange {
   readonly revision: number
-  readonly kind: 'account' | 'account-listener' | 'route' | 'simulation-target'
+  readonly kind: 'account' | 'account-listener' | 'route' | 'simulation-target' | 'simulation-instance'
   readonly accountId?: ImAccountId
   readonly routeId?: ImRouteId
   readonly workspaceId?: WorkspaceId
   readonly operationId?: ImOperationId
+  readonly instanceId?: ImSimulationInstanceId
 }
 
 /** Result of resolving the precedence-ordered routes for one inbound conversation. */
