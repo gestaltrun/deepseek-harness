@@ -61,6 +61,8 @@ Provider polling cursors have explicit account-and-stream ownership. A provider 
 
 `registerOutbound` stores an intent before any platform call. `beginOutboundAttempt` grants one attempt; a restart or repeated begin while dispatch is unresolved records `result-unknown`, which callers query or confirm without a blind retry. Route and account generations are frozen for automated intents. Manual DSH sends and simulation sends remain available while an account or route is paused, while old automated intents cannot flush after a pause or route-change cycle.
 
+Providers pass actor and echo facts to `classifyInboundSender`. A sent automated outbox match yields `ai`, a sent manual match yields `human-dsh`, and explicit provider-native evidence yields `human-native`. An unmatched configured-account observation remains `unknown`; text equality never changes sender attribution.
+
 -----
 
 <a id="understand-the-implementation"></a>

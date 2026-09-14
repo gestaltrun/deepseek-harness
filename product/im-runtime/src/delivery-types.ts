@@ -82,6 +82,14 @@ export type ImSenderAttribution =
   | ImAiSenderAttribution
   | ImUnknownSenderAttribution
 
+/** Provider facts admitted before the runtime assigns a sender category. */
+export type ImInboundSenderEvidence =
+  | { readonly kind: 'external-actor'; readonly senderId: string; readonly senderDisplayName?: string }
+  | { readonly kind: 'configured-native'; readonly providerActorId: string }
+  | { readonly kind: 'configured-echo'; readonly externalMessageId: string; readonly observedSenderId?: string }
+  | { readonly kind: 'configured-self'; readonly observedSenderId?: string }
+  | { readonly kind: 'provider-unknown'; readonly observedSenderId?: string }
+
 /** Text accepted from a provider, manual-send UI, or Agent outbox. */
 export interface ImMessageContent {
   readonly text: string

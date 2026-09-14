@@ -17,6 +17,7 @@ import type {
   ImImportJsonlHistoryRequest,
   ImImportJsonlHistoryResult,
   ImInboundMessageView,
+  ImInboundSenderEvidence,
   ImInboundOperationQuery,
   ImInboundPageResult,
   ImIngestInboundPageRequest,
@@ -37,6 +38,7 @@ import type {
   ImSettleOutboundAttemptRequest,
   ImSettleSimulationOutboundRequest,
   ImSessionReconciliationResult,
+  ImSenderAttribution,
 } from './delivery-types.ts'
 import type {
   ImAccountId,
@@ -162,4 +164,6 @@ export interface ImRuntimeService {
   cancelPendingAi(request: ImCancelPendingAiRequest): Promise<readonly ImOutboundView[]>
   /** @param scope - complete real scope. @param externalMessageId - provider message identity. @returns matching sent outbox evidence. */
   findSentOutbound(scope: ImRealDeliveryScope, externalMessageId: string): ImOutboundView | undefined
+  /** @param scope - complete real conversation. @param evidence - provider actor or echo facts without message-text heuristics. @returns evidence-backed sender category. */
+  classifyInboundSender(scope: ImRealDeliveryScope, evidence: ImInboundSenderEvidence): ImSenderAttribution
 }

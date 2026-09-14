@@ -32,6 +32,7 @@ import type {
   ImImportJsonlHistoryRequest,
   ImImportJsonlHistoryResult,
   ImInboundMessageView,
+  ImInboundSenderEvidence,
   ImInboundOperationQuery,
   ImInboundPageResult,
   ImIngestInboundPageRequest,
@@ -52,6 +53,7 @@ import type {
   ImRealDeliveryScope,
   ImRegisterOutboundRequest,
   ImSessionReconciliationResult,
+  ImSenderAttribution,
   ImSettleOutboundAttemptRequest,
   ImSettleSimulationOutboundRequest,
 } from './delivery-types.ts'
@@ -90,6 +92,7 @@ const now = (): string => new Date().toISOString()
 const accountId = (): ImAccountId => brandString<ImAccountId>(`account-${randomUUID()}`)
 const routeId = (): ImRouteId => brandString<ImRouteId>(`route-${randomUUID()}`)
 const revision = (): ImRevision => brandString<ImRevision>(randomUUID())
+const assertNever = (value: never): never => { throw new Error(`unhandled IM value: ${String(value)}`) }
 
 const targetFingerprint = (target: ImRouteTarget): readonly unknown[] =>
   [target.kind, target.kind === 'specific' ? target.conversationId : null]
@@ -569,6 +572,28 @@ export class ImRuntime extends Service implements ImRuntimeService {
 
   findSentOutbound(scope: ImRealDeliveryScope, externalMessageId: string): ImOutboundView | undefined {
     return this.deliveryStore().findSentOutbound(scope, externalMessageId)
+  }
+
+  classifyInboundSender(scope: ImRealDeliveryScope, evidence: ImInboundSenderEvidence): ImSenderAttribution {
+    switch (evidence.kind) {
+      case 'external-actor':
+        return { kind: 'external', senderId: evidence.senderId, ...(evidence.senderDisplayName === undefined ? {} : { senderDisplayName: evidence.senderDisplayName }) }
+      case 'configured-native':
+        return { kind: 'human-native', accountId: scope.accountId, providerActorId: evidence.providerActorId }
+      case 'configured-echo': {
+        const outbound = this.findSentOutbound(scope, evidence.externalMessageId)
+        if (outbound === undefined) return { kind: 'unknown', reason: 'unmatched-echo', ...(evidence.observedSenderId === undefined ? {} : { observedSenderId: evidence.observedSenderId }) }
+        return outbound.intent === 'ai'
+          ? { kind: 'ai', outboundRequestId: outbound.requestId }
+          : { kind: 'human-dsh', outboundRequestId: outbound.requestId }
+      }
+      case 'configured-self':
+        return { kind: 'unknown', reason: 'unmatched-self', ...(evidence.observedSenderId === undefined ? {} : { observedSenderId: evidence.observedSenderId }) }
+      case 'provider-unknown':
+        return { kind: 'unknown', reason: 'provider-unknown', ...(evidence.observedSenderId === undefined ? {} : { observedSenderId: evidence.observedSenderId }) }
+      default:
+        return assertNever(evidence)
+    }
   }
 
   private accountTable(): KvTable<ImAccountId, ImAccountAggregate> {
