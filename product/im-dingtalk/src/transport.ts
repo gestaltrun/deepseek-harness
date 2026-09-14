@@ -12,6 +12,7 @@ import type {
   ImTransportConfirmRequest,
   ImTransportInboundPage,
   ImTransportInboundPageReceipt,
+  ImTransportListener,
   ImTransportListenPlan,
   ImTransportSendRequest,
   ImTransportSendResult,
@@ -188,7 +189,7 @@ export class DingTalkTransport implements ImTransport {
   }
 
   /** @inheritdoc */
-  async listen(account: ImAccountView, plan: ImTransportListenPlan, sink: ImTransportSink, signal: AbortSignal): Promise<() => Promise<void>> {
+  async listen(account: ImAccountView, plan: ImTransportListenPlan, sink: ImTransportSink, signal: AbortSignal): Promise<ImTransportListener> {
     const identity = this.identity(account)
     const key = String(account.id)
     if (this.listeners.has(key)) throw new DwsProtocolError('DINGTALK_LISTENER_CONFLICT', 'DingTalk account listener is already running')
@@ -213,14 +214,19 @@ export class DingTalkTransport implements ImTransport {
       })
       await stream.ready
       const done = stream.done.catch((error: unknown) => {
-        if (!abort.signal.aborted) this.ctx.logger('imDingTalk').warn(`DingTalk listener stopped: ${error instanceof DwsProtocolError ? error.code : 'DINGTALK_STREAM_FAILED'}`)
+        if (abort.signal.aborted) return
+        this.ctx.logger('imDingTalk').warn(`DingTalk listener stopped: ${error instanceof DwsProtocolError ? error.code : 'DINGTALK_STREAM_FAILED'}`)
+        throw error
       }).finally(() => {
         signal.removeEventListener('abort', relayAbort)
         if (this.listeners.get(key)?.abort === abort) this.listeners.delete(key)
       })
       const active: ActiveListener = { abort, stop: stream.stop, done }
       this.listeners.set(key, active)
-      return async () => { abort.abort(new Error('DingTalk listener disposed')); await active.stop(); await active.done }
+      return {
+        done,
+        dispose: async () => { abort.abort(new Error('DingTalk listener disposed')); await active.stop() },
+      }
     } catch (error) {
       signal.removeEventListener('abort', relayAbort)
       abort.abort(error)

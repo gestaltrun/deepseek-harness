@@ -59,11 +59,13 @@ Install DWS `1.0.61` or later, complete employee OAuth outside DSH, then mount S
 
 `listAccountCandidates` reads `dws profile list --format json` and requires the stable selector to equal `corpId:userId`. `inspectAccount` reads the profile status without refreshing it. `refreshAccount` runs `dws auth status --profile <exact> --format json`, verifies returned organization and employee facts, and never changes the ambient current profile. Only explicit status facts become ready, expired, or revoked; missing status and generic command errors remain failed checks.
 
-Conversation discovery retains the DingTalk `openConversationId` for both group and direct conversations. DWS direct sending separately requires the peer `openDingTalkId`; the listener retains both fields from direct message events rather than replacing the conversation identity with its recipient.
+Conversation discovery retains the DingTalk `openConversationId` for both group and direct conversations. DWS direct sending separately requires a peer `openDingTalkId` or user id. Specific routes and direct-message sender evidence retain that peer separately, so runtime restarts keep both the stable conversation identity and the real send recipient. The transport never substitutes a conversation id for a missing peer.
 
-One public `event consume` process subscribes to `user_im_message_receive_at`, `user_im_message_receive_o2o_all`, and `user_im_message_receive_group_all`. This covers every applicable current and future direct or group conversation. The parser accepts only the pinned flattened message fields, derives mention evidence only from the at-me event key, and relies on DWS's ordinary self-loop filter before attributing a frame to an external actor. It never parses message text for mention or sender facts.
+One public `event consume` process subscribes to `user_im_message_receive_at`, `user_im_message_receive_o2o_all`, and `user_im_message_receive_group_all`. The runtime listener plan selects exact conversations or every applicable current and future direct or group conversation. The parser accepts only the pinned flattened message fields, derives mention evidence only from the at-me event key, and relies on DWS's ordinary self-loop filter before attributing a frame to an external actor. When an all-group frame arrives before its matching at-me frame, the runtime supplements the same durable message with mention evidence without resubmitting a completed admission. It never parses message text for mention or sender facts.
 
-Group send passes the real conversation id, text, runtime request id, AI tag, and exact profile to `chat message send`. An `openTaskId` is an uncertain receipt. `confirm` calls `chat message query-send-status` and reports sent only when a success status includes `openMessageId`; explicit failure remains failed, and every incomplete or lost result remains unknown without a second send.
+The listener returns its lifecycle handle only after the exact public ready marker. Orderly disconnect, plan restart, and shutdown await managed process quiescence. A DWS process that ends later settles the handle, allowing the runtime to remove running state or publish a safe failure instead of leaving the account connected.
+
+Group send passes the real conversation id; direct send passes the persisted peer through `--open-dingtalk-id` or `--user`. Both calls include the text, runtime request id, AI tag, and exact profile. An `openTaskId` is an uncertain receipt. `confirm` calls `chat message query-send-status` and reports sent only when a success status includes `openMessageId`; explicit failure remains failed, and every incomplete or lost result remains unknown without a second send.
 
 -----
 
@@ -111,9 +113,7 @@ None; profile checks and event consumption do not assemble a model request.
 ## Known Limitations and Deferred Work
 
 - The product package never reads real profiles or messages during build, tests, or Loader smoke. Real employee access, sends, status confirmation, and GUI acceptance require a separately authorized test scope.
-- The current runtime interface cannot durably retain the direct peer `openDingTalkId` with the route, so direct outbound is rejected instead of using the conversation id as the wrong recipient type.
-- A group message can appear first on the all-group subscription and later on the at-me subscription. The current runtime deduplicates the second frame but cannot yet supplement its durable mention evidence. Mention-trigger acceptance remains pending the runtime's monotonic evidence update.
-- A DWS stream that exits after readiness is terminated and logged by the Provider, while the current runtime listener interface cannot observe that later completion to publish reconnecting or failed state.
+- The local delivery host reported `v1.0.52.1 (4fb8794, 2026-07-24T08:01:49Z)` on 2026-09-14, below the required DWS `1.0.61`. It was not upgraded. Real access acceptance must first select an isolated compatible executable and profile home.
 
 <a id="dev-note"></a>
 ### Dev Note
@@ -121,6 +121,6 @@ None; profile checks and event consumption do not assemble a model request.
 <details>
 <summary>Working context for maintainers — click to expand</summary>
 
-Migration provenance, the reviewed DWS commit, license, and source paths are recorded in `UPSTREAM.json`. Build the product runtime first, then run this package's test, typecheck, and build scripts. `smoke:loader` uses a synthetic executable and local JSON storage; it must never point at an operator's DWS home.
+Migration provenance, the reviewed DWS commit, license, and local version probe are recorded in `UPSTREAM.json`. Build the product runtime first, then run this package's test, typecheck, and build scripts. `smoke:loader` uses a synthetic executable and local JSON storage to cover listener plans, late mention evidence, restart persistence, direct recipient argv, reconnect, teardown, and post-ready failure; it must never point at an operator's DWS home.
 
 </details>

@@ -59,11 +59,13 @@ Account setup accepts `accessKeyId` and `accessKeySecret` only in the write requ
 
 Authorization and listener facts remain separate. A generic HTTP 401 or 403 is a failed check; only an explicit provider expiry or revocation code becomes `required`. Listener readiness follows a successful provider page request and durable runtime receipt, rather than timer creation.
 
-Each polled merchant page is grouped by conversation and submitted once through `receivePage`. Stable page and conversation operation ids let the runtime retain completed groups after a partial failure. The provider adopts the cursor from the runtime receipt; a restart may replay from zero once, receive the persisted cursor conflict, and continue from the runtime-owned position without dropping or duplicating durable messages.
+Each polled merchant page is filtered by the current listener plan, grouped by conversation, and submitted once through `receivePage`. An `all` route includes applicable future buyer conversations; a specific route admits only its stable conversation id. Stable page and conversation operation ids let the runtime retain completed groups after a partial failure. The provider advances the merchant cursor only after every applicable group is durable, including a page with no matching groups. A restart may replay from zero once, receive the persisted cursor conflict, and continue from the runtime-owned position without dropping or duplicating durable messages.
 
-The sender parser preserves external, configured-native, configured-echo, and provider-unknown evidence. Unsupported `senderType` values remain unknown. The provider never treats text equality as self or Agent evidence and does not fall back to another merchant.
+The sender parser preserves external, configured-native, configured-echo, and provider-unknown evidence. Unsupported `senderType` values remain unknown. The stable conversation id stays separate from the buyer customer id; discovery and inbound evidence retain that peer for direct sending across runtime restarts. The provider never treats text equality as self or Agent evidence and does not fall back to another merchant.
 
-Outbound send uses the runtime request id as the platform request id. A network failure, HTTP 408 or 429, 5xx, invalid JSON, or missing receipt stays `unknown`. Confirmed send receipts retain optional provider producer and revision evidence in the durable raw status. `confirm` queries the provider status endpoint and changes the result only when the provider explicitly confirms sent or failed.
+Outbound send uses the durable buyer identity and the runtime request id as the platform request id; it never guesses a customer id from the conversation id. A network failure, HTTP 408 or 429, 5xx, invalid JSON, or missing receipt stays `unknown`. Confirmed send receipts retain optional provider producer and revision evidence in the durable raw status. `confirm` queries the provider status endpoint and changes the result only when the provider explicitly confirms sent or failed.
+
+The listener returns only after the initial provider request and runtime cursor receipt. Its terminal handle settles normally for disconnect, plan restart, and shutdown, and rejects when later polling fails so the runtime does not retain stale running state.
 
 -----
 
@@ -120,6 +122,6 @@ None; provider polling and account checks do not assemble a model request.
 <details>
 <summary>Working context for maintainers — click to expand</summary>
 
-Migration provenance and the retained legacy behavior are recorded in `UPSTREAM.json`. Run this package's test, typecheck, and build scripts after building `@gestaltrun/dsh-im-runtime`; then run `smoke:loader` against the built entries.
+Migration provenance and the retained legacy behavior are recorded in `UPSTREAM.json`. Run this package's test, typecheck, and build scripts after building `@gestaltrun/dsh-im-runtime`; then run `smoke:loader` against the built entries. The controlled HTTP and JSON Storage smoke covers multi-conversation page admission, future conversations under `all`, replay deduplication, disconnect, reconnect, and teardown.
 
 </details>

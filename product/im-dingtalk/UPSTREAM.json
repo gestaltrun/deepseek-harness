@@ -32,6 +32,14 @@
     ],
     "patches": []
   },
+  "localValidation": {
+    "checkedAt": "2026-09-14",
+    "command": "dws --version",
+    "observed": "v1.0.52.1 (4fb8794, 2026-07-24T08:01:49Z)",
+    "minimum": "1.0.61",
+    "realAccountAccessed": false,
+    "globalExecutableChanged": false
+  },
   "adoptedBehavior": [
     "exact corpId:userId employee profile selection",
     "non-refreshing profile inspection and explicit auth status refresh",

@@ -96,7 +96,7 @@ describe('DingTalk transport', () => {
     await Promise.resolve()
     expect(resolved).toBe(false)
     ready()
-    const dispose = await listening
+    const listener = await listening
     await onLine(JSON.stringify({
       type: 'user_im_message_receive_group_all', event_id: 'event-1', timestamp: 1_726_000_000_000, subscribe_id: 'sub-1',
       message_id: 'message-1', conversation_id: 'cid-group', sender: '客户', sender_open_dingtalk_id: 'D-peer',
@@ -123,8 +123,26 @@ describe('DingTalk transport', () => {
       conversations: [{ conversationId: 'cid-group', conversationKind: 'group', messages: [{ externalMessageId: 'message-1', mentionedConfiguredAccount: true }] }],
     })
     expect(client.listen).toHaveBeenCalledOnce()
-    await dispose()
+    await listener.dispose()
+    await listener.done
     expect(stop).toHaveBeenCalledOnce()
+  })
+
+  it('rejects the listener terminal signal when a ready DWS stream fails', async () => {
+    let fail!: (error: Error) => void
+    const done = new Promise<void>((_resolve, reject) => { fail = reject })
+    const client = {
+      listen: vi.fn(async () => ({ ready: Promise.resolve(), done, stop: vi.fn(async () => {}) })),
+    } as unknown as DwsClient
+    const transport = boot(client)
+    const listener = await transport.listen(account(), groupMentionPlan(), {
+      receivePage: vi.fn(),
+    }, new AbortController().signal)
+    const terminal = expect(listener.done).rejects.toThrow('controlled stream failure')
+
+    fail(new Error('controlled stream failure'))
+
+    await terminal
   })
 
   it('does not treat an async task as sent and sends direct messages only to durable peer facts', async () => {
