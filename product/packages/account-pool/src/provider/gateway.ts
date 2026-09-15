@@ -1,5 +1,11 @@
 /** Account lifecycle and committed management state over a generation-private core gateway. */
 import { Context } from '@deepseek-ai/cordis'
+import type { AdapterRegistrationHandle } from '@deepseek-ai/dsh-llm'
+import type {
+  ManagedProviderHandle,
+  ProductModelProfile,
+  ProductProviderProfile,
+} from '@gestaltrun/dsh-model-center'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { setTimeout as delay } from 'node:timers/promises'
 import { z } from 'zod'
@@ -36,7 +42,7 @@ interface LoginOperation { readonly controller: AbortController; readonly genera
 
 /** CLIProxyAPI account provider; the enclosing composition supplies an isolated local subprocess service. */
 export class CLIProxyAccountPool extends AccountPool {
-  static inject = ['llm', 'subprocess']
+  static inject = ['llm', 'subprocess', 'modelCenter']
   static Config = Config
   private snapshot: AccountPoolSnapshot = Object.freeze({ state: 'starting', accounts: [] })
   private readonly listeners = new Set<(snapshot: AccountPoolSnapshot) => void>()
@@ -50,11 +56,14 @@ export class CLIProxyAccountPool extends AccountPool {
   })
   private generation: Generation | undefined
   private adapter: GenerationAdapter | undefined
-  private registration: (() => void) | undefined
+  private registration: AdapterRegistrationHandle | undefined
   private supervisor: Supervisor | undefined
   private queue: Promise<unknown> = Promise.resolve()
   private login: LoginOperation | undefined
-  private catalogKey: string | undefined
+  private sourceCatalog: readonly AccountPoolCatalogModel[] | undefined
+  private adapterGeneration: Generation | undefined
+  private adapterProfileKey: string | undefined
+  private readonly managedModels: ManagedProviderHandle
 
   /**
    * @param ctx - public LLM and explicitly local subprocess services.
@@ -62,6 +71,14 @@ export class CLIProxyAccountPool extends AccountPool {
    */
   constructor(ctx: Context, private readonly config: Config) {
     super(ctx)
+    this.managedModels = ctx.modelCenter.registerManagedProvider(ctx, ACCOUNT_POOL_ROUTE, {
+      validate: profile => this.validateManagedProfile(profile),
+      changed: profile => this.reconcileManagedProfile(profile),
+      discover: signal => {
+        signal?.throwIfAborted()
+        return Promise.resolve(this.sourceCatalog === undefined ? [] : toProductModels(this.sourceCatalog))
+      },
+    })
     const startup = resolve(config).then(spec => this.start(spec)).catch(error => { this.failed(error) })
     ctx.effect(() => async () => {
       this.listeners.clear()
@@ -357,30 +374,54 @@ export class CLIProxyAccountPool extends AccountPool {
       catalog = mergeAccountPoolCatalogs(catalog, mergeAccountPoolCatalogs(...definitions).filter(model => availableIds.has(model.id)))
       generation.signal.throwIfAborted()
       if (this.generation !== generation) return
-      const key = JSON.stringify(catalog)
-      if (key === this.catalogKey) return
-      if (catalog.length === 0) {
-        this.registration?.()
-        this.registration = undefined
-        this.adapter = undefined
-      } else {
-        const next = new GenerationAdapter(this.ctx, generation.transport, catalog, this.config)
-        this.adapter = next
-        if (this.registration === undefined) {
-          if (this.ctx.llm.listProviders().some(provider => provider.id === ACCOUNT_POOL_ROUTE)) {
-            throw new AccountPoolError('conflict', 'The account-pool model route is already owned by another plugin.')
-          }
-          this.registration = this.ctx.llm.registerAdapter([ACCOUNT_POOL_ROUTE], this.liveAdapter)
-        }
-      }
-      this.catalogKey = key
+      this.sourceCatalog = catalog
+      await this.managedModels.syncCatalog(toProductModels(catalog))
     } catch (error) {
-      this.registration?.()
-      this.registration = undefined
-      this.adapter = undefined
-      this.catalogKey = undefined
+      this.withdrawAdapter()
+      this.sourceCatalog = undefined
       throw error
     }
+  }
+
+  private validateManagedProfile(profile: ProductProviderProfile): void {
+    for (const model of profile.models ?? []) {
+      if (model.id.length === 0) throw new AccountPoolError('invalid-input', 'Account models require a non-empty id.')
+    }
+  }
+
+  private reconcileManagedProfile(profile: ProductProviderProfile | undefined): void {
+    if (this.lifetime.signal.aborted) return
+    const generation = this.generation
+    if (profile === undefined || generation === undefined || generation.signal.aborted || (profile.models?.length ?? 0) === 0) {
+      this.withdrawAdapter()
+      return
+    }
+    const models = profile.models!
+    const key = JSON.stringify({ models, defaultInput: profile.defaultInput })
+    if (this.adapterGeneration === generation && this.adapterProfileKey === key) return
+    const inheritedInput = profile.defaultInput === undefined || profile.defaultInput.length === 0
+      ? ['text' as const]
+      : profile.defaultInput
+    const runtimeModels = models.map(model => toCatalogModel(model, inheritedInput))
+    const next = new GenerationAdapter(this.ctx, generation.transport, runtimeModels, this.config)
+    this.adapter = next
+    this.adapterGeneration = generation
+    this.adapterProfileKey = key
+    if (this.registration === undefined) {
+      if (this.ctx.llm.listProviders().some(provider => provider.id === ACCOUNT_POOL_ROUTE)) {
+        throw new AccountPoolError('conflict', 'The account-pool model route is already owned by another plugin.')
+      }
+      this.registration = this.ctx.llm.registerAdapter([ACCOUNT_POOL_ROUTE], this.liveAdapter)
+    } else {
+      this.registration.replace([ACCOUNT_POOL_ROUTE])
+    }
+  }
+
+  private withdrawAdapter(): void {
+    this.adapter = undefined
+    this.adapterGeneration = undefined
+    this.adapterProfileKey = undefined
+    this.registration?.replace([])
   }
 
   private async pollCatalog(generation: Generation): Promise<void> {
@@ -521,11 +562,9 @@ export class CLIProxyAccountPool extends AccountPool {
   }
 
   private withdraw(): void {
-    this.registration?.()
-    this.registration = undefined
+    this.withdrawAdapter()
     this.generation = undefined
-    this.adapter = undefined
-    this.catalogKey = undefined
+    this.sourceCatalog = undefined
     this.login?.controller.abort()
   }
 
@@ -535,14 +574,43 @@ export class CLIProxyAccountPool extends AccountPool {
 
   private failed(error: unknown): void {
     if (this.lifetime.signal.aborted) return
-    this.registration?.()
-    this.registration = undefined
-    this.adapter = undefined
-    this.catalogKey = undefined
+    this.withdrawAdapter()
+    this.sourceCatalog = undefined
     this.ctx.logger.warn('Account engine operation failed.', error)
     this.publish({ ...this.snapshot, state: 'error', error: error instanceof AccountPoolError
       ? error.message : 'The account engine is unavailable.' })
   }
+}
+
+function toCatalogModel(model: ProductModelProfile, inheritedInput: readonly ('text' | 'image')[]): AccountPoolCatalogModel {
+  const input = model.input === undefined || model.input.length === 0
+    ? inheritedInput
+    : model.input.filter((modality): modality is 'text' | 'image' => modality === 'text' || modality === 'image')
+  return {
+    id: model.id,
+    ...model.name === undefined ? {} : { name: model.name },
+    ...model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow },
+    ...model.maxTokens === undefined ? {} : { maxTokens: model.maxTokens },
+    ...input.length === 0 ? {} : { input },
+    ...model.reasoningEfforts === undefined
+      ? {}
+      : { reasoningEfforts: model.reasoningEfforts === false ? false : { ...model.reasoningEfforts } },
+    ...model.defaultReasoningLevel === undefined ? {} : { defaultReasoningLevel: model.defaultReasoningLevel },
+  }
+}
+
+function toProductModels(catalog: readonly AccountPoolCatalogModel[]): ProductModelProfile[] {
+  return catalog.map(model => ({
+    id: model.id,
+    ...model.name === undefined ? {} : { name: model.name },
+    ...model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow },
+    ...model.maxTokens === undefined ? {} : { maxTokens: model.maxTokens },
+    ...model.input === undefined ? {} : { input: [...model.input] },
+    ...model.reasoningEfforts === undefined
+      ? {}
+      : { reasoningEfforts: model.reasoningEfforts === false ? false : { ...model.reasoningEfforts } },
+    ...model.defaultReasoningLevel === undefined ? {} : { defaultReasoningLevel: model.defaultReasoningLevel },
+  }))
 }
 
 export default CLIProxyAccountPool

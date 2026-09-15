@@ -8,7 +8,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`@gestaltrun/dsh-account-pool` manages provider accounts in Settings and makes available pool models selectable through the existing LLM service. It supports Claude, Codex, Antigravity, Kimi, xAI, and GLM Coding Plan enrollment. Desktop product composition includes the bundle; Web installations select it explicitly. Account credentials stay in private product storage, and quota refresh never changes account scheduling or consumes reset credits.
+`@gestaltrun/dsh-account-pool` manages provider accounts in Settings and makes available pool models selectable through the existing LLM service. It supports Claude, Codex, Antigravity, Kimi, xAI, and GLM Coding Plan enrollment. Desktop product composition includes the bundle; Web installations combine `@gestaltrun/dsh-model-center` with this bundle for the complete Models experience. Account credentials stay in private product storage, and quota refresh never changes account scheduling or consumes reset credits.
 
 ## Table of Contents
 
@@ -42,6 +42,8 @@ Account files, including GLM Coding Plan JSON, live in the engine `auth-dir`. GL
 One product package owns the account service, engine supervisor, management mapping, LLM adapter, Remote controller, and Client. The Go engine is built from the source in [UPSTREAM.json](UPSTREAM.json). Each generation has independent loopback HTTP credentials and cancellation. Shutdown withdraws model routes, settles requests, stops the owned process tree, and removes only generation files.
 
 Account files remain engine-owned under `auth-dir`. GLM identities come from the engine roster. The Host opens HTTPS authorization URLs; the renderer does not.
+
+The bundle reserves `gestalt-account-pool` on the existing Model Center row. The account pool publishes catalog fields to `llm-pi-ai.providers.gestalt-account-pool.models` and owns the matching runtime adapter. Source refreshes replace manual edits to catalog-owned fields while preserving other providers and provider fields. An empty catalog keeps the configurable provider entry with `models: []` and withdraws the runtime route. A model with no explicit input list inherits the provider's `defaultInput`, or text when that list is also absent.
 
 The [accepted architecture](../../../.agents/notes/proposed/architecture/2026-09-14-plugin-account-pool.md) owns alternatives and the product-only change scope. Quota parsers are observation modules; attribution is in [NOTICE](NOTICE). The Host snapshot is the business-state authority; lifecycle and transport tests verify its external effects.
 

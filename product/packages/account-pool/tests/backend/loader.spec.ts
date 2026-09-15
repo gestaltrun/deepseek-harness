@@ -22,6 +22,7 @@ describe.skipIf(resourceDirectory === undefined)('published dsh profile and Load
     const report = join(root, 'observed.json')
     const observer = join(root, 'observer.mjs')
     const entry = fileURLToPath(new URL('../../lib/types/provider/gateway.js', import.meta.url))
+    const modelCenter = fileURLToPath(new URL('../../../../model-center/lib/index.js', import.meta.url))
     await writeFile(observer, `import { writeFile } from 'node:fs/promises';
 export const name = 'account-pool-loader-observer';
 export const inject = ['accountPool'];
@@ -42,6 +43,9 @@ export function apply(ctx, config) {
     await writeFile(join(profile, 'cordis.patch.yml'), JSON.stringify([{ insert: [
       { id: 'llm', name: '@deepseek-ai/dsh-llm' },
       { id: 'subprocess', name: '@deepseek-ai/dsh-subprocess-local' },
+      { id: 'settings', name: '@deepseek-ai/dsh-settings-file', config: { path: join(root, 'model-settings.json'), watch: false } },
+      { id: 'model-center', name: pathToFileURL(modelCenter).href,
+        config: { managedProviders: [{ id: 'gestalt-account-pool', displayName: 'Account pool' }] } },
       { id: 'pool', name: pathToFileURL(entry).href, config: { stateRoot: join(root, 'pool'), resourceDirectory,
         restartLimit: 0 } },
       { id: 'observe', name: pathToFileURL(observer).href, config: { report } },

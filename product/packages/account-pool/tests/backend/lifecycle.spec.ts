@@ -6,6 +6,8 @@ import { Context } from '@deepseek-ai/cordis'
 import LlmRuntime, { LlmAdapter } from '@deepseek-ai/dsh-llm'
 import LocalSubprocess from '@deepseek-ai/dsh-subprocess-local'
 import type { SubprocessHandle, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
+import SettingsFile from '@deepseek-ai/dsh-settings-file'
+import * as ModelCenter from '@gestaltrun/dsh-model-center'
 import { CLIProxyAccountPool } from '../../src/provider/gateway.ts'
 import { Config } from '../../src/provider/config.ts'
 import type { AccountPoolSnapshot } from '../../src/account-pool.ts'
@@ -38,6 +40,8 @@ async function create() {
   cleanup.push(async () => { await ctx.fiber.dispose() })
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(ObservedSubprocess)
+  await ctx.plugin(SettingsFile, { path: join(root, 'model-settings.json'), watch: false })
+  await ctx.plugin(ModelCenter, { managedProviders: [{ id: 'gestalt-account-pool', displayName: 'Account pool' }] })
   return { root, ctx, subprocess: ctx.subprocess as ObservedSubprocess }
 }
 

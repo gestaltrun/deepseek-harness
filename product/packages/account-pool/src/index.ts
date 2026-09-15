@@ -13,7 +13,7 @@ export { CLIProxyAccountPool } from './provider/gateway.ts'
 /** Product plugin name. */
 export const name = 'gestaltrun-account-pool'
 /** The bundle supplies the local subprocess implementation in an isolated scope. */
-export const inject = ['llm', 'subprocess', 'typert', 'connection']
+export const inject = ['llm', 'subprocess', 'typert', 'connection', 'modelCenter']
 
 /**
  * Mount account management and its narrow API in the current product composition.

@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os'
 import { Context } from '@deepseek-ai/cordis'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
 import LocalSubprocess from '@deepseek-ai/dsh-subprocess-local'
+import SettingsFile from '@deepseek-ai/dsh-settings-file'
+import * as ModelCenter from '@gestaltrun/dsh-model-center'
 import { CLIProxyAccountPool } from '../../src/provider/gateway.ts'
 import { Config } from '../../src/provider/config.ts'
 import type { AccountPoolSnapshot } from '../../src/account-pool.ts'
@@ -27,6 +29,8 @@ async function boot(stateRoot: string): Promise<{ ctx: Context; pool: CLIProxyAc
   cleanup.push(async () => { await ctx.fiber.dispose() })
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(LocalSubprocess)
+  await ctx.plugin(SettingsFile, { path: join(stateRoot, 'model-settings.json'), watch: false })
+  await ctx.plugin(ModelCenter, { managedProviders: [{ id: 'gestalt-account-pool', displayName: 'Account pool' }] })
   await ctx.plugin(CLIProxyAccountPool, Config({ stateRoot, resourceDirectory,
     restartLimit: 0, catalogRefreshIntervalMs: 100, startupTimeoutMs: 15000 }))
   const pool = ctx.accountPool as CLIProxyAccountPool

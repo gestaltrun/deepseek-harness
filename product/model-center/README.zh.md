@@ -28,10 +28,12 @@ llm-pi-ai:
 
 设置写入保留未编辑的模型字段，携带页面读取的命名空间版本，并原子保存模型数组。已有 `defaultReasoningLevel` 字段直接生效，不复制密钥，不执行破坏性迁移。请求准备后，其默认档位不受后续设置变更影响。提供方错误、取消、重试、图片与重放状态继续由官方实现处理。
 
+产品 bundle 可以在 pi-ai 读取初始设置前，通过 `managedProviders` 预约提供方路由。运行时所有者通过 `ctx.modelCenter` 发布来源模型字段；发布写入既有 `llm-pi-ai.providers.<id>.models` 用户层，并保留其他提供方和非来源字段。通用 pi-ai 适配器不占用或校验预约路由。运行时所有者继续负责其适配器、凭据、发现与生命周期。重复发布相同来源目录不会写入 Settings；后续来源刷新会替换来源拥有的模型字段手动编辑。
+
 ## 构建与装配
 
 独立工作区位于 `product/`。运行 `pnpm --dir product install --frozen-lockfile --ignore-scripts`，再执行 `pnpm --dir product run build`、`test` 或 `typecheck`。`pnpm --dir product run pack` 将 npm 归档写入 `product/dist`。Desktop 打包读取此目录和 `apps/desktop/src/product-profile.ts` 中的产品 bundle 清单。
 
-bundle 停用标准 pi-ai 和模型 UI 行，并插入产品行。使用组合层 pi-ai 默认值时，将其配置在产品行；已有用户设置沿用原命名空间。提供方的隔离注册视图转发官方三个 LLM 注册方法和设置安装方法，并通过组合测试约束与固定 DSH 版本的兼容性。产品包不替换应用 LLM 服务，不在中间件中修改冻结请求。
+bundle 停用标准 pi-ai 和模型 UI 行，并插入产品行。使用组合层 pi-ai 默认值时，将其配置在产品行；已有用户设置沿用原命名空间。模型中心默认不声明受管路由；拥有受管运行时的 bundle 在模型中心行中添加预约。提供方的隔离注册视图转发官方三个 LLM 注册方法和设置安装方法，并通过组合测试约束与固定 DSH 版本的兼容性。产品包不替换应用 LLM 服务，不在中间件中修改冻结请求。
 
 模型页面与输入标签控件由产品包维护适配，源码身份记录在 `UPSTREAM.json`。新增公共接口需要明确适配，不从未发布的内部路径导入实现。

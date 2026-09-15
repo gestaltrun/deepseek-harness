@@ -12,6 +12,12 @@ const desktopFiles = new Set([
   'apps/desktop/scripts/product-artifacts.ts',
   'apps/desktop/tests/product-profile.spec.ts',
   'apps/desktop/tests/product-artifacts.spec.ts',
+  'apps/desktop/src/locale.ts',
+  'apps/desktop/src/main.ts',
+  'apps/desktop/tests/main-startup.spec.ts',
+  'apps/desktop/README.md',
+  'apps/desktop/README.zh.md',
+  'apps/desktop/README.i18n.yaml',
 ])
 const planning = [
   '.agents/notes/proposed/architecture/2026-09-14-plugin-account-pool',

@@ -8,7 +8,7 @@ kind: "package-bundle"
 
 ## 摘要
 
-`@gestaltrun/dsh-account-pool` 在设置中管理供应商账号，并通过既有 LLM（大语言模型）服务提供可选择的池内模型。它支持 Claude、Codex、Antigravity、Kimi、xAI 和 GLM Coding Plan 接入。Desktop 产品组合包含此 bundle，Web 安装显式选择它。账号凭据保存在私有产品存储中，配额刷新不会改变账号调度或消耗 reset credits。
+`@gestaltrun/dsh-account-pool` 在设置中管理供应商账号，并通过既有 LLM（大语言模型）服务提供可选择的池内模型。它支持 Claude、Codex、Antigravity、Kimi、xAI 和 GLM Coding Plan 接入。Desktop 产品组合包含此 bundle，Web 安装显式组合 `@gestaltrun/dsh-model-center` 和本 bundle，以提供完整模型设置体验。账号凭据保存在私有产品存储中，配额刷新不会改变账号调度或消耗 reset credits。
 
 ## 目录
 
@@ -42,6 +42,8 @@ Kimi 的用量汇总对应提供方的[七天配额](https://www.kimi.com/help/k
 一个产品包拥有账号服务、引擎 supervisor、管理映射、LLM 适配器、Remote 控制器和 Client。Go 引擎从 [UPSTREAM.json](UPSTREAM.json) 中的来源构建。每代拥有独立回环 HTTP 凭据和取消能力。关停撤回模型路由、等待请求结束、停止所属进程树，并仅删除代次文件。
 
 账号文件仍由引擎拥有，存放在 `auth-dir`。GLM 身份来自引擎花名册。Host 打开 HTTPS 授权 URL；渲染器不打开。
+
+bundle 在既有模型中心行上预约 `gestalt-account-pool`。账号池把目录字段发布到 `llm-pi-ai.providers.gestalt-account-pool.models`，并拥有对应运行时适配器。来源刷新会替换目录拥有的模型字段手动编辑，同时保留其他提供方和提供方字段。空目录保留可配置提供方条目且 `models: []`，并撤回运行时路由。没有显式输入类型的模型继承提供方的 `defaultInput`；该列表也缺失时继承文本。
 
 [已接受架构](../../../.agents/notes/proposed/architecture/2026-09-14-plugin-account-pool.zh.md)拥有替代方案和产品专属修改范围。配额解析器是观测模块，来源声明在 [NOTICE](NOTICE)。Host 快照是业务状态来源；生命周期和传输测试验证其外部效果。
 
