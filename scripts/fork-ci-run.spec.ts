@@ -30,8 +30,8 @@ describe('fork CI verdict', () => {
         ['packages/util/http-proxy/src/**/*.{ts,tsx}'],
       )
       const source = readFileSync(generated, 'utf8')
-      expect(source).toContain('include: files')
-      expect(source).toContain('coverage: { include: coverage }')
+      expect(source).toContain('merged.test.include = files')
+      expect(source).toContain('merged.test.coverage.include = coverage')
       expect(JSON.parse(readFileSync(join(scratch, 'files.json'), 'utf8'))).toEqual([
         'apps/cli/tests/args.spec.ts',
         'packages/util/http-proxy/tests/install.spec.ts',
@@ -41,7 +41,7 @@ describe('fork CI verdict', () => {
       ])
 
       const withoutCoverage = writeForkCiVitestConfig(scratch, 'vitest.config.ts', ['apps/cli/tests/args.spec.ts'])
-      expect(readFileSync(withoutCoverage, 'utf8')).not.toContain('coverage:')
+      expect(readFileSync(withoutCoverage, 'utf8')).not.toContain('merged.test.coverage.include')
     } finally {
       rmSync(scratch, { recursive: true, force: true })
     }

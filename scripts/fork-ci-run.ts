@@ -104,18 +104,15 @@ export function writeForkCiVitestConfig(
   writeFileSync(filesPath, `${JSON.stringify(files)}\n`)
   writeFileSync(coveragePath, `${JSON.stringify(coverage)}\n`)
   writeFileSync(configPath, `import { readFileSync } from 'node:fs'
-import { defineConfig, mergeConfig } from 'vitest/config'
+import { mergeConfig } from 'vitest/config'
 import base from ${JSON.stringify(pathToFileURL(resolve(config)).href)}
 
 const files = JSON.parse(readFileSync(${JSON.stringify(filesPath)}, 'utf8')) as string[]
-const coverage = JSON.parse(readFileSync(${JSON.stringify(coveragePath)}, 'utf8')) as string[]
-
-export default mergeConfig(base, defineConfig({
-  test: {
-    include: files,
-    ${coverage.length === 0 ? '' : 'coverage: { include: coverage },'}
-  },
-}))
+const merged = mergeConfig(base, {})
+merged.test.include = files
+${coverage.length === 0 ? '' : `const coverage = JSON.parse(readFileSync(${JSON.stringify(coveragePath)}, 'utf8')) as string[]
+merged.test.coverage.include = coverage
+`}export default merged
 `)
   return configPath
 }
