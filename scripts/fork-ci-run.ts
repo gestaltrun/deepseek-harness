@@ -154,7 +154,7 @@ function tests(files: string[], config = 'vitest.config.ts', coverage: string[] 
  * @param raw - Optional `DSH_COVERAGE_PARTITIONS` value.
  * @returns Partition count, or undefined for a single coverage invocation.
  */
-export function forkCiCoveragePartitions(fileCount: number, raw = process.env[COVERAGE_PARTITIONS_ENV]): number | undefined {
+export function forkCiCoveragePartitions(fileCount: number, raw: string | undefined): number | undefined {
   const requested = parseCoveragePartitionCount(raw)
   if (requested === undefined || fileCount < requested) return undefined
   return requested
@@ -171,7 +171,7 @@ async function coverageTests(files: string[], coverage: string[]): Promise<void>
   if (pnpmEntrypoint === undefined || pnpmEntrypoint === '') {
     throw new Error('Fork CI coverage must be invoked through a pnpm package script.')
   }
-  const partitions = forkCiCoveragePartitions(files.length)
+  const partitions = forkCiCoveragePartitions(files.length, process.env[COVERAGE_PARTITIONS_ENV])
   if (partitions === undefined) {
     mkdirSync(join(process.cwd(), 'tmp'), { recursive: true })
     const scratch = mkdtempSync(join(process.cwd(), 'tmp', 'dsh-fork-ci-'))
