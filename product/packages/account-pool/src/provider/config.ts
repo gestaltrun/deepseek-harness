@@ -24,7 +24,6 @@ export interface Config {
   readonly maxRetries: number
   readonly requestTokenBudget: number
   readonly unknownContextBudget: number
-  readonly allowCredentialExport: boolean
 }
 
 const duration = (): Schema<number> => Schema.natural().min(1).max(2_147_483_647)
@@ -48,7 +47,6 @@ export const Config: Schema<Config> = Schema.object({
   maxRetries: Schema.natural().default(2),
   requestTokenBudget: Schema.natural().min(1).default(16384),
   unknownContextBudget: Schema.natural().min(1).default(131072),
-  allowCredentialExport: Schema.boolean().required(),
 })
 
 /** Fully resolved instance paths and exact engine identity. */

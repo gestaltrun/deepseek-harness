@@ -1,12 +1,9 @@
 /** Embedded CLIProxyAPI generations owned through the public local subprocess service. */
 import { randomBytes } from 'node:crypto'
-import { chmod, writeFile } from 'node:fs/promises'
+import { chmod } from 'node:fs/promises'
 import { createServer } from 'node:net'
-import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
-import { generate } from 'selfsigned'
 import { scrubbedParentEnv, type SubprocessRuntime, type SubprocessHandle } from '@deepseek-ai/dsh-subprocess'
-import type { GlmAccounts } from './glm.ts'
 import { AccountPoolError } from '../account-pool.ts'
 import type { Spec } from './config.ts'
 import { AccountState, removeGeneration, verifyResource } from './state.ts'
@@ -17,7 +14,6 @@ export interface Generation {
   readonly signal: AbortSignal
   readonly transport: GenerationTransport
   readonly directory: string
-  readonly glm: GlmAccounts
   readonly retire: () => void
 }
 
@@ -88,27 +84,18 @@ export class Supervisor {
     let transport: GenerationTransport | undefined
     let quiescent = true
     try {
-      const certificate = await generate([{ name: 'commonName', value: 'localhost' }], {
-        keyType: 'ec', curve: 'P-256', algorithm: 'sha256',
-        extensions: [{ name: 'subjectAltName', altNames: [{ type: 7, ip: '127.0.0.1' }, { type: 2, value: 'localhost' }] }],
-      })
-      signal.throwIfAborted()
-      const certFile = join(directory, 'tls.crt')
-      const keyFile = join(directory, 'tls.key')
-      await writeFile(certFile, certificate.cert, { mode: 0o600, flag: 'wx' })
-      await writeFile(keyFile, certificate.private, { mode: 0o600, flag: 'wx' })
       if (process.platform !== 'win32') await chmod(directory, 0o700)
       const port = await reservePort()
       const managementKey = randomBytes(32).toString('hex')
       const inferenceKey = randomBytes(32).toString('hex')
       await state.configure({
-        host: '127.0.0.1', port, tls: { enable: true, cert: certFile, key: keyFile },
+        host: '127.0.0.1', port,
         'remote-management': { 'allow-remote': false, 'secret-key': managementKey, 'disable-control-panel': true },
         'auth-dir': state.authDirectory, 'api-keys': [inferenceKey],
         debug: false, 'logging-to-file': false, 'usage-statistics-enabled': false,
       }, this.spec.maxResponseBytes)
       signal.throwIfAborted()
-      transport = new GenerationTransport(`https://127.0.0.1:${port}`, certificate.cert,
+      transport = new GenerationTransport(`http://127.0.0.1:${port}`,
         managementKey, inferenceKey, signal, this.spec)
       child = this.subprocess.spawn({
         argv: [binary, '--config', state.configFile, '--local-model'], cwd: directory,
@@ -131,8 +118,7 @@ export class Supervisor {
           await delay(this.spec.readinessIntervalMs, undefined, { signal: readySignal })
         }
       }
-      await state.glm.clearJournal()
-      await this.observer.ready({ signal, transport, directory, glm: state.glm, retire: () => { lifetime.abort() } })
+      await this.observer.ready({ signal, transport, directory, retire: () => { lifetime.abort() } })
       await Promise.race([outcome, cancelled(signal)])
       if (!this.lifetime.signal.aborted) throw new AccountPoolError('unavailable', 'The account engine exited unexpectedly.')
     } finally {

@@ -43,7 +43,7 @@ export function apply(ctx, config) {
       { id: 'llm', name: '@deepseek-ai/dsh-llm' },
       { id: 'subprocess', name: '@deepseek-ai/dsh-subprocess-local' },
       { id: 'pool', name: pathToFileURL(entry).href, config: { stateRoot: join(root, 'pool'), resourceDirectory,
-        allowCredentialExport: false, restartLimit: 0 } },
+        restartLimit: 0 } },
       { id: 'observe', name: pathToFileURL(observer).href, config: { report } },
     ] }]))
     const ctx = new Context()

@@ -25,7 +25,7 @@ function copy(locale: 'en' | 'zh' = 'en'): AccountPoolCopy {
 
 const account: AccountPoolAccount = {
   ref: 'kimi-1' as AccountPoolAccountRef, name: 'kimi.json' as AccountPoolAccountName,
-  capabilities: { models: 'account', quota: true, export: 'auth-file', editableFields: ['note', 'prefix', 'proxyUrl', 'priority', 'weight', 'disableCooling', 'websockets', 'excludedModels', 'headers'] },
+  capabilities: { models: 'account', quota: true, editableFields: ['note', 'prefix', 'proxyUrl', 'priority', 'weight', 'disableCooling', 'websockets', 'excludedModels', 'headers'] },
   provider: 'kimi', label: 'Kimi user', status: 'ready', enabled: true, successCount: 3, failCount: 1,
   recentRequests: [{ success: 1, failed: 0 }, { success: 0, failed: 1 }],
   quota: [], quotaState: { status: 'unobserved', stale: false },
@@ -40,7 +40,7 @@ function commands(overrides: Partial<AccountPoolClientActions> = {}): AccountPoo
     submitCallback: vi.fn<AccountPoolClientActions['submitCallback']>(async () => ready), submitGlmKey: vi.fn<AccountPoolClientActions['submitGlmKey']>(async () => ready), refreshQuota: vi.fn<AccountPoolClientActions['refreshQuota']>(async () => ready),
     refreshAllQuota: vi.fn<AccountPoolClientActions['refreshAllQuota']>(async () => ready), listModels: vi.fn<AccountPoolClientActions['listModels']>(async () => [{ id: 'kimi-k2' }]),
     readFields: vi.fn<AccountPoolClientActions['readFields']>(async name => ({ name, info: { account: name }, fields: {} })), patchFields: vi.fn<AccountPoolClientActions['patchFields']>(async () => ready),
-    download: vi.fn<AccountPoolClientActions['download']>(async () => {}), openExternal: vi.fn<AccountPoolClientActions['openExternal']>(async () => {}), ...overrides,
+    openExternal: vi.fn<AccountPoolClientActions['openExternal']>(async () => {}), ...overrides,
   }
 }
 
@@ -206,7 +206,7 @@ describe('account pool Settings', () => {
     const { successCount: _success, failCount: _failed, ...base } = account
     const glm: AccountPoolAccount = {
       ...base, ref: 'glm-1' as AccountPoolAccountRef, provider: 'glm', status: 'configured',
-      capabilities: { models: 'provider', quota: true, export: 'glm-credential', editableFields: ['note', 'prefix', 'proxyUrl', 'priority', 'weight'] },
+      capabilities: { models: 'provider', quota: true, editableFields: ['note', 'prefix', 'proxyUrl', 'priority', 'weight'] },
       quotaState: { status: 'unobserved', stale: false },
     }
     mount({ ...ready, accounts: [glm] })
@@ -278,7 +278,7 @@ describe('quota observations', () => {
   })
 
   it('keeps the last sample visible and separately reports its failed refresh', () => {
-    render(<AccountCard t={copy()} item={{ ...account, quota: [{ key: 'weekly', label: 'Weekly', status: 'known', remainingPercent: 60 }], quotaState: { status: 'failure', stale: true, observedAt: 1, lastSuccessAt: 0, error: 'Quota unavailable' } }} globalFace="B" globalEpoch={0} onToggleStatus={() => {}} onRefreshQuota={() => {}} onDelete={() => {}} onListModels={() => {}} onRefresh={() => {}} onDownload={() => {}} onEditSettings={() => {}} />)
+    render(<AccountCard t={copy()} item={{ ...account, quota: [{ key: 'weekly', label: 'Weekly', status: 'known', remainingPercent: 60 }], quotaState: { status: 'failure', stale: true, observedAt: 1, lastSuccessAt: 0, error: 'Quota unavailable' } }} globalFace="B" globalEpoch={0} onToggleStatus={() => {}} onRefreshQuota={() => {}} onDelete={() => {}} onListModels={() => {}} onRefresh={() => {}} onEditSettings={() => {}} />)
     expect(screen.getByText('60%')).toBeTruthy()
     expect(screen.getByText(en.quotaStale)).toBeTruthy()
     expect(screen.getByRole('alert').textContent).toContain('Quota unavailable')

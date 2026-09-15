@@ -54,29 +54,28 @@ Desktop 默认包含该组合。Web 可以显式选择同一 bundle。账号池 
 | `listModels` | 账号名称 | 只读 `AccountPoolModel[]` |
 | `readFields` | 账号名称 | `AccountPoolEditableFields` |
 | `patchFields` | 账号名称、`AccountPoolFieldPatch` | `Snapshot` |
-| `downloadAuthFile` | 账号名称 | `{ name: string; body: string }`，仅限 Host |
 
-Remote 暴露管理操作，以 `watch(signal?)` 取代 `subscribe`，先发送当前快照再发送后续已提交变更，并排除 `downloadAuthFile`。产品 RPC 模块在 `/api/account-pool.export?name=...` 拥有经过认证的 `ctx.connection.fetch.register` 处理器。实际处理器强制执行 Config `allowCredentialExport`、安全的单段文件名、`Content-Disposition: attachment` 和 `Cache-Control: no-store`。Desktop 显式启用这项用户请求的凭据文件导出，Web 组合显式选择自己的策略。普通 RPC 和快照绝不返回其原始内容。第二条经过认证的 POST `/api/account-pool.open` 仅通过 Host 操作系统打开器启动不含用户信息的 HTTPS 授权 URL；Client 不使用 `window.open` 或 `window.dshDesktop`。不存在通用导入或原始 URL/method/header 代理。
+Remote 暴露管理操作，以 `watch(signal?)` 取代 `subscribe`，先发送当前快照再发送后续已提交变更。经过认证的 POST `/api/account-pool.open` 仅通过 Host 操作系统打开器启动不含用户信息的 HTTPS 授权 URL；Client 不使用 `window.open` 或 `window.dshDesktop`。不存在凭据文件导出路由、通用导入或原始 URL/method/header 代理。
 
 内部不依赖 React 的控制器拥有 watch 订阅和已提交快照，在资源释放时取消并等待 watch 结束，并提供注入 hooks；store 只保存视图状态。`AccountPoolClientActions` 为组件解包生成的 Remote 结果，组件既不使用 `window.dshDesktop`，也不使用管理 URL。编辑采用明确字段白名单；代理 userinfo 被脱敏，含凭据的 header 只暴露是否已配置以及保留/替换/删除意图。账号身份和操作代次阻止先前读取填入另一账号的弹窗。保存失败保留弹窗并显示本地化错误。过期登录状态不能完成或关闭后来的操作。
 
 ### 进程和持久状态
 
-产品自有 `resolve(config)` 通过 `import.meta.url` 取得安装资源目录，并从产品来源记录/manifest 取得固定来源 SHA。Provider Config 校验私有 `stateRoot` 和部署选项；普通 Desktop 启动不需要新增环境变量或资源路径 API。Bundle 默认值为 `startupTimeoutMs=15000`、`restartLimit=2`、`stopGraceMs=2000`、`readinessIntervalMs=50`、`requestTimeoutMs=15000`、`maxResponseBytes=1048576`、`catalogRefreshIntervalMs=2000` 和 `quotaConcurrency=4`。凭据、端口和证书属于私有运行时状态。Desktop 选择 `$DSH_HOME/desktop/account-pool`，显式启用的 Web profile 选择自己的根目录。
+产品自有 `resolve(config)` 通过 `import.meta.url` 取得安装资源目录，并从产品来源记录/manifest 取得固定来源 SHA。Provider Config 校验私有 `stateRoot` 和部署选项；普通 Desktop 启动不需要新增环境变量或资源路径 API。Bundle 默认值为 `startupTimeoutMs=15000`、`restartLimit=2`、`stopGraceMs=2000`、`readinessIntervalMs=50`、`requestTimeoutMs=15000`、`maxResponseBytes=1048576`、`catalogRefreshIntervalMs=2000` 和 `quotaConcurrency=4`。凭据和端口属于私有运行时状态。Desktop 选择 `$DSH_HOME/desktop/account-pool`，显式启用的 Web profile 选择自己的根目录。
 
 根目录排他锁拒绝并发所有者。`stateRoot/auth/` 存放引擎拥有的账号文件，包括 GLM Coding Plan。已取代的产品 GLM 账本、代次 TLS 和凭据导出见[引擎通过 auth-files 拥有 GLM](2026-09-15-account-pool-engine-owned-glm.zh.md)。在支持的平台上，私有目录权限为 0700，文件权限为 0600。清理仅删除 `stateRoot/generations/` 下已终止代次的随机目录；稳定凭据及无关数据保留。不读取用户默认 CLIProxyAPI home。
 
-Provider 拥有 `ctx.subprocess` 启动、环境清理、有界诊断、终止和 `waitForExit`。Bundle 显式组合隔离的本地 subprocess 实现，使二进制、TLS 探测和子进程处于同一本地执行环境；不增加执行环境探测 API。二进制 manifest（元数据清单）绑定来源 SHA、平台、架构、文件名和 SHA-256；缺失或不匹配的资源在 spawn 前失败。启动既不搜索 PATH，也不下载代码。维护中的 X509 库生成证书，不要求用户安装 Go 或 openssl。
+Provider 拥有 `ctx.subprocess` 启动、环境清理、有界诊断、终止和 `waitForExit`。Bundle 显式组合隔离的本地 subprocess 实现，使二进制和子进程处于同一本地执行环境；不增加执行环境探测 API。二进制 manifest（元数据清单）绑定来源 SHA、平台、架构、文件名和 SHA-256；缺失或不匹配的资源在 spawn 前失败。启动既不搜索 PATH，也不下载代码。
 
-### 代次 TLS 与模型请求
+### 代次 HTTP 与模型请求
 
-每个代次拥有新管理密钥、推理密钥、证书、abort controller，以及只信任该证书的 `undici.Agent`。每个管理、目录、就绪和推理请求都限制精确的本地 origin、允许的路径及方法，拒绝重定向，并在发送凭据前验证同一证书。预留后关闭端口不能证明所有权。读取时即限制响应体大小；错误 JSON 和传输失败保持为错误，不伪装为空结果。
+每个代次拥有新管理密钥、推理密钥、abort controller，以及绑定 `http://127.0.0.1` 的 `undici.Agent`。每个管理、目录、就绪和推理请求都限制精确的本地 origin、允许的路径及方法，并拒绝重定向。预留后关闭端口不能证明所有权。读取时即限制响应体大小；错误 JSON 和传输失败保持为错误，不伪装为空结果。
 
-产品使用已发布的 `PiAiAdapterOptions.profiles` 和 `ResolvedPiAiProviderProfile.piProvider` 扩展点。它通过公开 `createProvider({ api: productOwnedProviderStreams })` 创建供应商；其私有 `stream` 和 `streamSimple` 包装将原始选项连同代次 fetch 和取消 signal 分别转发给公开 `openAICompletionsApi().stream` 和 `.streamSimple` 方法。原样的上游适配器继续拥有模型转换、请求准备和流转换。不需要新增适配器选项、profile-resolver 导出、复制实现或修改上游代码。每个已准备调用保留其原始不可变 profile 和代次权限。关停撤回路由并关闭准入，中止已准入调用并等待结束，终止并等待子进程，关闭 dispatcher，最后删除代次文件。不修改全局 TLS 或 fetch 设置。
+产品使用已发布的 `PiAiAdapterOptions.profiles` 和 `ResolvedPiAiProviderProfile.piProvider` 扩展点。它通过公开 `createProvider({ api: productOwnedProviderStreams })` 创建供应商；其私有 `stream` 和 `streamSimple` 包装将原始选项连同代次 fetch 和取消 signal 分别转发给公开 `openAICompletionsApi().stream` 和 `.streamSimple` 方法。原样的上游适配器继续拥有模型转换、请求准备和流转换。不需要新增适配器选项、profile-resolver 导出、复制实现或修改上游代码。每个已准备调用保留其原始不可变 profile 和代次权限。关停撤回路由并关闭准入，中止已准入调用并等待结束，终止并等待子进程，关闭 dispatcher，最后删除代次文件。不修改全局 fetch 设置。
 
 产品只为自有路由组装公开的 resolved-profile DTO，不复制上游通用 resolver。产品 Config 拥有明确的限制和默认值，并继续复用公共 retry-policy 解析。产品维护目录到模型的投影和受支持 reasoning level 映射；未知能力保持未知，未支持等级保持不支持，SDK 必填 cost 字段不转化为已核验账号价格声明。薄产品适配器在请求元数据记录前选择每模型 reasoning 默认值，并完整委托公共适配器接口。公共依赖/peer 图必须通过严格编译闭合；探测需要已发布 MCP SDK `1.29.0`，它属于产品依赖验证，不是上游修改。
 
-可行性探测在独立 npm 项目安装已发布的 dsh LLM/PiAi `0.1.5-rc.2` 和 pi-ai `0.85.1`，不使用仓库 TypeScript 别名，且设置 `skipLibCheck: false`。TypeScript 编译和本地 TLS/SSE 请求均通过。探测观测到上下文/reasoning 元数据、profile map 后续移除后已准备调用仍保留原始权限，以及错误 CA 或已退出代次均不产生 HTTP 请求。探测不使用真实供应商账号，仅证明公共 API 可行性，不是迁移账号池或产品验收证据。
+可行性探测在独立 npm 项目安装已发布的 dsh LLM/PiAi `0.1.5-rc.2` 和 pi-ai `0.85.1`，不使用仓库 TypeScript 别名，且设置 `skipLibCheck: false`。TypeScript 编译和本地 SSE 请求均通过。探测观测到上下文/reasoning 元数据、profile map 后续移除后已准备调用仍保留原始权限，以及已退出代次不产生 HTTP 请求。探测不使用真实供应商账号，仅证明公共 API 可行性，不是迁移账号池或产品验收证据。
 
 目录保留来源支持的 Grokshell listing 元数据，并在 `prepareCall` 前设置 reasoning、上下文、输出限制和模态，使现有 Session 日志记录实际请求。有效且非空的目录注册 `gestalt-account-pool`；空目录或不可用目录原子撤回它。重复路由所有权明确失败。配额接收 Host 拥有的 xAI tier/user 元数据和 GLM 被动信号，保留未知/不支持/失败/过期的区分，且仅作观测：它绝不改变账号启停、调度、冷却或 reset credits。删除账号按账号引用清理配额缓存。
 

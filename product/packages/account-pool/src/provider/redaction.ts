@@ -118,12 +118,13 @@ export function roster(payload: unknown): AccountPoolAccount[] {
     const size = number(account.size)
     if (size !== undefined) details.sizeBytes = size
     const recent = Array.isArray(account.recent_requests) ? account.recent_requests : []
+    const provider = string(account.provider) ?? string(account.type) ?? 'unknown'
     return {
       ...fieldValues(account), ...details,
       ref: oauthRef(account.auth_index), name,
-      capabilities: { models: 'account', quota: true, export: 'auth-file',
+      capabilities: { models: provider === 'glm' ? 'provider' : 'account', quota: true,
         editableFields: ['note', 'prefix', 'proxyUrl', 'priority', 'weight', 'disableCooling', 'websockets', 'excludedModels', 'headers'] },
-      provider: string(account.provider) ?? string(account.type) ?? 'unknown',
+      provider,
       label: string(account.label) ?? name,
       status: account.disabled === true ? 'disabled' : string(account.status) ?? 'active',
       enabled: account.disabled !== true,

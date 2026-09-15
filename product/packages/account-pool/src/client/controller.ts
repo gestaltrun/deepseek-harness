@@ -3,12 +3,11 @@ import type { RemoteStream } from '@deepseek-ai/dsh-api-gateway/client'
 import type { ClientRemote, RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@gestaltrun/dsh-account-pool/remote'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
-import type { AccountPoolAccountName, AccountPoolSnapshot } from '../account-pool.ts'
+import type { AccountPoolSnapshot } from '../account-pool.ts'
 import type { AccountPoolClientActions } from './contract.ts'
 
 type Remote = Pick<ClientRemote, 'accountPool' | '$stream'>
 type Navigation = {
-  download(name: AccountPoolAccountName, signal: AbortSignal): Promise<void>
   openExternal(url: string): Promise<void>
 }
 
@@ -23,7 +22,7 @@ export class AccountPoolClientController {
 
   /**
    * @param remote - generated account namespace and public LLM directory.
-   * @param navigation - browser navigation and authenticated download operations.
+   * @param navigation - Host-owned browser open for authorization URLs.
    */
   constructor(private readonly remote: Remote, navigation: Navigation) {
     const rpc = remote.accountPool
@@ -42,7 +41,6 @@ export class AccountPoolClientController {
       listModels: (name, signal) => this.call(next => rpc.listModels(name, next), signal),
       readFields: (name, signal) => this.call(next => rpc.readFields(name, next), signal),
       patchFields: (name, fields, signal) => this.call(next => rpc.patchFields(name, fields, next), signal),
-      download: name => this.track(() => navigation.download(name, this.lifetime.signal)),
       openExternal: url => this.track(() => navigation.openExternal(url)),
     }
     this.stream = remote.$stream<AccountPoolSnapshot>({

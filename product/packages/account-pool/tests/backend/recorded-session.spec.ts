@@ -1,12 +1,11 @@
 /** Authored model replies replay through real public SDK/profile, image, tool, and persistence implementations. */
 import { afterEach, expect, it } from 'vitest'
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
-import { createServer } from 'node:https'
+import { createServer } from 'node:http'
 import { once } from 'node:events'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { generate } from 'selfsigned'
 import { DeepSeekHarness } from '@deepseek-ai/dsh-sdk-client'
 import { scrubbedParentEnv } from '@deepseek-ai/dsh-subprocess'
 import { normalizeSessionSnapshots, normalizeSessionSnapshot, redactSessionSnapshotIds, latestPersistedSessionPaths, sessionHeaderVersion, sessionFixtureName, parseSessionFixtureName } from '@deepseek-ai/dsh-session-snapshot'
@@ -41,11 +40,9 @@ it('replays a recorded image/tool Session through the published SDK, product PiA
   const home = join(root, '.home')
   const profile = join(home, 'profiles', 'pool-session')
   await mkdir(profile, { recursive: true })
-  const keys = await generate([{ name: 'commonName', value: 'localhost' }], { keyType: 'ec', curve: 'P-256', algorithm: 'sha256',
-    extensions: [{ name: 'subjectAltName', altNames: [{ type: 7, ip: '127.0.0.1' }] }] })
   let calls = 0
   const requests: Record<string, unknown>[] = []
-  const server = createServer({ key: keys.private, cert: keys.cert }, async (request, response) => {
+  const server = createServer(async (request, response) => {
     let body = ''
     for await (const chunk of request) body += String(chunk)
     requests.push(JSON.parse(body) as Record<string, unknown>)
@@ -68,7 +65,7 @@ it('replays a recorded image/tool Session through the published SDK, product PiA
   await once(server, 'listening')
   const address = server.address()
   if (address === null || typeof address === 'string') throw new Error('Missing fixture listener address.')
-  const origin = `https://127.0.0.1:${address.port}`
+  const origin = `http://127.0.0.1:${address.port}`
   const built = new URL('../../lib/types/', import.meta.url)
   const toolModule = import.meta.resolve('@deepseek-ai/dsh-tools')
   const fixturePlugin = join(root, 'fixture-plugin.mjs')
@@ -82,8 +79,8 @@ export const name = 'account-pool-recorded-provider';
 export const inject = ['llm', 'tools'];
 export function apply(ctx, config) {
   const lifetime = new AbortController();
-  const settings = Config({stateRoot:config.cwd,allowCredentialExport:false});
-  const transport = new GenerationTransport(config.origin, config.certificate, 'fixture-management', 'fixture-inference', lifetime.signal, settings);
+  const settings = Config({stateRoot:config.cwd});
+  const transport = new GenerationTransport(config.origin, 'fixture-management', 'fixture-inference', lifetime.signal, settings);
   const adapter = new GenerationAdapter(ctx, transport, [{id:'pool-model',contextWindow:131072,maxTokens:64000,input:['text','image'],reasoningEfforts:{high:'high'},defaultReasoningLevel:'high'}], settings);
   ctx.effect(() => ctx.llm.registerAdapter([ACCOUNT_POOL_ROUTE], adapter));
   ctx.effect(() => async () => {lifetime.abort();await transport.quiesce();await transport.close();});
@@ -100,7 +97,7 @@ export function apply(ctx, config) {
     { id: 'fixture-attachments', name: '@deepseek-ai/dsh-attachment-local', config: { dshHome: home } },
     { id: 'fixture-fs', name: '@deepseek-ai/dsh-fs-local', config: { cwd: root } },
     { id: 'recorded-provider',
-    name: pathToFileURL(fixturePlugin).href, config: { cwd: root, origin, certificate: keys.cert } }] }]))
+    name: pathToFileURL(fixturePlugin).href, config: { cwd: root, origin } }] }]))
   const harness = new DeepSeekHarness({ profile: 'pool-session', dshHome: home, processCwd: root, cwd: root,
     provider: 'gestalt-account-pool', model: 'pool-model', initializeTimeoutMs: 12000, requestTimeoutMs: 12000,
     env: { ...scrubbedParentEnv(), HOME: home, USERPROFILE: home } })

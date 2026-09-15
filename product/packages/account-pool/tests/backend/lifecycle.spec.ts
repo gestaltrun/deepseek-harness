@@ -45,7 +45,7 @@ describe.skipIf(resourceDirectory === undefined)('real engine generation lifetim
   it('restarts after an unexpected managed-process exit and disposes the replacement to quiescence', async () => {
     const { root, ctx, subprocess } = await create()
     const fiber = ctx.plugin(CLIProxyAccountPool, Config({ stateRoot: root, resourceDirectory,
-      allowCredentialExport: false, restartLimit: 1, catalogRefreshIntervalMs: 100 }))
+      restartLimit: 1, catalogRefreshIntervalMs: 100 }))
     await fiber
     const pool = ctx.accountPool as CLIProxyAccountPool
     await until(pool, snapshot => snapshot.state === 'ready')
@@ -63,7 +63,7 @@ describe.skipIf(resourceDirectory === undefined)('real engine generation lifetim
   it('disposal during startup does not leave a late owned process', async () => {
     const { root, ctx, subprocess } = await create()
     const fiber = ctx.plugin(CLIProxyAccountPool, Config({ stateRoot: root, resourceDirectory,
-      allowCredentialExport: false, restartLimit: 0 }))
+      restartLimit: 0 }))
     await fiber
     await fiber.dispose()
     expect(await Promise.all(subprocess.handles.map(handle => handle.waitForExit()))).not.toContain(false)
@@ -79,7 +79,7 @@ describe.skipIf(resourceDirectory === undefined)('real engine generation lifetim
     const original = new ExistingAdapter()
     ctx.llm.registerAdapter(['gestalt-account-pool'], original)
     await ctx.plugin(CLIProxyAccountPool, Config({ stateRoot: root, resourceDirectory,
-      allowCredentialExport: false, restartLimit: 0 }))
+      restartLimit: 0 }))
     const snapshot = await until(ctx.accountPool as CLIProxyAccountPool, value => value.state === 'error')
     expect(snapshot.error).toContain('already owned')
     expect(ctx.llm.listProviders().map(provider => provider.id)).toEqual(['gestalt-account-pool'])

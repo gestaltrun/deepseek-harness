@@ -8,7 +8,7 @@ import { AccountPoolClientController } from './controller.ts'
 import type { AccountPoolInjected } from './contract.ts'
 import { AccountPoolControl } from './AccountPoolControl.tsx'
 import { createAccountPoolViewStore } from './view-store.ts'
-import { downloadAccount, openAuthorization } from './navigation.ts'
+import { openAuthorization } from './navigation.ts'
 import { en, zh, type AccountPoolKey } from './locales.ts'
 
 export { createAccountPoolViewStore } from './view-store.ts'
@@ -33,7 +33,7 @@ export async function apply(ctx: Context): Promise<void> {
   const unmount = await ctx.remote.$mount(remoteContribution)
   ctx.effect(() => unmount, 'account-pool Remote contribution')
   await ctx.inject(['slots', 'locale', 'remote', 'remote.accountPool'], (inner) => {
-    const controller = new AccountPoolClientController(inner.remote, { download: downloadAccount, openExternal: openAuthorization })
+    const controller = new AccountPoolClientController(inner.remote, { openExternal: openAuthorization })
     inner.effect(() => () => controller.dispose(), 'account-pool Client controller')
     inner.effect(() => inner.locale.register('accountPool', { zh, en }), 'account-pool locale')
     const t = inner.locale.bind('accountPool')

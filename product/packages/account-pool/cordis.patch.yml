@@ -17,7 +17,6 @@
           name: '@gestaltrun/dsh-account-pool'
           config:
             stateRoot: !!js dshHomePath('desktop', 'account-pool')
-            allowCredentialExport: true
             startupTimeoutMs: 15000
             restartLimit: 2
             stopGraceMs: 2000

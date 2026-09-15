@@ -1,4 +1,4 @@
-/** Generation-private pinned TLS transport; no ambient proxy, fetch, or CA changes. */
+/** Generation-private loopback HTTP transport; no ambient proxy or fetch changes. */
 import { Agent, fetch as httpFetch } from 'undici'
 import { AccountPoolError } from '../account-pool.ts'
 import type { Config } from './config.ts'
@@ -7,11 +7,12 @@ import type { Config } from './config.ts'
 export type CoreMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
 const MANAGEMENT_PATHS: Readonly<Record<string, readonly CoreMethod[]>> = {
-  '/v0/management/auth-files': ['GET', 'DELETE'],
+  '/v0/management/auth-files': ['GET', 'POST', 'DELETE'],
   '/v0/management/auth-files/status': ['PATCH'],
   '/v0/management/auth-files/models': ['GET'],
   '/v0/management/auth-files/download': ['GET'],
   '/v0/management/auth-files/fields': ['PATCH'],
+  '/v0/management/auth-files/quota': ['POST'],
   '/v0/management/oauth-callback': ['POST'],
   '/v0/management/anthropic-auth-url': ['GET'],
   '/v0/management/codex-auth-url': ['GET'],
@@ -20,8 +21,6 @@ const MANAGEMENT_PATHS: Readonly<Record<string, readonly CoreMethod[]>> = {
   '/v0/management/xai-auth-url': ['GET'],
   '/v0/management/get-auth-status': ['GET'],
   '/v0/management/oauth-session': ['DELETE'],
-  '/v0/management/glm-coding-plan': ['GET', 'PUT', 'PATCH', 'DELETE'],
-  '/v0/management/glm-coding-plan/quota': ['POST'],
   '/v0/management/api-call': ['POST'],
 }
 
@@ -35,8 +34,7 @@ export class GenerationTransport {
   readonly fetch: typeof globalThis.fetch
 
   /**
-   * @param origin - this generation's exact HTTPS loopback origin.
-   * @param certificate - its sole trusted certificate.
+   * @param origin - this generation's exact HTTP loopback origin.
    * @param managementKey - private management bearer.
    * @param inferenceKey - private inference bearer.
    * @param signal - generation revocation signal.
@@ -44,17 +42,16 @@ export class GenerationTransport {
    */
   constructor(
     readonly origin: string,
-    certificate: string,
     private readonly managementKey: string,
     readonly inferenceKey: string,
     readonly signal: AbortSignal,
     private readonly config: Pick<Config, 'requestTimeoutMs' | 'maxResponseBytes'>,
   ) {
     const url = new URL(origin)
-    if (url.protocol !== 'https:' || url.hostname !== '127.0.0.1' || url.origin !== origin) {
-      throw new AccountPoolError('failed', 'The account engine must use an exact local HTTPS origin.')
+    if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.origin !== origin) {
+      throw new AccountPoolError('failed', 'The account engine must use an exact local HTTP origin.')
     }
-    this.dispatcher = new Agent({ connect: { ca: certificate, rejectUnauthorized: true } })
+    this.dispatcher = new Agent()
     this.fetch = async (input, init) => {
       this.signal.throwIfAborted()
       const request = new Request(input, init)

@@ -6,7 +6,6 @@ import { JSON_SCHEMA, dump, load } from 'js-yaml'
 import { z } from 'zod'
 import { AccountPoolError } from '../account-pool.ts'
 import type { Spec } from './config.ts'
-import { GlmAccounts, activeGlmEntries } from './glm.ts'
 import { safeAccountFilename } from './validation.ts'
 
 const manifestSchema = z.object({
@@ -43,15 +42,13 @@ export async function verifyResource(spec: Pick<Spec, 'resourceDirectory' | 'exp
 export class AccountState {
   readonly authDirectory: string
   readonly configFile: string
-  readonly glm: GlmAccounts
   private readonly lockFile: string
   private released = false
 
-  private constructor(readonly root: string, private readonly lock: Awaited<ReturnType<typeof open>>, maxBytes: number) {
+  private constructor(readonly root: string, private readonly lock: Awaited<ReturnType<typeof open>>) {
     this.authDirectory = join(root, 'auth')
     this.configFile = join(root, 'config.yaml')
     this.lockFile = join(root, '.owner.lock')
-    this.glm = new GlmAccounts(root, maxBytes)
   }
 
   /**
@@ -65,12 +62,12 @@ export class AccountState {
     try { lock = await open(join(root, '.owner.lock'), 'wx', 0o600) } catch (cause) {
       throw new AccountPoolError('conflict', 'Account state is already locked. Stop its owner before recovering a stale lock.', { cause })
     }
-    const state = new AccountState(root, lock, maxBytes)
+    const state = new AccountState(root, lock)
     try {
       await lock.writeFile(`${process.pid}\n`)
       await directory(state.authDirectory)
       await directory(join(root, 'generations'))
-      await state.glm.initialize()
+      await migrateLegacyGlmLedger(root, state.authDirectory, maxBytes)
       return state
     } catch (error) {
       await state.release()
@@ -87,26 +84,22 @@ export class AccountState {
   }
 
   /**
-   * Replace runtime fields while preserving validated durable GLM account entries.
+   * Replace generation-owned runtime fields. Account files stay in auth-dir.
    * @param runtime - complete generation-owned configuration fields.
    * @param limit - maximum existing stable configuration bytes.
    */
   async configure(runtime: Record<string, unknown>, limit: number): Promise<void> {
-    let persistent: unknown
     try {
       const stat = await lstat(this.configFile)
       if (!stat.isFile() || stat.isSymbolicLink() || stat.size > limit) {
         throw new AccountPoolError('failed', 'The stable account configuration is not a bounded regular file.')
       }
-      persistent = load(await readFile(this.configFile, 'utf8'), { schema: JSON_SCHEMA })
+      z.record(z.string(), z.unknown()).parse(load(await readFile(this.configFile, 'utf8'), { schema: JSON_SCHEMA }) ?? {})
     } catch (error) {
       if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error
     }
-    z.record(z.string(), z.unknown()).parse(persistent ?? {})
-    const ledger = await this.glm.read()
-    const config = { ...runtime, 'glm-coding-plan': activeGlmEntries(ledger.accounts) }
     const path = join(this.root, `config-${randomBytes(12).toString('hex')}.tmp`)
-    await writeFile(path, dump(config, { noRefs: true, lineWidth: -1, schema: JSON_SCHEMA }), { flag: 'wx', mode: 0o600 })
+    await writeFile(path, dump(runtime, { noRefs: true, lineWidth: -1, schema: JSON_SCHEMA }), { flag: 'wx', mode: 0o600 })
     try { await rename(path, this.configFile) } catch (error) {
       await unlink(path)
       throw error
@@ -126,6 +119,46 @@ export class AccountState {
  * Remove only the stopped generation's private directory; never scan the stable root for cleanup.
  * @param path - directory allocated by generationDirectory and owned by the terminated process.
  */
+async function migrateLegacyGlmLedger(root: string, authDirectory: string, maxBytes: number): Promise<void> {
+  const ledgerFile = join(root, 'glm-accounts.json')
+  let body: string
+  try {
+    const stat = await lstat(ledgerFile)
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > maxBytes) return
+    body = await readFile(ledgerFile, 'utf8')
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return
+    throw error
+  }
+  const ledger = z.object({
+    accounts: z.array(z.object({
+      id: z.string().min(1), apiKey: z.string().min(1), site: z.enum(['cn', 'international']),
+      organization: z.string().optional(), project: z.string().optional(), enabled: z.boolean(),
+      note: z.string().optional(), prefix: z.string().optional(), proxyUrl: z.string().optional(),
+      priority: z.number().int().optional(), weight: z.number().int().nonnegative().optional(),
+    })),
+  }).parse(JSON.parse(body) as unknown)
+  for (const account of ledger.accounts) {
+    const name = `glm-${account.id}.json`
+    if (!safeAccountFilename(name)) continue
+    const path = join(authDirectory, name)
+    try { await lstat(path); continue } catch (error) {
+      if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error
+    }
+    await writeFile(path, JSON.stringify({
+      type: 'glm', api_key: account.apiKey, site: account.site, disabled: !account.enabled,
+      ...account.organization === undefined ? {} : { organization: account.organization },
+      ...account.project === undefined ? {} : { project: account.project },
+      ...account.note === undefined ? {} : { note: account.note },
+      ...account.prefix === undefined ? {} : { prefix: account.prefix },
+      ...account.proxyUrl === undefined ? {} : { proxy_url: account.proxyUrl },
+      ...account.priority === undefined ? {} : { priority: account.priority },
+      ...account.weight === undefined ? {} : { weight: account.weight },
+    }), { mode: 0o600, flag: 'wx' })
+  }
+  await unlink(ledgerFile)
+}
+
 export async function removeGeneration(path: string): Promise<void> {
   const info = await lstat(path)
   if (info.isSymbolicLink()) await unlink(path)

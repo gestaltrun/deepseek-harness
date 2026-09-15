@@ -23,13 +23,13 @@ kind: "package-bundle"
 <a id="use-this-package"></a>
 ## 使用此包
 
-账号池设置页拥有登录、账号启停、字段、模型列表、配额刷新和显式凭据文件下载。开始设备或 PKCE 登录，以及再次点击用浏览器打开授权页，都会让 Host 用系统浏览器打开 HTTPS 授权 URL。既有设置导航进入账号管理。未知、不支持、失败和过期配额观测保持区分。
+账号池设置页拥有登录、账号启停、字段、模型列表和配额刷新。开始设备或 PKCE 登录，以及再次点击用浏览器打开授权页，都会让 Host 用系统浏览器打开 HTTPS 授权 URL。既有设置导航进入账号管理。未知、不支持、失败和过期配额观测保持区分。
 
 Kimi 的用量汇总对应提供方的[七天配额](https://www.kimi.com/help/kimi-code/benefits)；响应省略窗口元数据时，时间指针使用该周期。有效的显式元数据优先；元数据无效或缺少重置时间时不显示时间指针，显示标签不用于推断周期。
 
-[Bundle 补丁](cordis.patch.yml) 在隔离 scope 中选择本地 subprocess 实现，并把 Desktop 账号存储在 `$DSH_HOME/desktop/account-pool`。Web profile 应用此 bundle 时必须显式选择自己的绝对 `stateRoot` 和凭据导出策略。并发进程不能共享同一状态根。常规 profile/plugin 安装机制拥有 bundle 激活，仅复制目录不会激活它。
+[Bundle 补丁](cordis.patch.yml) 在隔离 scope 中选择本地 subprocess 实现，并把 Desktop 账号存储在 `$DSH_HOME/desktop/account-pool`。Web profile 应用此 bundle 时必须显式选择自己的绝对 `stateRoot`。并发进程不能共享同一状态根。常规 profile/plugin 安装机制拥有 bundle 激活，仅复制目录不会激活它。
 
-凭据导出是一项显式下载操作。OAuth 账号导出 core 拥有的 auth 文件，GLM 账号导出产品凭据 JSON 文档。普通快照、模型设置和 Remote 响应不会返回这些文件内容。GLM 卡片标明供应商级模型列表，并把不可用的健康/历史值显示为未知。
+账号文件（包括 GLM Coding Plan JSON）存放在引擎 `auth-dir`。GLM 卡片标明供应商级模型列表，并把不可用的健康/历史值显示为未知。
 
 -----
 
@@ -39,9 +39,9 @@ Kimi 的用量汇总对应提供方的[七天配额](https://www.kimi.com/help/k
 <details>
 <summary>实现细节</summary>
 
-一个产品包拥有账号服务、core supervisor、私有管理映射、LLM 适配器、Remote 控制器和共享 Client。Go 引擎从 [UPSTREAM.json](UPSTREAM.json) 中的精确来源构建；安装后的二进制、许可证和 manifest（元数据清单）位于包资源中。每代拥有独立 TLS 信任、凭据和取消能力。关停撤回模型路由、等待请求结束、停止所属进程树，并仅删除代次文件。
+一个产品包拥有账号服务、core supervisor、私有管理映射、LLM 适配器、Remote 控制器和共享 Client。Go 引擎从 [UPSTREAM.json](UPSTREAM.json) 中的精确来源构建；安装后的二进制、许可证和 manifest（元数据清单）位于包资源中。每代拥有独立回环 HTTP 凭据和取消能力。关停撤回模型路由、等待请求结束、停止所属进程树，并仅删除代次文件。
 
-OAuth 账号文件仍由 core 拥有。GLM 凭据和支持字段拥有私有产品台账，活动子集投影到 core 配置。Journal 保护台账更新，恢复在发布就绪状态前重建已提交台账。GLM 身份是产品引用，不是虚构的 core auth index 或请求计数。
+账号文件仍由引擎拥有，存放在 `auth-dir`，包括 GLM Coding Plan JSON。遗留的产品 `glm-accounts.json` 会一次性迁到该目录。GLM 身份来自引擎花名册。
 
 Client 使用类型化操作和拥有 watch 取消及命令生命周期的控制器。源码 DTO 通过仅类型的公共 `./types` 导出。Host/Client 描述符来自原样的公共 Typert 生成器，并使用严格 codec。仅供构建的公开 protocol 声明 rollup 在独立严格 TypeScript 程序中与原声明比较，随后提供给隔离分析项目。正常 Host/Client 编译及运行时解析原始 npm 包；分析输入不进入产物。
 

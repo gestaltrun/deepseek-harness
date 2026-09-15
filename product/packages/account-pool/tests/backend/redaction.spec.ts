@@ -3,11 +3,10 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import type { AccountPoolAccountName } from '../../src/account-pool.ts'
 import { coreFieldPatch, editableFields, roster } from '../../src/provider/redaction.ts'
 import { patchSchema, parseInput } from '../../src/provider/validation.ts'
-import { accountPoolExportResponse } from '../../src/rpc/export.ts'
 import { accountPoolOpenResponse, authorizationOpener } from '../../src/rpc/open.ts'
 const name = brandString<AccountPoolAccountName>('test.json')
 
-describe('account metadata and explicit credential download', () => {
+describe('account metadata redaction', () => {
   it('keeps unknown credentials and headers out of ordinary reads while preserving explicit edit intents', () => {
     const raw = { name, auth_index: 'opaque-core-index', provider: 'codex', access_token: 'secret-token',
       random_password: 'hidden', arbitrary_auth_field: 'unknown-secret', note: 'note',
@@ -34,21 +33,6 @@ describe('account metadata and explicit credential download', () => {
     expect(() => roster({ error: 'bad gateway' })).toThrow('roster response is invalid')
     expect(() => roster({ files: [{ name }] })).toThrow('reference is missing')
     expect(roster({ files: [] })).toEqual([])
-  })
-
-  it('enforces export denial before reads and keeps HEAD credential-free', async () => {
-    let reads = 0
-    const owner = { downloadAuthFile: async () => { reads++; return { name, body: '{"refresh_token":"export-only"}' } } }
-    const url = `https://host/api/account-pool.export?name=${name}`
-    expect((await accountPoolExportResponse(owner, false, new Request(url))).status).toBe(403)
-    expect((await accountPoolExportResponse(owner, true, new Request(url, { method: 'HEAD' }))).status).toBe(200)
-    expect(reads).toBe(0)
-    const response = await accountPoolExportResponse(owner, true, new Request(url))
-    expect(response.headers.get('content-disposition')).toBe('attachment; filename="test.json"')
-    expect(response.headers.get('cache-control')).toBe('no-store')
-    expect(await response.text()).toContain('export-only')
-    expect((await accountPoolExportResponse(owner, true, new Request('https://host/api/account-pool.export?name=..%2Fbad'))).status).toBe(400)
-    expect(reads).toBe(1)
   })
 
   it('opens only HTTPS authorization URLs through the Host launcher', async () => {

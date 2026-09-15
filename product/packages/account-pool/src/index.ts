@@ -18,9 +18,9 @@ export const inject = ['llm', 'subprocess', 'typert', 'connection']
 /**
  * Mount account management and its narrow API in the current product composition.
  * @param ctx - Host services shared with the account pool Client.
- * @param config - validated deployment and credential-export policy.
+ * @param config - validated deployment policy.
  */
 export function apply(ctx: Context, config: Config): void {
   ctx.plugin(CLIProxyAccountPool, config)
-  ctx.plugin(AccountPoolController, { allowCredentialExport: config.allowCredentialExport })
+  ctx.plugin(AccountPoolController)
 }

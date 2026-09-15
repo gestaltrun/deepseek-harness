@@ -99,11 +99,10 @@ export interface AccountPoolFieldPatch extends AccountPoolScalarFields {
 export type AccountPoolEditableFieldName = 'note' | 'prefix' | 'proxyUrl' | 'priority' | 'weight'
   | 'disableCooling' | 'websockets' | 'excludedModels' | 'headers'
 
-/** Supported actions distinguish credential files from product-managed account configuration. */
+/** Supported actions distinguish per-account model lists from provider-wide listings. */
 export interface AccountPoolCapabilities {
   readonly models: 'account' | 'provider' | 'none'
   readonly quota: boolean
-  readonly export: 'auth-file' | 'glm-credential' | 'none'
   readonly editableFields: readonly AccountPoolEditableFieldName[]
 }
 
@@ -312,14 +311,6 @@ export abstract class AccountPool extends Service {
    * @returns the committed snapshot; failed writes reject.
    */
   abstract patchFields(name: AccountPoolAccountName, fields: AccountPoolFieldPatch, signal?: AbortSignal): Promise<AccountPoolSnapshot>
-
-  /**
-   * Read a credential file for an explicit authorized Host download; never expose as Remote.
-   * @param name - account filename.
-   * @param signal - cancels this request.
-   * @returns the safe filename and credential-bearing body.
-   */
-  abstract downloadAuthFile(name: AccountPoolAccountName, signal?: AbortSignal): Promise<{ name: string; body: string }>
 }
 
 export default AccountPool

@@ -174,7 +174,6 @@ export function AccountPoolControl({ t, useAccountPool, accountPoolActions: clie
               setRefreshingRoster(true)
               void run(() => client.refresh()).finally(() => { if (mounted.current) setRefreshingRoster(false) })
             }}
-            onDownload={(name) => { void run(() => client.download(name)) }}
             onEditSettings={(item) => {
               const generation = ++dialogGeneration.current
               setSettingsDialog({ account: item })

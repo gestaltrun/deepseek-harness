@@ -51,7 +51,7 @@ function bench() {
       } as unknown as RemoteStream<Item>
     },
   }
-  const controller = new AccountPoolClientController(remote, { download: async () => {}, openExternal: async () => {} })
+  const controller = new AccountPoolClientController(remote, { openExternal: async () => {} })
   controllers.push(controller)
   return { remote, controller, write: (snapshot: AccountPoolSnapshot) => { writeSnapshot?.(snapshot) }, watchStopped }
 }

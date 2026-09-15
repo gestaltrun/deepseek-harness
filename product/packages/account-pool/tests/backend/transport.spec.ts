@@ -6,31 +6,25 @@ import LocalAttachments from '@deepseek-ai/dsh-attachment-local'
 import LocalFs from '@deepseek-ai/dsh-fs-local'
 import { Context } from '@deepseek-ai/cordis'
 import { MessageId, type GenerateOptions, type StreamChunk } from '@deepseek-ai/dsh-llm'
-import { createServer, type Server } from 'node:https'
+import { createServer, type Server } from 'node:http'
 import { once } from 'node:events'
-import { generate } from 'selfsigned'
 import { GenerationTransport } from '../../src/provider/transport.ts'
 import { GenerationAdapter, ACCOUNT_POOL_ROUTE } from '../../src/llm/adapter.ts'
 import { Config } from '../../src/provider/config.ts'
 
 const cleanup: (() => Promise<void>)[] = []
 afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close() })
-async function certificate() { return generate([{ name: 'commonName', value: 'localhost' }], {
-  keyType: 'ec', curve: 'P-256', algorithm: 'sha256',
-  extensions: [{ name: 'subjectAltName', altNames: [{ type: 7, ip: '127.0.0.1' }] }],
-}) }
-async function serve(listener: Parameters<typeof createServer>[1]): Promise<{ server: Server; origin: string; cert: string }> {
-  const keys = await certificate()
-  const server = createServer({ key: keys.private, cert: keys.cert }, listener)
+async function serve(listener: Parameters<typeof createServer>[1]): Promise<{ server: Server; origin: string }> {
+  const server = createServer(listener)
   cleanup.push(async () => { server.closeAllConnections(); await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())) })
   server.listen(0, '127.0.0.1')
   await once(server, 'listening')
   const address = server.address()
   if (address === null || typeof address === 'string') throw new Error('missing server address')
-  return { server, origin: `https://127.0.0.1:${address.port}`, cert: keys.cert }
+  return { server, origin: `http://127.0.0.1:${address.port}` }
 }
-function transport(origin: string, cert: string, lifetime = new AbortController(), maxResponseBytes = 1048576) {
-  const result = new GenerationTransport(origin, cert, 'test-management-key', 'test-inference-key', lifetime.signal,
+function transport(origin: string, lifetime = new AbortController(), maxResponseBytes = 1048576) {
+  const result = new GenerationTransport(origin, 'test-management-key', 'test-inference-key', lifetime.signal,
     { requestTimeoutMs: 2000, maxResponseBytes })
   cleanup.push(async () => { lifetime.abort(); await result.close() })
   return result
@@ -44,17 +38,10 @@ async function drain(stream: AsyncIterable<StreamChunk>): Promise<StreamChunk[]>
   return chunks
 }
 
-describe('generation-owned TLS and public PiAi composition', () => {
-  it('sends no HTTP credentials through an untrusted generation certificate', async () => {
-    let requests = 0
-    const endpoint = await serve((_request, response) => { requests++; response.end('{}') })
-    const wrong = await certificate()
-    const current = transport(endpoint.origin, wrong.cert)
-    await expect(current.catalog()).rejects.toThrow()
-    await expect(current.management('GET', '/v0/management/auth-files')).rejects.toThrow()
-    await expect(current.fetch(`${endpoint.origin}/v1/chat/completions`, { method: 'POST', body: '{}',
-      headers: { authorization: 'Bearer test-inference-key' } })).rejects.toThrow()
-    expect(requests).toBe(0)
+describe('generation-owned loopback HTTP and public PiAi composition', () => {
+  it('rejects non-loopback HTTP origins before sending credentials', async () => {
+    expect(() => new GenerationTransport('https://127.0.0.1:1', 'test-management-key', 'test-inference-key',
+      new AbortController().signal, { requestTimeoutMs: 2000, maxResponseBytes: 1048576 })).toThrow('HTTP origin')
   })
 
   it('rejects redirects and oversized individual multibyte response chunks', async () => {
@@ -64,7 +51,7 @@ describe('generation-owned TLS and public PiAi composition', () => {
       if (request.url === '/v1/models') { response.writeHead(302, { location: `${other.origin}/v1/models` }); response.end(); return }
       response.end('测'.repeat(10))
     })
-    const current = transport(endpoint.origin, endpoint.cert, new AbortController(), 16)
+    const current = transport(endpoint.origin, new AbortController(), 16)
     await expect(current.catalog()).rejects.toThrow()
     await expect(current.management('GET', '/v0/management/auth-files')).rejects.toThrow('byte limit')
     await expect(current.management('GET', `${other.origin}/v0/management/auth-files`)).rejects.toThrow('outside')
@@ -83,8 +70,8 @@ describe('generation-owned TLS and public PiAi composition', () => {
       response.end(`data: ${JSON.stringify({ ...envelope, choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`)
     })
     const lifetime = new AbortController()
-    const current = transport(endpoint.origin, endpoint.cert, lifetime)
-    const config = Config({ stateRoot: '/unused-product-state', allowCredentialExport: true })
+    const current = transport(endpoint.origin, lifetime)
+    const config = Config({ stateRoot: '/unused-product-state' })
     const original = new GenerationAdapter(new Context(), current, [{ id: 'known-model', contextWindow: 131072,
       maxTokens: 64000, input: ['text'], reasoningEfforts: { high: 'high' }, defaultReasoningLevel: 'high' }], config)
     const prepared = await original.prepareCall(ACCOUNT_POOL_ROUTE, 'known-model')
@@ -106,9 +93,8 @@ describe('generation-owned TLS and public PiAi composition', () => {
 })
 
 it('revocation closes an admitted iterator even when its consumer pauses after a chunk', async () => {
-  const cert = await certificate()
   const lifetime = new AbortController()
-  const current = transport('https://127.0.0.1:1', cert.cert, lifetime)
+  const current = transport('http://127.0.0.1:1', lifetime)
   let finalized = false
   async function* source() {
     try { yield 1; yield 2 } finally { finalized = true }
@@ -140,9 +126,9 @@ it('uses the public durable image pipeline and does not expose placeholder prici
       choices: [{ index: 0, delta: { role: 'assistant', content: 'image-received' }, finish_reason: 'stop' }],
       usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 } })}\n\ndata: [DONE]\n\n`)
   })
-  const current = transport(endpoint.origin, endpoint.cert)
+  const current = transport(endpoint.origin)
   const adapter = new GenerationAdapter(ctx, current, [{ id: 'known-model', contextWindow: 8192, maxTokens: 1024, input: ['text', 'image'] }],
-    Config({ stateRoot: root, allowCredentialExport: false }))
+    Config({ stateRoot: root }))
   const prepared = await adapter.prepareCall(ACCOUNT_POOL_ROUTE, 'known-model')
   expect(prepared.model.inputModalities).toEqual(['text', 'image'])
   const chunks = await drain(prepared.stream({ ...options, messages: [{ id: MessageId('image-user'), role: 'user', source: { kind: 'user' },

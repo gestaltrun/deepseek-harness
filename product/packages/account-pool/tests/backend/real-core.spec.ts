@@ -27,7 +27,7 @@ async function boot(stateRoot: string): Promise<{ ctx: Context; pool: CLIProxyAc
   cleanup.push(async () => { await ctx.fiber.dispose() })
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(LocalSubprocess)
-  await ctx.plugin(CLIProxyAccountPool, Config({ stateRoot, resourceDirectory, allowCredentialExport: true,
+  await ctx.plugin(CLIProxyAccountPool, Config({ stateRoot, resourceDirectory,
     restartLimit: 0, catalogRefreshIntervalMs: 100, startupTimeoutMs: 15000 }))
   const pool = ctx.accountPool as CLIProxyAccountPool
   await ready(pool)
@@ -72,7 +72,7 @@ describe.skipIf(resourceDirectory === undefined)('exact packaged Go engine manag
     expect(await readdir(join(stateRoot, 'generations'))).toEqual([])
   })
 
-  it('preserves GLM product credentials across disable, restart, re-enable, edit, export, and delete', async () => {
+  it('preserves GLM auth-file credentials across disable, restart, re-enable, edit, and delete', async () => {
     const stateRoot = await mkdtemp(join(tmpdir(), 'dsh-pool-real-core-'))
     cleanup.push(async () => { await rm(stateRoot, { recursive: true, force: true }) })
     const first = await boot(stateRoot)
@@ -80,26 +80,25 @@ describe.skipIf(resourceDirectory === undefined)('exact packaged Go engine manag
     const added = await first.pool.submitGlmKey({ apiKey: 'fake-management-smoke-key', site: 'cn', organization: 'fixture-org' })
     const account = added.accounts.find(account => account.provider === 'glm')!
     expect(account).toBeDefined()
-    expect(account.ref).toMatch(/^glm:/)
-    expect(account.successCount).toBeUndefined()
+    expect(account.ref).toMatch(/^oauth:[a-f0-9]{64}$/)
+    expect(account.successCount).toBe(0)
     expect(account.quotaState.status).toBe('unobserved')
     expect(account.capabilities.quota).toBe(true)
+    expect(JSON.parse(await readFile(join(stateRoot, 'auth', account.name), 'utf8')).api_key).toBe('fake-management-smoke-key')
     const disabled = await first.pool.setEnabled(account.name, false)
     expect(disabled.accounts[0]?.enabled).toBe(false)
-    const configWhileDisabled = await readFile(join(stateRoot, 'config.yaml'), 'utf8')
-    expect(configWhileDisabled).not.toContain('fake-management-smoke-key')
+    expect(await readFile(join(stateRoot, 'config.yaml'), 'utf8')).not.toContain('fake-management-smoke-key')
     await first.ctx.fiber.dispose()
     expect(await readdir(join(stateRoot, 'generations'))).toEqual([])
     const second = await boot(stateRoot)
     expect(second.pool.getSnapshot().accounts[0]?.ref).toBe(account.ref)
     expect(second.pool.getSnapshot().accounts[0]?.enabled).toBe(false)
     await second.pool.setEnabled(account.name, true)
-    expect(await readFile(join(stateRoot, 'config.yaml'), 'utf8')).toContain('fake-management-smoke-key')
+    expect(JSON.parse(await readFile(join(stateRoot, 'auth', account.name), 'utf8')).api_key).toBe('fake-management-smoke-key')
     await second.pool.patchFields(account.name, { note: 'edited', priority: 3 })
     expect((await second.pool.readFields(account.name)).fields.note).toBe('edited')
-    expect((await second.pool.downloadAuthFile(account.name)).body).toContain('fake-management-smoke-key')
     await second.pool.deleteAccount(account.name)
     expect(second.pool.getSnapshot().accounts).toEqual([])
-    expect(await readFile(join(stateRoot, 'config.yaml'), 'utf8')).not.toContain('fake-management-smoke-key')
+    expect(await readdir(join(stateRoot, 'auth'))).not.toContain(account.name)
   })
 })

@@ -14,9 +14,8 @@ import { createQuotaObserver, isPaidXaiCredential, type QuotaObservation, type Q
 import type { QuotaProbeInput } from '../quota/types.ts'
 import { ACCOUNT_POOL_ROUTE, GenerationAdapter, LiveAccountAdapter } from '../llm/adapter.ts'
 import { parseAccountPoolCatalog, mergeAccountPoolCatalogs, type AccountPoolCatalogModel } from '../llm/catalog.ts'
-import { activeGlmEntries, glmCard, newGlmAccount, patchGlmAccount, type GlmAccount } from './glm.ts'
 import { Config, resolve, type Spec } from './config.ts'
-import { coreFieldPatch, editableFields, fieldValues, oauthRef, roster } from './redaction.ts'
+import { coreFieldPatch, editableFields, oauthRef, roster } from './redaction.ts'
 import { projectQuotaWindows } from './quota-view.ts'
 import { Supervisor, type Generation } from './supervisor.ts'
 import { decodeCoreJson, type CoreMethod } from './transport.ts'
@@ -93,9 +92,7 @@ export class CLIProxyAccountPool extends AccountPool {
   override setEnabled(name: AccountPoolAccountName, enabled: boolean, signal?: AbortSignal): Promise<AccountPoolSnapshot> {
     parseInput(nameSchema, name)
     return this.serial(signal, async generation => {
-      const account = this.account(name)
-      if (account.provider === 'glm') return this.changeGlm(generation, rows => rows.map(row =>
-        glmCard(row).name === name ? { ...row, enabled } : row), signal)
+      this.account(name)
       await this.json(generation, 'PATCH', 'auth-files/status', { name, disabled: !enabled }, signal)
       await this.refreshRoster(generation, signal)
       await this.refreshCatalog(generation, signal)
@@ -107,7 +104,6 @@ export class CLIProxyAccountPool extends AccountPool {
     parseInput(nameSchema, name)
     return this.serial(signal, async generation => {
       const account = this.account(name)
-      if (account.provider === 'glm') return this.changeGlm(generation, rows => rows.filter(row => glmCard(row).name !== name), signal)
       await this.json(generation, 'DELETE', `auth-files?name=${encodeURIComponent(name)}`, undefined, signal)
       this.quotas.delete(account.ref)
       await this.refreshRoster(generation, signal)
@@ -198,10 +194,15 @@ export class CLIProxyAccountPool extends AccountPool {
     const value = parseInput(glmSchema, input)
     const operation = this.login
     return this.serial(signal, async generation => {
-      await this.changeGlm(generation, rows => [...rows, newGlmAccount({ apiKey: value.apiKey, site: value.site,
+      const name = `glm-${crypto.randomUUID()}.json`
+      await this.json(generation, 'POST', `auth-files?name=${encodeURIComponent(name)}`, {
+        type: 'glm', api_key: value.apiKey, site: value.site,
         ...value.organization === undefined ? {} : { organization: value.organization },
-        ...value.project === undefined ? {} : { project: value.project } })], signal)
+        ...value.project === undefined ? {} : { project: value.project },
+      }, signal)
       if (this.login === operation) this.clearLogin(operation)
+      await this.refreshRoster(generation, signal)
+      await this.refreshCatalog(generation, signal)
       return this.snapshot
     })
   }
@@ -247,47 +248,19 @@ export class CLIProxyAccountPool extends AccountPool {
   }
 
   override readFields(name: AccountPoolAccountName, signal?: AbortSignal): Promise<AccountPoolEditableFields> {
-    return this.track((async () => {
-      if (this.account(name).provider === 'glm') {
-        const account = await this.glmAccount(this.current(), name)
-        return { name, info: { provider: 'glm', site: account.site,
-          ...account.organization === undefined ? {} : { organization: account.organization },
-          ...account.project === undefined ? {} : { project: account.project } }, fields: fieldValues({ ...account, proxy_url: account.proxyUrl }) }
-      }
-      return editableFields(name, await this.readAuth(this.current(), name, signal))
-    })())
+    return this.track((async () => editableFields(name, await this.readAuth(this.current(), name, signal)))())
   }
 
   override patchFields(name: AccountPoolAccountName, fields: AccountPoolFieldPatch, signal?: AbortSignal): Promise<AccountPoolSnapshot> {
     parseInput(nameSchema, name)
     parseInput(patchSchema, fields)
     return this.serial(signal, async generation => {
-      if (this.account(name).provider === 'glm') return this.changeGlm(generation, rows => rows.map(row =>
-        glmCard(row).name === name ? patchGlmAccount(row, fields) : row), signal)
       const existing = await this.readAuth(generation, name, signal)
       await this.json(generation, 'PATCH', 'auth-files/fields', { name, ...coreFieldPatch(fields, existing) }, signal)
       await this.refreshRoster(generation, signal)
       await this.refreshCatalog(generation, signal)
       return this.snapshot
     })
-  }
-
-  override downloadAuthFile(name: AccountPoolAccountName, signal?: AbortSignal): Promise<{ name: string; body: string }> {
-    parseInput(nameSchema, name)
-    const generation = this.current()
-    this.account(name)
-    return this.track((async () => {
-      if (this.account(name).provider === 'glm') {
-        const account = await this.glmAccount(generation, name)
-        signal?.throwIfAborted()
-        return { name, body: JSON.stringify({ type: 'glm-coding-plan', 'api-key': account.apiKey, site: account.site,
-          ...account.organization === undefined ? {} : { organization: account.organization },
-          ...account.project === undefined ? {} : { project: account.project } }, null, 2) + '\n' }
-      }
-      const response = await generation.transport.management('GET', `/v0/management/auth-files/download?name=${encodeURIComponent(name)}`, undefined, signal)
-      decodeCoreJson(response)
-      return { name, body: response.body }
-    })())
   }
 
   private start(spec: Spec): void {
@@ -347,9 +320,7 @@ export class CLIProxyAccountPool extends AccountPool {
 
   private async refreshRoster(generation: Generation, signal?: AbortSignal): Promise<void> {
     const payload = await this.json(generation, 'GET', 'auth-files', undefined, signal)
-    const glmAccounts = (await generation.glm.read()).accounts
-    const glmQuota = await this.readGlmQuotaEnvelopes(generation, glmAccounts, signal).catch(() => new Map<AccountPoolAccountRef, Record<string, unknown>>())
-    const accounts = [...roster(payload), ...glmAccounts.map(glmCard)]
+    const accounts = roster(payload)
     generation.signal.throwIfAborted()
     if (this.generation !== generation) return
     const raw = parseInput(recordSchema, payload).files as unknown[]
@@ -358,11 +329,10 @@ export class CLIProxyAccountPool extends AccountPool {
       const record = parseInput(recordSchema, value)
       this.rawAccounts.set(oauthRef(String(record.auth_index)), record)
     }
-    for (const [ref, envelope] of glmQuota) this.rawAccounts.set(ref, envelope)
     const refs = new Set(accounts.map(account => account.ref))
     for (const ref of this.quotas.keys()) if (!refs.has(ref)) this.quotas.delete(ref)
     for (const account of accounts.filter(account => account.provider === 'glm')) {
-      const envelope = glmQuota.get(account.ref)
+      const envelope = this.rawAccounts.get(account.ref)
       const quota = envelope === undefined ? undefined : recordSchema.safeParse(envelope.quota)
       const signals = quota?.success === true ? z.record(z.string(), z.string()).safeParse(quota.data.signals) : undefined
       if (signals?.success === true && signals.data['GLM-Quota-Status'] !== undefined) {
@@ -468,35 +438,10 @@ export class CLIProxyAccountPool extends AccountPool {
     if (publish) this.publish({ ...this.snapshot, accounts: this.snapshot.accounts.map(value => this.withQuota(value)) })
   }
 
-  private async readGlmQuotaEnvelopes(
-    generation: Generation, accounts: readonly GlmAccount[], signal?: AbortSignal,
-  ): Promise<Map<AccountPoolAccountRef, Record<string, unknown>>> {
-    const payload = parseInput(recordSchema, await this.json(generation, 'GET', 'glm-coding-plan', undefined, signal))
-    const entries = z.array(z.object({
-      index: z.number().int().nonnegative(),
-      auth_index: z.string().optional(),
-      quota: recordSchema.optional(),
-    })).parse(payload['glm-coding-plan'] ?? [])
-    const envelopes = new Map<AccountPoolAccountRef, Record<string, unknown>>()
-    const enabled = accounts.filter(account => account.enabled)
-    for (const entry of entries) {
-      const account = enabled[entry.index]
-      if (account === undefined || entry.auth_index === undefined) continue
-      envelopes.set(glmCard(account).ref, {
-        auth_index: entry.auth_index,
-        ...entry.quota === undefined ? {} : { quota: entry.quota },
-      })
-    }
-    return envelopes
-  }
-
   private async refreshGlmQuotaEnvelope(
     generation: Generation, account: AccountPoolAccount, signal?: AbortSignal,
   ): Promise<Record<string, unknown>> {
-    const glmAccounts = (await generation.glm.read()).accounts
-    const index = glmAccounts.filter(value => value.enabled).findIndex(value => glmCard(value).ref === account.ref)
-    if (index < 0) throw new AccountPoolError('not-found', 'The GLM quota account is no longer present.')
-    const payload = parseInput(recordSchema, await this.json(generation, 'POST', `glm-coding-plan/quota?index=${String(index)}`, undefined, signal))
+    const payload = parseInput(recordSchema, await this.json(generation, 'POST', `auth-files/quota?name=${encodeURIComponent(account.name)}`, undefined, signal))
     const envelope = {
       auth_index: typeof payload.auth_index === 'string' ? payload.auth_index : '',
       ...payload.quota === undefined ? {} : { quota: payload.quota },
@@ -517,29 +462,6 @@ export class CLIProxyAccountPool extends AccountPool {
     }, ...source?.planType === undefined ? {} : { planType: source.planType },
     ...source?.resetCredits?.availableCount === undefined || source.resetCredits.availableCount === null
       ? {} : { resetCreditsAvailable: source.resetCredits.availableCount } }
-  }
-
-  private async glmAccount(generation: Generation, name: AccountPoolAccountName): Promise<GlmAccount> {
-    const account = (await generation.glm.read()).accounts.find(account => glmCard(account).name === name)
-    if (account === undefined) throw new AccountPoolError('not-found', 'The GLM account is no longer present.')
-    return account
-  }
-
-  private async changeGlm(
-    generation: Generation, mutate: (accounts: readonly GlmAccount[]) => readonly GlmAccount[], signal?: AbortSignal,
-  ): Promise<AccountPoolSnapshot> {
-    try {
-      await generation.glm.update(mutate, async (accounts, recovery) => {
-        await this.json(generation, 'PUT', 'glm-coding-plan', activeGlmEntries(accounts), recovery ? generation.signal : signal)
-        if (!recovery) signal?.throwIfAborted()
-      })
-    } catch (error) {
-      if (error instanceof AccountPoolError && error.code === 'unavailable') generation.retire()
-      throw error
-    }
-    await this.refreshRoster(generation, generation.signal)
-    await this.refreshCatalog(generation, generation.signal)
-    return this.snapshot
   }
 
   private loginSignal(operation: LoginOperation, signal?: AbortSignal): AbortSignal {

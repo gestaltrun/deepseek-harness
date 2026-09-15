@@ -1,6 +1,5 @@
-/** Typed account-management Remote controller and authenticated download and authorization-open registration. */
+/** Typed account-management Remote controller and authenticated authorization-open registration. */
 import { Context } from '@deepseek-ai/cordis'
-import Schema from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {
@@ -9,15 +8,9 @@ import type {
   AccountPoolLoginKind, AccountPoolLoginStart, AccountPoolLoginState,
   AccountPoolModel, AccountPoolSnapshot,
 } from '../account-pool.ts'
-import { ACCOUNT_POOL_EXPORT_PATH, accountPoolExportResponse } from './export.ts'
 import { ACCOUNT_POOL_OPEN_PATH, accountPoolOpenResponse } from './open.ts'
 import { accountPoolRemoteError } from './errors.ts'
 import { watchAccountPool } from './watch.ts'
-
-/** Explicit credential export policy; no implicit Web enablement. */
-export interface Config {
-  readonly allowCredentialExport: boolean
-}
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -26,23 +19,17 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
-/** Only narrow account intents are remotely callable; credential bytes use the download route. */
+/** Only narrow account intents are remotely callable. */
 export class AccountPoolController extends TypertRemoteService {
   static inject = ['typert', 'accountPool', 'connection']
-  static Config: Schema<Config> = Schema.object({ allowCredentialExport: Schema.boolean().required() })
   private readonly lifetime = new AbortController()
 
   /**
    * @param ctx - authenticated carrier and account service owner.
-   * @param config - explicit export policy.
    */
-  constructor(ctx: Context, config: Config) {
+  constructor(ctx: Context) {
     super(ctx, 'accountPoolController', { namespace: 'accountPool' })
     ctx.effect(() => () => { this.lifetime.abort() }, 'account pool RPC lifetime')
-    ctx.connection.fetch.register({
-      path: ACCOUNT_POOL_EXPORT_PATH, methods: ['GET', 'HEAD'], requestBody: 'buffered',
-      fetch: request => accountPoolExportResponse(ctx.accountPool, config.allowCredentialExport, request),
-    })
     ctx.connection.fetch.register({
       path: ACCOUNT_POOL_OPEN_PATH, methods: ['POST'], requestBody: 'buffered',
       fetch: request => accountPoolOpenResponse(request),

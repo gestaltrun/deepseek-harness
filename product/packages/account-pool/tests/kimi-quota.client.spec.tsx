@@ -30,8 +30,8 @@ async function renderQuota(payload: KimiUsagePayload) {
     ref: 'kimi-fixture' as AccountPoolAccountRef, name: 'kimi-fixture.json' as AccountPoolAccountName,
     provider: 'kimi', label: 'Fixture', status: 'ready', enabled: true, quota,
     quotaState: { status: observed.status, stale: false, observedAt: observed.observedAt },
-    capabilities: { models: 'account', quota: true, export: 'auth-file', editableFields: [] },
-  }} globalFace="B" globalEpoch={0} onToggleStatus={() => {}} onRefreshQuota={() => {}} onDelete={() => {}} onListModels={() => {}} onRefresh={() => {}} onDownload={() => {}} onEditSettings={() => {}} />)
+    capabilities: { models: 'account', quota: true, editableFields: [] },
+  }} globalFace="B" globalEpoch={0} onToggleStatus={() => {}} onRefreshQuota={() => {}} onDelete={() => {}} onListModels={() => {}} onRefresh={() => {}} onEditSettings={() => {}} />)
   return quota
 }
 

@@ -21,7 +21,6 @@ export interface AccountCardProps {
   onDelete: (name: AccountPoolAccountName) => void
   onListModels: (name: AccountPoolAccountName) => void
   onRefresh: () => void
-  onDownload: (name: AccountPoolAccountName) => void
   onEditSettings: (account: AccountPoolAccount) => void
 }
 
@@ -33,7 +32,7 @@ export interface AccountCardProps {
 export function AccountCard({
   t, item, globalFace, globalEpoch, refreshingQuota = false, refreshingRoster = false,
   onToggleStatus, onRefreshQuota, onDelete,
-  onListModels, onRefresh, onDownload, onEditSettings,
+  onListModels, onRefresh, onEditSettings,
 }: AccountCardProps) {
   const [localOverride, setLocalOverride] = useState<'A' | 'B' | null>(null)
   useEffect(() => { setLocalOverride(null) }, [globalEpoch])
@@ -78,7 +77,6 @@ export function AccountCard({
             <div className={clsx(css.footerActions)}>
               <button type="button" className={clsx(css.iconBtn)} title={t('models')} aria-label={t('models')} disabled={item.capabilities.models === 'none'} onClick={() => { onListModels(item.name) }}>{t('models')}</button>
               <button type="button" className={clsx(css.iconBtn, refreshingRoster ? css.spinning : '')} title={t('refresh')} aria-label={t('refresh')} onClick={onRefresh}>↻</button>
-              <button type="button" className={clsx(css.iconBtn)} title={t('download')} aria-label={t('download')} disabled={item.capabilities.export === 'none'} onClick={() => { onDownload(item.name) }}>↓</button>
               <button type="button" className={clsx(css.iconBtn)} title={t('settings')} aria-label={t('settings')} onClick={() => { onEditSettings(item) }}>⚙</button>
               <button type="button" className={clsx(css.iconBtn)} title={t('delete')} aria-label={t('delete')} onClick={() => { onDelete(item.name) }}>🗑</button>
               <Button size="sm" variant="ghost" onClick={flipFace}>{t('viewQuota')}</Button>
