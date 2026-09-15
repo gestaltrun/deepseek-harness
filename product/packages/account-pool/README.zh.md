@@ -72,7 +72,7 @@ Client 使用类型化操作和拥有 watch 取消及命令生命周期的控制
 
 - 一个目标产物包含该目标的 Go 二进制，不能证明已发布跨平台版本。
 - 真实 OAuth 和已认证推理依赖可用供应商账号及网络。空池启动和 fixture key 不能证明这些结果。
-- GLM 配额观测来自引擎的 `glm-coding-plan` 信封。Host 只解析该信封，不自行探测 GLM 用量端点。
+- GLM 配额观测来自引擎的 auth-files 信封。Host 只解析该信封，不自行探测 GLM 用量端点。
 - 签名 Desktop 发布、公证和更新发布需要各自的发布环境及授权。
 
 <a id="dev-note"></a>

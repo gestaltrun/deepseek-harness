@@ -16,9 +16,9 @@ That split is not a UI requirement. Gestaltrun should not own a second credentia
 
 GLM Coding Plan becomes a file-backed auth of `type: "glm"` under the existing `auth-dir` and `/v0/management/auth-files` routes. Upload, list, patch fields, enable/disable, delete, and quota observation use the same paths as Claude and Codex.
 
-The file synthesizer, not the product package, maps that JSON onto the runtime attributes the GLM executor and quota poller already read (`api_key`, `glm_site`, `base_url`, optional organization/project). A Host that POSTs a GLM JSON through `auth-files` must see the account in `GET auth-files` with `provider: glm` and a quota envelope, without calling `/v0/management/glm-coding-plan`.
+The file synthesizer, not the product package, maps that JSON onto the runtime attributes the GLM executor and quota poller already read (`api_key`, `glm_site`, `base_url`, optional organization/project). A Host that POSTs a GLM JSON through `auth-files` must see the account in `GET auth-files` with `provider: glm` and a quota envelope.
 
-The YAML `glm-coding-plan` array may remain as a CLI ingest for standalone engine users. Gestaltrun Desktop never writes it and never calls the GLM-specific management routes.
+There is no YAML `glm-coding-plan` ingest and no GLM-specific management routes.
 
 ### Product package: process host plus BFF plus Settings UI
 
@@ -63,4 +63,4 @@ The engine listens on `http://127.0.0.1:<port>` with `remote-management.allow-re
 
 ## Risks
 
-Existing Desktop GLM keys stored only in `glm-accounts.json` must be migrated once onto `auth-dir` JSON files, or those keys are lost on upgrade. Standalone CLI users who still use YAML `glm-coding-plan` keep that ingest; the product path must not depend on it. Loopback HTTP exposes management and inference keys to other processes on the same machine that can reach the bound port; the generation keys and `allow-remote: false` remain required. File synthesizer mapping must copy `api_key` / `glm_site` onto Attributes, or quota and inference silently fail while the roster looks healthy.
+Existing Desktop GLM keys stored only in `glm-accounts.json` must be migrated once onto `auth-dir` JSON files, or those keys are lost on upgrade. Loopback HTTP exposes management and inference keys to other processes on the same machine that can reach the bound port; the generation keys and `allow-remote: false` remain required. File synthesizer mapping must copy `api_key` / `glm_site` onto Attributes, or quota and inference silently fail while the roster looks healthy.

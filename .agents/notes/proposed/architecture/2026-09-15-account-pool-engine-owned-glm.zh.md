@@ -16,9 +16,9 @@ Status: proposed
 
 GLM Coding Plan 成为 `type: "glm"` 的文件型 auth，走既有 `auth-dir` 和 `/v0/management/auth-files`。上传、列表、改字段、启停、删除和配额观测与 Claude、Codex 使用同一组路径。
 
-由文件合成器（而不是产品包）把该 JSON 映射到 GLM 执行器和配额轮询已经读取的运行时属性（`api_key`、`glm_site`、`base_url`，以及可选的 organization/project）。Host 经 `auth-files` POST 一份 GLM JSON 后，必须能在 `GET auth-files` 里看到 `provider: glm` 和配额信封，且不必调用 `/v0/management/glm-coding-plan`。
+由文件合成器（而不是产品包）把该 JSON 映射到 GLM 执行器和配额轮询已经读取的运行时属性（`api_key`、`glm_site`、`base_url`，以及可选的 organization/project）。Host 经 `auth-files` POST 一份 GLM JSON 后，必须能在 `GET auth-files` 里看到 `provider: glm` 和配额信封。
 
-YAML `glm-coding-plan` 数组可以保留给独立引擎的 CLI 用户。Gestaltrun Desktop 不写它，也不调用 GLM 专用管理路由。
+没有 YAML `glm-coding-plan` 摄入，也没有 GLM 专用管理路由。
 
 ### 产品包：进程宿主 + BFF + 设置页
 
@@ -63,4 +63,4 @@ GLM 录入与其他 API key 账号走同一登录/提交路径：Client 提交 G
 
 ## 风险
 
-只存在于 `glm-accounts.json` 的既有 Desktop GLM 密钥必须一次性迁到 `auth-dir` JSON，否则升级会丢失。仍使用 YAML `glm-coding-plan` 的独立 CLI 用户保留该摄入路径；产品路径不得依赖它。回环 HTTP 会把管理和推理密钥暴露给本机能连上该端口的其他进程；代次密钥和 `allow-remote: false` 仍必需。文件合成器必须把 `api_key` / `glm_site` 写到 Attributes，否则花名册看起来正常，配额和推理会静默失败。
+只存在于 `glm-accounts.json` 的既有 Desktop GLM 密钥必须一次性迁到 `auth-dir` JSON，否则升级会丢失。回环 HTTP 会把管理和推理密钥暴露给本机能连上该端口的其他进程；代次密钥和 `allow-remote: false` 仍必需。文件合成器必须把 `api_key` / `glm_site` 写到 Attributes，否则花名册看起来正常，配额和推理会静默失败。

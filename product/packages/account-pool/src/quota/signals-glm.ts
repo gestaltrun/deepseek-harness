@@ -1,6 +1,6 @@
 /**
  * GLM quota signal parsing. The fork core polls GLM quota and records the
- * result on the `glm-coding-plan` management envelope (`observed_at` plus a
+ * result on the auth-files management envelope (`observed_at` plus a
  * string `signals` map), so the Host parses the existing envelope here —
  * this module never issues a probe request. Signal keys follow the fork
  * implementation in `community/cliproxyapi`.

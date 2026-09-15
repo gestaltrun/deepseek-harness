@@ -72,7 +72,7 @@ Indirectly, through the registered `gestalt-account-pool` LLM route. Model selec
 
 - A target archive contains that target's Go binary; it does not establish a published cross-platform release.
 - Real OAuth and authenticated inference depend on available provider accounts and network access. Empty-pool startup and fixture keys do not establish those results.
-- GLM quota observations come from the engine's `glm-coding-plan` envelope. The Host parses that envelope and does not probe the GLM usage endpoint itself.
+- GLM quota observations come from the engine's auth-files envelope. The Host parses that envelope and does not probe the GLM usage endpoint itself.
 - Signed Desktop release, notarization, and update publication require their separate release environment and authorization.
 
 <a id="dev-note"></a>
