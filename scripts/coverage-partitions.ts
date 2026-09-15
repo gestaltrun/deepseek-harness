@@ -4,6 +4,7 @@ import { globSync, readFileSync, writeFileSync } from 'node:fs'
 import { lstat, mkdir, readdir, rm, unlink, writeFile } from 'node:fs/promises'
 import { join, relative, sep } from 'node:path'
 import { coverageExemptHeavySuites } from './coverage-exempt.ts'
+import { PROCESS_BOUND_TESTS } from './process-bound-tests.ts'
 import { pnpmInvocation } from './pnpm-invocation.ts'
 
 /** Environment variable selecting the number of instrumented coverage processes. */
@@ -64,6 +65,8 @@ export interface CoveragePartitionCoordinatorOptions {
   weights?: ReadonlyMap<string, number>
   /** Project ownership paired with `files`; collected from `vitest list` when absent. */
   projectOf?: ReadonlyMap<string, string>
+  /** Coverage include globs applied after merge; empty keeps the workspace coverage include. */
+  coverageInclude?: readonly string[]
 }
 
 /** Parse an optional coverage partition count. */
@@ -375,6 +378,39 @@ function partitionWeight(files: readonly string[], weights: ReadonlyMap<string, 
   return files.reduce((sum, file) => sum + (weights.get(file) ?? UNKNOWN_FILE_WEIGHT), 0)
 }
 
+/** Include that never matches a workspace spec when a project has no files. */
+const EMPTY_PROJECT_INCLUDE = ['__vitest_empty_include__']
+
+/**
+ * Map planned files onto Vitest projects without handing an empty include to
+ * a project. Vitest treats an empty include as "run everything".
+ * @param files - Planned files for one partition or generated config.
+ * @param projectOf - Optional project ownership; files absent from the map
+ *   follow {@link PROCESS_BOUND_TESTS}.
+ * @returns Thread-safe and process-bound include lists.
+ */
+export function projectIncludesForFiles(
+  files: readonly string[],
+  projectOf: ReadonlyMap<string, string> = new Map(),
+): { threadSafe: string[]; processBound: string[] } {
+  const processBoundKnown = new Set<string>(PROCESS_BOUND_TESTS)
+  const threadSafe: string[] = []
+  const processBound: string[] = []
+  for (const file of files) {
+    const normalized = file.split('\\').join('/')
+    const project = projectOf.get(file) ?? projectOf.get(normalized)
+    if (project === 'process-bound' || (project === undefined && processBoundKnown.has(normalized))) {
+      processBound.push(normalized)
+    } else {
+      threadSafe.push(normalized)
+    }
+  }
+  return {
+    threadSafe: threadSafe.length > 0 ? threadSafe : EMPTY_PROJECT_INCLUDE,
+    processBound: processBound.length > 0 ? processBound : EMPTY_PROJECT_INCLUDE,
+  }
+}
+
 /**
  * Source of one partition's temporary Vitest config: the workspace config
  * with `test.include` narrowed to the partition's file list, per project.
@@ -383,20 +419,29 @@ function partitionWeight(files: readonly string[], weights: ReadonlyMap<string, 
  * repository root (Vite resolves the relative include patterns against it).
  * Each project keeps only the files that belong to it: the projects are
  * mutually exclusive, so handing the whole partition list to every project
- * would run plain files twice (once per project).
+ * would run plain files twice (once per project). An empty project include
+ * uses {@link EMPTY_PROJECT_INCLUDE} so Vitest does not run the whole suite.
  */
 function partitionConfigSource(
   files: readonly string[],
   projectOf: ReadonlyMap<string, string>,
+  coverageInclude: readonly string[] = [],
 ): string {
-  const threadSafe = JSON.stringify(files.filter(file => projectOf.get(file) !== 'process-bound').map(file => file.split('\\').join('/')))
-  const processBound = JSON.stringify(files.filter(file => projectOf.get(file) === 'process-bound').map(file => file.split('\\').join('/')))
+  const includes = projectIncludesForFiles(files, projectOf)
+  const threadSafe = JSON.stringify(includes.threadSafe)
+  const processBound = JSON.stringify(includes.processBound)
   return [
     "import base from '../../vitest.config.ts'",
     'export default {',
     '  ...base,',
     '  test: {',
     '    ...base.test,',
+    ...(coverageInclude.length === 0 ? [] : [
+      '    coverage: {',
+      '      ...base.test.coverage,',
+      `      include: ${JSON.stringify(coverageInclude)},`,
+      '    },',
+    ]),
     '    projects: (base.test.projects ?? []).map(project => ({',
     '      ...project,',
     '      test: {',
@@ -420,6 +465,7 @@ export class CoveragePartitionCoordinator {
   private readonly files: readonly string[]
   private readonly weights: ReadonlyMap<string, number> | undefined
   private projectOf = new Map<string, string>()
+  private readonly coverageInclude: readonly string[]
   private readonly temporaryRoot: string
   private readonly blobsRoot: string
 
@@ -436,6 +482,7 @@ export class CoveragePartitionCoordinator {
     this.files = options.files ?? []
     this.weights = options.weights
     this.projectOf = new Map(options.projectOf ?? [])
+    this.coverageInclude = options.coverageInclude ?? []
     this.temporaryRoot = join(this.root, 'coverage', '.partitioned')
     this.blobsRoot = join(this.temporaryRoot, 'blobs')
   }
@@ -469,7 +516,8 @@ export class CoveragePartitionCoordinator {
       this.persistDurations(this.partitions)
       await this.assertCompleteBlobSet(commands)
 
-      const mergeCommand = this.mergeCommand()
+      const mergeConfigPath = await this.writeMergeConfig()
+      const mergeCommand = this.mergeCommand(mergeConfigPath)
       console.log(`coverage-partitions: start ${mergeCommand.label}`)
       const mergeResult = await this.runCommand(mergeCommand)
       return results.some(commandFailed) || commandFailed(mergeResult) ? 1 : 0
@@ -541,9 +589,33 @@ export class CoveragePartitionCoordinator {
   private async writePartitionConfigs(assignments: readonly (readonly string[])[]): Promise<string[]> {
     return await Promise.all(assignments.map(async (files, index) => {
       const configPath = join(this.temporaryRoot, `vitest-partition-${index + 1}.config.ts`)
-      await writeFile(configPath, partitionConfigSource(files, this.projectOf), 'utf8')
+      await writeFile(configPath, partitionConfigSource(files, this.projectOf, this.coverageInclude), 'utf8')
       return configPath
     }))
+  }
+
+  /**
+   * Write a merge-time Vitest config that keeps planned coverage includes.
+   * @returns Repository-relative config path, or undefined when coverage stays at workspace defaults.
+   */
+  private async writeMergeConfig(): Promise<string | undefined> {
+    if (this.coverageInclude.length === 0) return undefined
+    const configPath = join(this.temporaryRoot, 'vitest-merge.config.ts')
+    await writeFile(configPath, [
+      "import base from '../../vitest.config.ts'",
+      'export default {',
+      '  ...base,',
+      '  test: {',
+      '    ...base.test,',
+      '    coverage: {',
+      '      ...base.test.coverage,',
+      `      include: ${JSON.stringify(this.coverageInclude)},`,
+      '    },',
+      '  },',
+      '}',
+      '',
+    ].join('\n'), 'utf8')
+    return configPath
   }
 
   private partitionCommand(index: number, configPath: string): CoverageCommand {
@@ -578,12 +650,13 @@ export class CoveragePartitionCoordinator {
     }
   }
 
-  private mergeCommand(): CoverageCommand {
+  private mergeCommand(configPath?: string): CoverageCommand {
     const invocation = pnpmInvocation([
       'exec',
       'vitest',
       `--merge-reports=${this.relativePath(this.blobsRoot)}`,
       '--coverage',
+      ...(configPath === undefined ? [] : [`--config=${this.relativePath(configPath)}`]),
     ], { npm_execpath: this.pnpmEntrypoint })
     return {
       label: 'merged coverage report',

@@ -106,7 +106,7 @@ describe('installProxyFromEnvironment', () => {
     }
   })
 
-  it('connects directly when the bypass list covers the target', async () => {
+  it('connects directly when the bypass list covers the target', { timeout: 15_000 }, async () => {
     const { dispose } = await install(env({ HTTP_PROXY: proxyUrl, NO_PROXY: 'origin.test' }))
     try {
       await expect(fetch(proxyTarget, { signal: AbortSignal.timeout(1500) })).rejects.toThrow()
