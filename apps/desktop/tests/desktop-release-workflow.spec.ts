@@ -23,17 +23,20 @@ describe('Desktop Release workflow', () => {
     expect(signedWindows).not.toContain('package:desktop:win:x64:unsigned')
   })
 
-  it('offers a test-only unsigned Windows manual installer operation', () => {
-    expect(workflow).toContain('          - windows-unsigned')
-    expect(workflow).toContain('if [[ "$OPERATION" == windows-unsigned && "$DEPLOYMENT" != test ]]')
+  it('packages unsigned Windows with every candidate and publish run', () => {
+    expect(workflow).not.toContain('windows-unsigned')
     const unsigned = workflow.slice(workflow.indexOf('  pack-win-unsigned:'), workflow.indexOf('  publish:'))
-    expect(unsigned).toContain("if: ${{ inputs.operation == 'windows-unsigned' }}")
+    expect(unsigned).toContain("if: ${{ inputs.operation != 'validate' }}")
     expect(unsigned).toContain('pnpm run package:desktop:win:x64:unsigned')
     expect(unsigned).toContain('unsigned-artifacts/*.exe')
+    expect(unsigned).toContain('unsigned-artifacts/*.yml')
+    expect(unsigned).toContain('unsigned-artifacts/win-x64-release.json')
     expect(unsigned).toContain('desktop-win-x64-unsigned-manual')
-    expect(unsigned).not.toContain('DSH_DESKTOP_AUTO_UPDATE_ENV')
+    expect(unsigned).toContain('DSH_DESKTOP_AUTO_UPDATE_ENV: ${{ inputs.deployment }}')
     expect(unsigned).not.toContain('DESKTOP_RELEASE_WINDOWS_CER_BASE64')
-    expect(unsigned).not.toContain('upload:win:x64')
+    expect(workflow).toContain('needs: [prepare, pack-mac, pack-win, pack-win-unsigned]')
+    expect(workflow).toContain("needs.pack-win-unsigned.result == 'success'")
+    expect(workflow).toContain('gh release upload "$tag" "${unsigned_windows[0]}" --clobber')
   })
 
   it('uses the API-key notarization strategy and cleans the temporary key', () => {
@@ -83,12 +86,14 @@ describe('Desktop Release workflow', () => {
     expect(immutableStep).toContain('upload:mac:arm64 --phase immutable')
     expect(immutableStep).toContain('upload:mac:x64 --phase immutable')
     expect(immutableStep).toContain('upload:win:x64 --phase immutable')
+    expect(immutableStep).not.toContain("if [[ '${{ inputs.include_windows }}' == true ]]; then")
     expect(immutableStep).not.toContain('-- --phase')
 
     const channelStep = workflow.slice(channel, workflow.indexOf('      - name:', channel + 20))
     expect(channelStep).toContain('upload:mac:arm64 --phase channel')
     expect(channelStep).toContain('upload:mac:x64 --phase channel')
     expect(channelStep).toContain('upload:win:x64 --phase channel')
+    expect(channelStep).not.toContain("if [[ '${{ inputs.include_windows }}' == true ]]; then")
     expect(channelStep).not.toContain('-- --phase')
   })
 })

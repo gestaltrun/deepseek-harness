@@ -1,4 +1,4 @@
-# Build signed DeepSeek Gestalt candidates, publish the standard update feed, or produce a Windows manual installer.
+# Build signed DeepSeek Gestalt candidates, publish the standard update feed, and attach an unsigned Windows installer.
 name: Desktop Release
 
 on:
@@ -13,7 +13,7 @@ on:
         required: true
         type: string
       operation:
-        description: Validate inputs, build a signed candidate, publish it, or build an unsigned Windows manual installer.
+        description: Validate inputs, build a signed candidate, or publish it. Candidate and publish always package an unsigned Windows installer.
         required: true
         type: choice
         default: validate
@@ -21,9 +21,8 @@ on:
           - validate
           - candidate
           - publish
-          - windows-unsigned
       deployment:
-        description: Update feed embedded in the signed application and selected for publication. Unsigned Windows runs require test.
+        description: Update feed embedded in the signed application and selected for publication.
         required: true
         type: choice
         default: test
@@ -31,7 +30,7 @@ on:
           - test
           - production
       include_windows:
-        description: Build and publish Windows x64 with the required hardware-backed signer.
+        description: Also build and publish signed Windows x64 with the required hardware-backed signer.
         required: true
         type: boolean
         default: false
@@ -73,10 +72,6 @@ jobs:
           set -euo pipefail
           [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
-          if [[ "$OPERATION" == windows-unsigned && "$DEPLOYMENT" != test ]]; then
-            echo 'windows-unsigned requires test deployment; unsigned installers are manual-install artifacts only' >&2
-            exit 1
-          fi
           test "$(node -p "require('./package.json').version")" = "$DESKTOP_VERSION"
           test "$(node -p "require('./apps/desktop/package.json').version")" = "$DESKTOP_VERSION"
           if [[ "$OPERATION" != validate ]]; then
@@ -110,7 +105,7 @@ jobs:
   pack-mac:
     name: Package macOS ${{ matrix.arch }}
     needs: prepare
-    if: ${{ inputs.operation != 'validate' && inputs.operation != 'windows-unsigned' }}
+    if: ${{ inputs.operation != 'validate' }}
     runs-on: ${{ matrix.runner }}
     environment: desktop-release
     strategy:
@@ -197,7 +192,7 @@ jobs:
   pack-win:
     name: Package Windows x64
     needs: prepare
-    if: ${{ inputs.operation != 'validate' && inputs.operation != 'windows-unsigned' && inputs.include_windows }}
+    if: ${{ inputs.operation != 'validate' && inputs.include_windows }}
     runs-on: [self-hosted, windows, x64, dsh-win-ci]
     environment: desktop-release
     steps:
@@ -259,7 +254,7 @@ jobs:
   pack-win-unsigned:
     name: Package Windows x64 unsigned manual installer
     needs: prepare
-    if: ${{ inputs.operation == 'windows-unsigned' }}
+    if: ${{ inputs.operation != 'validate' }}
     runs-on: windows-latest
     environment: desktop-dry-run
     steps:
@@ -288,6 +283,9 @@ jobs:
       - name: Package unsigned manual installer
         env:
           DSH_DESKTOP_APP_ID: ${{ vars.DESKTOP_RELEASE_APP_ID }}
+          DSH_DESKTOP_AUTO_UPDATE_ENV: ${{ inputs.deployment }}
+          DESKTOP_RELEASE_TEST_FEED_URL: ${{ vars.DESKTOP_RELEASE_TEST_FEED_URL }}
+          DESKTOP_RELEASE_PRODUCTION_FEED_URL: ${{ vars.DESKTOP_RELEASE_PRODUCTION_FEED_URL }}
           PNPM_CONFIG_NETWORK_CONCURRENCY: ${{ vars.DESKTOP_RELEASE_PNPM_NETWORK_CONCURRENCY }}
           PNPM_CONFIG_FETCH_TIMEOUT: ${{ vars.DESKTOP_RELEASE_PNPM_FETCH_TIMEOUT }}
         run: pnpm run package:desktop:win:x64:unsigned
@@ -295,18 +293,22 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-win-x64-unsigned-manual
-          path: apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.exe
+          path: |
+            apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.exe
+            apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.yml
+            apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/win-x64-release.json
           if-no-files-found: error
           retention-days: 14
 
   publish:
     name: Publish ${{ inputs.deployment }} update
-    needs: [prepare, pack-mac, pack-win]
+    needs: [prepare, pack-mac, pack-win, pack-win-unsigned]
     if: >-
       ${{ always()
         && inputs.operation == 'publish'
         && needs.prepare.result == 'success'
         && needs.pack-mac.result == 'success'
+        && needs.pack-win-unsigned.result == 'success'
         && (!inputs.include_windows || needs.pack-win.result == 'success') }}
     runs-on: ubuntu-24.04
     environment: desktop-release
@@ -347,6 +349,17 @@ jobs:
           name: desktop-win-x64
           path: apps/desktop/.desktop-build/targets/win-x64/artifacts
 
+      - uses: actions/download-artifact@v5
+        if: ${{ !inputs.include_windows }}
+        with:
+          name: desktop-win-x64-unsigned-manual
+          path: apps/desktop/.desktop-build/targets/win-x64/artifacts
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: desktop-win-x64-unsigned-manual
+          path: ${{ runner.temp }}/desktop-win-x64-unsigned
+
       - name: Configure Alibaba Cloud OIDC credentials
         uses: aliyun/configure-aliyun-credentials-action@1e5248c8d5d93a8781ac344a68e19a43341e79e6
         with:
@@ -371,9 +384,7 @@ jobs:
           set -euo pipefail
           pnpm --filter @deepseek-ai/dsh-desktop upload:mac:arm64 --phase immutable
           pnpm --filter @deepseek-ai/dsh-desktop upload:mac:x64 --phase immutable
-          if [[ '${{ inputs.include_windows }}' == true ]]; then
-            pnpm --filter @deepseek-ai/dsh-desktop upload:win:x64 --phase immutable
-          fi
+          pnpm --filter @deepseek-ai/dsh-desktop upload:win:x64 --phase immutable
 
       - name: Prepare production GitHub Release
         if: ${{ inputs.deployment == 'production' }}
@@ -390,8 +401,7 @@ jobs:
           DESKTOP_RELEASE_PRODUCTION_FEED_URL: ${{ vars.DESKTOP_RELEASE_PRODUCTION_FEED_URL }}
         run: |
           set -euo pipefail
-          targets='mac-arm64,mac-x64'
-          if [[ '${{ inputs.include_windows }}' == true ]]; then targets="$targets,win-x64"; fi
+          targets='mac-arm64,mac-x64,win-x64'
           pnpm --filter @deepseek-ai/dsh-desktop release:plan -- \
             --artifacts-root apps/desktop/.desktop-build/targets \
             --targets "$targets" \
@@ -416,6 +426,9 @@ jobs:
             gh release create "$tag" --draft --target "${{ inputs.candidate_sha }}" \
               --title "$title" --notes-file "${{ runner.temp }}/desktop-release.md" "${release_args[@]}"
           fi
+          mapfile -t unsigned_windows < <(find "${{ runner.temp }}/desktop-win-x64-unsigned" -name '*.exe' -type f | sort)
+          test "${#unsigned_windows[@]}" -eq 1
+          gh release upload "$tag" "${unsigned_windows[0]}" --clobber
 
       - name: Publish update channel metadata
         env:
@@ -432,9 +445,7 @@ jobs:
           set -euo pipefail
           pnpm --filter @deepseek-ai/dsh-desktop upload:mac:arm64 --phase channel
           pnpm --filter @deepseek-ai/dsh-desktop upload:mac:x64 --phase channel
-          if [[ '${{ inputs.include_windows }}' == true ]]; then
-            pnpm --filter @deepseek-ai/dsh-desktop upload:win:x64 --phase channel
-          fi
+          pnpm --filter @deepseek-ai/dsh-desktop upload:win:x64 --phase channel
 
       - name: Publish GitHub Release
         if: ${{ inputs.deployment == 'production' }}
