@@ -119,6 +119,8 @@ export function verifyCommunityPackage(value: Readonly<Record<string, unknown>>)
 
 /**
  * Verify submodule origins, pinned commits, and the configured package identities.
+ * A published archive pin must be HEAD or an ancestor of HEAD so pack can rebuild
+ * from a later source commit while still substituting the locked registry tarball.
  * @param root - Harness checkout whose Git index owns the submodule pins.
  */
 export function checkCommunitySources(root = ROOT): void {
@@ -128,7 +130,10 @@ export function checkCommunitySources(root = ROOT): void {
       { cwd: root, encoding: 'utf8' }).trim()
     if (configured !== `https://github.com/${plugin.repository}.git`) throw new Error(`community: wrong origin for ${plugin.path}`)
     const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: directory, encoding: 'utf8' }).trim()
-    if (plugin.publishedArtifact !== undefined && plugin.publishedArtifact.commit !== head) {
+    if (plugin.publishedArtifact !== undefined
+      && spawnSync('git', ['merge-base', '--is-ancestor', plugin.publishedArtifact.commit, 'HEAD'], {
+        cwd: directory, stdio: 'pipe',
+      }).status !== 0) {
       throw new Error(`community: ${plugin.package} differs from its published source revision`)
     }
     const dirty = execFileSync('git', ['status', '--porcelain', '--untracked-files=normal'], { cwd: directory, encoding: 'utf8' }).trim()
@@ -206,8 +211,6 @@ export async function packCommunity(output = COMMUNITY_OUTPUT): Promise<readonly
     const isSidebar = plugin.package === '@gestaltrun/dsh-better-sidebar'
     if (!isSidebar && sidebar === undefined) throw new Error('community: build Better Sidebar before its plugin consumers')
     runPluginPnpm(plugin, ['install', '--frozen-lockfile', '--ignore-scripts'])
-    // Rebuild native modules (e.g. node-pty) that require compilation
-    runPluginPnpm(plugin, ['rebuild'])
     const staging = mkdtempSync(join(output, '.pack-'))
     try {
       const args = ['run', 'release:pack', '--', '--out', staging]

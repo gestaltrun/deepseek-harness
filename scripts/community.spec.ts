@@ -69,7 +69,7 @@ describe('published community archive pins', () => {
     expect(() => { verifyPublishedCommunityArchive(published, Buffer.from('changed')) }).toThrow('integrity mismatch')
   })
 
-  it('binds a published artifact to an exact source revision, registry URL and integrity', () => {
+  it('binds a published artifact to a source ancestor, registry URL and integrity', () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-published-community-'))
     try {
       mkdirSync(join(root, 'product'))
@@ -80,13 +80,26 @@ describe('published community archive pins', () => {
       expect(readCommunityPlugins(root)[0]?.publishedArtifact).toEqual(published)
       const source = join(root, plugin.path)
       mkdirSync(source, { recursive: true })
+      writeFileSync(join(source, 'package.json'), JSON.stringify({ name: plugin.package, version: plugin.version }))
       writeFileSync(join(root, '.gitmodules'), `[submodule "${plugin.path}"]\n  path = ${plugin.path}\n  url = https://github.com/${plugin.repository}.git\n`)
       execFileSync('git', ['init', source], { stdio: 'pipe' })
-      execFileSync('git', ['-c', `core.hooksPath=${join(root, 'no-hooks')}`, '-c', 'commit.gpgsign=false',
-        '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '--allow-empty', '-m', 'fixture'], {
-        cwd: source, stdio: 'pipe',
-      })
+      execFileSync('git', ['init', root], { stdio: 'pipe' })
+      const gitCommit = (message: string, allowEmpty = false): void => {
+        execFileSync('git', ['-c', `core.hooksPath=${join(root, 'no-hooks')}`, '-c', 'commit.gpgsign=false',
+          '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit',
+          ...(allowEmpty ? ['--allow-empty'] : []), '-m', message], {
+          cwd: source, stdio: 'pipe',
+        })
+      }
+      execFileSync('git', ['add', 'package.json'], { cwd: source, stdio: 'pipe' })
+      gitCommit('fixture')
       expect(() => { checkCommunitySources(root) }).toThrow('differs from its published source revision')
+      const ancestor = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: source, encoding: 'utf8' }).trim()
+      write({ ...plugin, publishedArtifact: { ...published, commit: ancestor } })
+      gitCommit('later source pin', true)
+      const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: source, encoding: 'utf8' }).trim()
+      execFileSync('git', ['update-index', '--add', '--cacheinfo', `160000,${head},${plugin.path}`], { cwd: root, stdio: 'pipe' })
+      expect(() => { checkCommunitySources(root) }).not.toThrow()
       for (const changed of [{ commit: 'main' }, { integrity: 'sha512-invalid' },
         { tarball: 'https://example.org/sidebar.tgz' },
         { tarball: `${published.tarball}?replacement=true` }]) {
