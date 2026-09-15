@@ -64,7 +64,7 @@ Remote 暴露管理操作，以 `watch(signal?)` 取代 `subscribe`，先发送�
 
 产品自有 `resolve(config)` 通过 `import.meta.url` 取得安装资源目录，并从产品来源记录/manifest 取得固定来源 SHA。Provider Config 校验私有 `stateRoot` 和部署选项；普通 Desktop 启动不需要新增环境变量或资源路径 API。Bundle 默认值为 `startupTimeoutMs=15000`、`restartLimit=2`、`stopGraceMs=2000`、`readinessIntervalMs=50`、`requestTimeoutMs=15000`、`maxResponseBytes=1048576`、`catalogRefreshIntervalMs=2000` 和 `quotaConcurrency=4`。凭据、端口和证书属于私有运行时状态。Desktop 选择 `$DSH_HOME/desktop/account-pool`，显式启用的 Web profile 选择自己的根目录。
 
-根目录排他锁拒绝并发所有者。`stateRoot/auth/` 存放 core 拥有的 OAuth 文件。产品 `glm-accounts.json` 是 GLM 凭据、启停状态和支持字段的权威，core 只接收活动子集投影。Journal 在 core 更新及 ledger 原子提交之前记录每次变更。失败或重启在就绪前恢复已提交 ledger 的投影。GLM 支持备注、前缀、代理 URL、优先级和权重，其余账号字段明确不支持。其导出为产品凭据 JSON，模型目录属于供应商级别，不合成不可用的配额、健康状态和请求计数。在支持的平台上，私有目录权限为 0700，文件权限为 0600。清理仅删除 `stateRoot/generations/` 下已终止代次的随机目录；稳定凭据及无关数据保留。不读取用户默认 CLIProxyAPI home。
+根目录排他锁拒绝并发所有者。`stateRoot/auth/` 存放引擎拥有的账号文件，包括 GLM Coding Plan。已取代的产品 GLM 账本、代次 TLS 和凭据导出见[引擎通过 auth-files 拥有 GLM](2026-09-15-account-pool-engine-owned-glm.zh.md)。在支持的平台上，私有目录权限为 0700，文件权限为 0600。清理仅删除 `stateRoot/generations/` 下已终止代次的随机目录；稳定凭据及无关数据保留。不读取用户默认 CLIProxyAPI home。
 
 Provider 拥有 `ctx.subprocess` 启动、环境清理、有界诊断、终止和 `waitForExit`。Bundle 显式组合隔离的本地 subprocess 实现，使二进制、TLS 探测和子进程处于同一本地执行环境；不增加执行环境探测 API。二进制 manifest（元数据清单）绑定来源 SHA、平台、架构、文件名和 SHA-256；缺失或不匹配的资源在 spawn 前失败。启动既不搜索 PATH，也不下载代码。维护中的 X509 库生成证书，不要求用户安装 Go 或 openssl。
 
