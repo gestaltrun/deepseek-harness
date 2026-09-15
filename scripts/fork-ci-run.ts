@@ -110,6 +110,9 @@ import base from ${JSON.stringify(pathToFileURL(resolve(config)).href)}
 const files = JSON.parse(readFileSync(${JSON.stringify(filesPath)}, 'utf8')) as string[]
 const merged = mergeConfig(base, {})
 merged.test.include = files
+for (const project of merged.test.projects ?? []) {
+  if (project?.test !== undefined) project.test.include = files
+}
 ${coverage.length === 0 ? '' : `const coverage = JSON.parse(readFileSync(${JSON.stringify(coveragePath)}, 'utf8')) as string[]
 merged.test.coverage.include = coverage
 `}export default merged

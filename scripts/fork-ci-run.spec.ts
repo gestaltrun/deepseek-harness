@@ -31,6 +31,7 @@ describe('fork CI verdict', () => {
       )
       const source = readFileSync(generated, 'utf8')
       expect(source).toContain('merged.test.include = files')
+      expect(source).toContain('project.test.include = files')
       expect(source).toContain('merged.test.coverage.include = coverage')
       expect(JSON.parse(readFileSync(join(scratch, 'files.json'), 'utf8'))).toEqual([
         'apps/cli/tests/args.spec.ts',
