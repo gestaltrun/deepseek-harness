@@ -105,18 +105,20 @@ export function AccountPoolControl({ t, useAccountPool, accountPoolActions: clie
             <span className={clsx(css.countActive)}>{t('enabledCount', { count: snapshot.accounts.filter(account => account.enabled).length })}</span>
           </div>
         </div>
-        <div className={clsx(css.headerRight)}>
-          <div className={clsx(css.globalFaceSwitch)}>
-            <span className={clsx(css.switchTitle)}>{t('cardView')}</span>
-            <div className={clsx(css.switchGroup)}>
-              <button type="button" className={clsx(css.faceBtn, globalFace === 'A' ? css.faceBtnActive : '')} onClick={() => { commandFace('A') }} data-testid="global-face-btn-a">
-                {t('faceManage')}
-              </button>
-              <button type="button" className={clsx(css.faceBtn, globalFace === 'B' ? css.faceBtnActive : '')} onClick={() => { commandFace('B') }} data-testid="global-face-btn-b">
-                {t('faceQuota')}
-              </button>
-            </div>
+      </header>
+      <div className={clsx(css.actionRow)}>
+        <div className={clsx(css.globalFaceSwitch)}>
+          <span className={clsx(css.switchTitle)}>{t('cardView')}</span>
+          <div className={clsx(css.switchGroup)}>
+            <button type="button" className={clsx(css.faceBtn, globalFace === 'A' ? css.faceBtnActive : '')} onClick={() => { commandFace('A') }} data-testid="global-face-btn-a">
+              {t('faceManage')}
+            </button>
+            <button type="button" className={clsx(css.faceBtn, globalFace === 'B' ? css.faceBtnActive : '')} onClick={() => { commandFace('B') }} data-testid="global-face-btn-b">
+              {t('faceQuota')}
+            </button>
           </div>
+        </div>
+        <div className={clsx(css.actionButtons)}>
           <Button
             variant="ghost"
             disabled={refreshingAllQuota || refreshingQuota.length > 0}
@@ -131,7 +133,7 @@ export function AccountPoolControl({ t, useAccountPool, accountPoolActions: clie
           </Button>
           <Button variant="primary" onClick={() => { setLoginOpen(true) }}>{t('addAccount')}</Button>
         </div>
-      </header>
+      </div>
       {error !== undefined && <p role="alert" className={clsx(css.error)}>{t('actionFailed', { message: error })}</p>}
       <div className={clsx(css.filterBar)}>
         <Pill active={filter === 'all'} onClick={() => { actions.filter('all') }} data-testid="filter-all">

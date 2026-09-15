@@ -79,7 +79,6 @@ export function AccountCard({
               <button type="button" className={clsx(css.iconBtn, refreshingRoster ? css.spinning : '')} title={t('refresh')} aria-label={t('refresh')} onClick={onRefresh}>↻</button>
               <button type="button" className={clsx(css.iconBtn)} title={t('settings')} aria-label={t('settings')} onClick={() => { onEditSettings(item) }}>⚙</button>
               <button type="button" className={clsx(css.iconBtn)} title={t('delete')} aria-label={t('delete')} onClick={() => { onDelete(item.name) }}>🗑</button>
-              <Button size="sm" variant="ghost" onClick={flipFace}>{t('viewQuota')}</Button>
               <Switch checked={item.enabled} onChange={enabled => { onToggleStatus(item.name, enabled) }} label={t(item.enabled ? 'disableAccount' : 'enableAccount', { name: item.name })} />
             </div>
           </div>

@@ -28,13 +28,11 @@ Desktop 默认包含该组合。Web 可以显式选择同一 bundle。账号池 
 
 产品构建把 core 二进制、许可证和身份清单放入自己的 `resources`，通过公共 `import.meta.resolve` 解析安装包。既有 Desktop 准备和运行时文件策略原样消费产品产物及资源。已执行的产品范围检查对照已核验基线允许清单比较已跟踪新增、修改、删除和重命名，并拒绝上游路径、依赖补丁、替换 override 和私有源码导入。产品构建、类型检查和打包调用该检查，反例验证拒绝行为。唯一分析映射是上述隔离的生成协议输入。公共能力缺失不能扩大允许清单。
 
-用户已批准实施本纯产品包方案。交付记录区分已完成的源码/构建检查、真实 Desktop 观测和依赖账号的验收。
-
 ### 公共操作
 
-领域品牌包括表示不透明产品身份的 `AccountPoolAccountRef`、用于凭据文件操作的 `AccountPoolAccountName`，以及表示不透明登录操作的 `AccountPoolLoginState`。Core 认证索引保留在实现内部。`AccountPoolCapabilities` 区分账号/供应商模型范围、配额可用性、导出种类和支持的编辑字段。不可用计数保持缺省。其余公共 DTO 由包的纯类型 `./types` 导出定义；快照保留配额状态、观测时间、最后有效采样和独立的失败/过期信息，不含凭据或代次端点。
+领域品牌包括表示不透明产品身份的 `AccountPoolAccountRef`、用于凭据文件操作的 `AccountPoolAccountName`，以及表示不透明登录操作的 `AccountPoolLoginState`。Core 认证索引保留在实现内部。`AccountPoolCapabilities` 区分账号/供应商模型范围、配额可用性和支持的编辑字段。不可用计数保持缺省。其余公共 DTO 由包的纯类型 `./types` 导出定义；快照保留配额状态、观测时间、最后有效采样和独立的失败/过期信息，不含凭据或代次端点。
 
-每个异步服务操作最后接收可选的 `AbortSignal`。下表冻结十七个服务操作；表中 `Snapshot` 表示 `AccountPoolSnapshot`，全部异步结果均为 `Promise` 值。
+每个异步服务操作最后接收可选的 `AbortSignal`。下表冻结服务操作；表中 `Snapshot` 表示 `AccountPoolSnapshot`，全部异步结果均为 `Promise` 值。
 
 | 操作 | signal 前的输入 | 结果 |
 | --- | --- | --- |
@@ -63,7 +61,7 @@ Remote 暴露管理操作，以 `watch(signal?)` 取代 `subscribe`，先发送�
 
 产品自有 `resolve(config)` 通过 `import.meta.url` 取得安装资源目录，并从产品来源记录/manifest 取得固定来源 SHA。Provider Config 校验私有 `stateRoot` 和部署选项；普通 Desktop 启动不需要新增环境变量或资源路径 API。Bundle 默认值为 `startupTimeoutMs=15000`、`restartLimit=2`、`stopGraceMs=2000`、`readinessIntervalMs=50`、`requestTimeoutMs=15000`、`maxResponseBytes=1048576`、`catalogRefreshIntervalMs=2000` 和 `quotaConcurrency=4`。凭据和端口属于私有运行时状态。Desktop 选择 `$DSH_HOME/desktop/account-pool`，显式启用的 Web profile 选择自己的根目录。
 
-根目录排他锁拒绝并发所有者。`stateRoot/auth/` 存放引擎拥有的账号文件，包括 GLM Coding Plan。已取代的产品 GLM 账本、代次 TLS 和凭据导出见[引擎通过 auth-files 拥有 GLM](2026-09-15-account-pool-engine-owned-glm.zh.md)。在支持的平台上，私有目录权限为 0700，文件权限为 0600。清理仅删除 `stateRoot/generations/` 下已终止代次的随机目录；稳定凭据及无关数据保留。不读取用户默认 CLIProxyAPI home。
+根目录排他锁拒绝并发所有者。`stateRoot/auth/` 存放引擎拥有的账号文件，包括 GLM Coding Plan。GLM 录入和配额见[引擎通过 auth-files 拥有 GLM](2026-09-15-account-pool-engine-owned-glm.zh.md)。在支持的平台上，私有目录权限为 0700，文件权限为 0600。清理仅删除 `stateRoot/generations/` 下已终止代次的随机目录；稳定凭据及无关数据保留。不读取用户默认 CLIProxyAPI home。
 
 Provider 拥有 `ctx.subprocess` 启动、环境清理、有界诊断、终止和 `waitForExit`。Bundle 显式组合隔离的本地 subprocess 实现，使二进制和子进程处于同一本地执行环境；不增加执行环境探测 API。二进制 manifest（元数据清单）绑定来源 SHA、平台、架构、文件名和 SHA-256；缺失或不匹配的资源在 spawn 前失败。启动既不搜索 PATH，也不下载代码。
 
@@ -73,9 +71,7 @@ Provider 拥有 `ctx.subprocess` 启动、环境清理、有界诊断、终止�
 
 产品使用已发布的 `PiAiAdapterOptions.profiles` 和 `ResolvedPiAiProviderProfile.piProvider` 扩展点。它通过公开 `createProvider({ api: productOwnedProviderStreams })` 创建供应商；其私有 `stream` 和 `streamSimple` 包装将原始选项连同代次 fetch 和取消 signal 分别转发给公开 `openAICompletionsApi().stream` 和 `.streamSimple` 方法。原样的上游适配器继续拥有模型转换、请求准备和流转换。不需要新增适配器选项、profile-resolver 导出、复制实现或修改上游代码。每个已准备调用保留其原始不可变 profile 和代次权限。关停撤回路由并关闭准入，中止已准入调用并等待结束，终止并等待子进程，关闭 dispatcher，最后删除代次文件。不修改全局 fetch 设置。
 
-产品只为自有路由组装公开的 resolved-profile DTO，不复制上游通用 resolver。产品 Config 拥有明确的限制和默认值，并继续复用公共 retry-policy 解析。产品维护目录到模型的投影和受支持 reasoning level 映射；未知能力保持未知，未支持等级保持不支持，SDK 必填 cost 字段不转化为已核验账号价格声明。薄产品适配器在请求元数据记录前选择每模型 reasoning 默认值，并完整委托公共适配器接口。公共依赖/peer 图必须通过严格编译闭合；探测需要已发布 MCP SDK `1.29.0`，它属于产品依赖验证，不是上游修改。
-
-可行性探测在独立 npm 项目安装已发布的 dsh LLM/PiAi `0.1.5-rc.2` 和 pi-ai `0.85.1`，不使用仓库 TypeScript 别名，且设置 `skipLibCheck: false`。TypeScript 编译和本地 SSE 请求均通过。探测观测到上下文/reasoning 元数据、profile map 后续移除后已准备调用仍保留原始权限，以及已退出代次不产生 HTTP 请求。探测不使用真实供应商账号，仅证明公共 API 可行性，不是迁移账号池或产品验收证据。
+产品只为自有路由组装公开的 resolved-profile DTO，不复制上游通用 resolver。产品 Config 拥有明确的限制和默认值，并继续复用公共 retry-policy 解析。产品维护目录到模型的投影和受支持 reasoning level 映射；未知能力保持未知，未支持等级保持不支持，SDK 必填 cost 字段不转化为已核验账号价格声明。薄产品适配器在请求元数据记录前选择每模型 reasoning 默认值，并完整委托公共适配器接口。公共依赖/peer 图必须通过严格编译闭合；已发布 MCP SDK `1.29.0` 属于产品依赖验证，不是上游修改。
 
 目录保留来源支持的 Grokshell listing 元数据，并在 `prepareCall` 前设置 reasoning、上下文、输出限制和模态，使现有 Session 日志记录实际请求。有效且非空的目录注册 `gestalt-account-pool`；空目录或不可用目录原子撤回它。重复路由所有权明确失败。配额接收 Host 拥有的 xAI tier/user 元数据和 GLM 被动信号，保留未知/不支持/失败/过期的区分，且仅作观测：它绝不改变账号启停、调度、冷却或 reset credits。删除账号按账号引用清理配额缓存。
 
@@ -96,7 +92,7 @@ Provider 拥有 `ctx.subprocess` 启动、环境清理、有界诊断、终止�
 - 账号创建、OAuth 发起与取消、API-key 账号管理、启停、模型排除、配额展示和账号删除通过类型化 Host 操作完成，并提供本地化产品反馈。
 - 重启恢复持久账号配置，包括 GLM 变更；过期进程代次被拒绝，其私有凭据和所属子进程不被保留。
 - 聚焦行为测试、Loader 组合、公共类型、包与构建检查以及录制输出覆盖迁移行为；原生 Desktop 交互单独记录真实产品路径，与 fixture（测试前置数据）区分。
-- 回归用例观测错误 pin 的监听者收不到凭据、调用准备后的代次变更、根目录锁竞争、启动中资源释放、抛错订阅者隔离、完整进程树清理、有界 HTTP body、下载处理器拒绝未授权导出，以及通过实际 Desktop scheme 显式下载凭据文件。
+- 回归用例观测错误 pin 的监听者收不到凭据、调用准备后的代次变更、根目录锁竞争、启动中资源释放、抛错订阅者隔离、完整进程树清理，以及有界 HTTP body。
 - UI 保留六种供应商登录、管理/配额卡片翻面、筛选、二十格近期请求、弹窗、重置时间和配额指针。未知空轨不显示虚构填充或标记；过期/错误状态、登录关闭、弹窗身份竞态和保存失败保持可见。无密钥 Session 录制覆盖模型选择、工具调用/结果和 reasoning，不向模型输入添加配额，也不修改 Session 格式。
 
 ## 风险

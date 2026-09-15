@@ -1,5 +1,5 @@
 {
-  "text": "Built-in account poolRunning1 credentials1 enabledCard view:ManageQuota↻Refresh all quota+ Add accountAll (1)Claude (0)Antigravity (0)Codex (0)xAI (0)Kimi (1)GLM (0)kimi.jsonKimi · Kimi user⇄ QuotaEnabledHealthSuccess 3 · Fail 1Models↻⚙🗑View quota",
+  "text": "Built-in account poolRunning1 credentials1 enabledCard view:ManageQuota↻Refresh all quota+ Add accountAll (1)Claude (0)Antigravity (0)Codex (0)xAI (0)Kimi (1)GLM (0)kimi.jsonKimi · Kimi user⇄ QuotaEnabledHealthSuccess 3 · Fail 1Models↻⚙🗑",
   "actions": [
     "Manage",
     "Quota",
@@ -17,7 +17,6 @@
     "Refresh",
     "Settings",
     "Delete",
-    "View quota",
     "Disable kimi.json"
   ]
 }

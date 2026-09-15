@@ -104,13 +104,20 @@
   color: var(--dsw-alias-state-success-primary);
   font-weight: 600;
 }
-.headerRight {
+.actionRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.actionButtons {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 16px;
-  flex: 1 1 280px;
+  margin-left: auto;
 }
 .spinning {
   display: inline-block;

@@ -23,11 +23,11 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
-The account-pool Settings section owns login, account enablement, fields, model lists, and quota refresh. Starting a device or PKCE login, and retrying Open authorization in browser, asks the Host to open the HTTPS authorization URL in the system browser. The existing Settings navigation opens account management. Unknown, unsupported, failed, and stale quota observations remain distinct.
+The Settings section owns login, enablement, fields, model lists, and quota refresh. Device and PKCE login, and Open authorization in browser, ask the Host to open the HTTPS authorization URL in the system browser. Unknown, unsupported, failed, and stale quota observations remain distinct.
 
 Kimi's usage summary follows the provider's [seven-day quota](https://www.kimi.com/help/kimi-code/benefits); its time needle uses that period when the response omits window metadata. Valid explicit metadata takes precedence. Invalid metadata or a missing reset instant leaves the time needle absent; display labels never supply a period.
 
-The [bundle patch](cordis.patch.yml) selects a local subprocess implementation in an isolated scope and stores Desktop accounts under `$DSH_HOME/desktop/account-pool`. A Web profile must explicitly choose its own absolute `stateRoot` when applying this bundle. Concurrent processes cannot share one state root. The normal profile/plugin installation mechanism owns bundle activation; copying a directory alone does not activate it.
+The [bundle patch](cordis.patch.yml) selects a local subprocess implementation in an isolated scope and stores Desktop accounts under `$DSH_HOME/desktop/account-pool`. A Web profile must choose its own absolute `stateRoot`. Concurrent processes cannot share one state root. Profile/plugin installation activates the bundle; copying a directory does not.
 
 Account files, including GLM Coding Plan JSON, live in the engine `auth-dir`. GLM cards identify provider-wide model listings and show unavailable health/history values as unknown.
 
@@ -39,13 +39,11 @@ Account files, including GLM Coding Plan JSON, live in the engine `auth-dir`. GL
 <details>
 <summary>Implementation internals</summary>
 
-One product package owns the account service, core supervisor, private management mapping, LLM adapter, Remote controller, and shared Client. The Go engine is built from the exact source in [UPSTREAM.json](UPSTREAM.json); the installed binary, license, and manifest live in package resources. Every generation has independent loopback HTTP credentials and cancellation. Shutdown withdraws model routes, settles requests, stops the owned process tree, and removes only generation files.
+One product package owns the account service, engine supervisor, management mapping, LLM adapter, Remote controller, and Client. The Go engine is built from the source in [UPSTREAM.json](UPSTREAM.json). Each generation has independent loopback HTTP credentials and cancellation. Shutdown withdraws model routes, settles requests, stops the owned process tree, and removes only generation files.
 
-Account files remain engine-owned under `auth-dir`, including GLM Coding Plan JSON. A leftover product `glm-accounts.json` is migrated onto that directory once. GLM identities come from the engine roster.
+Account files remain engine-owned under `auth-dir`. GLM identities come from the engine roster. The Host opens HTTPS authorization URLs; the renderer does not.
 
-The Client uses typed actions and a controller that owns watch cancellation and command lifetimes. Source DTOs have a type-only public `./types` export. Host/Client descriptors come from the unchanged public Typert generator and have strict codecs. A build-only rollup of the published protocol declarations is checked against the original in separate strict TypeScript programs, then supplies an isolated analysis project. Normal Host/Client compilation and runtime resolve the original npm packages; analysis inputs are excluded from the archive.
-
-The [accepted architecture](../../../.agents/notes/proposed/architecture/2026-09-14-plugin-account-pool.md) owns the alternatives and the exact product-only change scope. Quota parsers are pure observation modules; their attribution and bundled Client licenses are retained in [NOTICE](NOTICE). There is no independent runtime-invariant companion: the Host snapshot is the single business-state authority, and lifecycle/transport tests verify its external effects.
+The [accepted architecture](../../../.agents/notes/proposed/architecture/2026-09-14-plugin-account-pool.md) owns alternatives and the product-only change scope. Quota parsers are observation modules; attribution is in [NOTICE](NOTICE). The Host snapshot is the business-state authority; lifecycle and transport tests verify its external effects.
 
 </details>
 
@@ -54,11 +52,11 @@ The [accepted architecture](../../../.agents/notes/proposed/architecture/2026-09
 <a id="build-and-verification"></a>
 ## Build and verification
 
-The independent `product/` workspace installs exact published DSH dependencies. Its normal compiler configurations contain no repository source aliases. Product build, typecheck, and pack commands run the scope check against the verified base recorded in `UPSTREAM.json`; an intentional new base must be supplied explicitly and reviewed.
+The independent `product/` workspace installs published DSH dependencies. Product build, typecheck, and pack commands run the scope check against the verified base in `UPSTREAM.json`.
 
-The product build creates the Host entry, generates nonempty strict Remote contributions, and compiles the Client module-loader factory. Engine compilation is separate from Node compilation. The engine builder compiles the `community/cliproxyapi` gitlink pinned in `UPSTREAM.json`, verifies that checkout's Git identity, compiles with Go module changes disabled, and emits source/platform/architecture/filename/SHA-256 metadata. The package declares `publishConfig.executableFiles` so pnpm preserves executable permissions for these resources without exposing a package bin. Package preparation builds the selected host target and places its npm archive in `product/dist`.
+The product build creates the Host entry, generates nonempty strict Remote contributions, and compiles the Client factory. The engine builder compiles the `community/cliproxyapi` gitlink pinned in `UPSTREAM.json` and emits source/platform/architecture/filename/SHA-256 metadata. `publishConfig.executableFiles` preserves executable permissions without exposing a package bin.
 
-Native Desktop interaction, authenticated provider inference, local TLS/SSE tests, and unit fixtures are separate evidence lanes. A fake GLM key can verify persistence and management without proving provider authentication.
+Native Desktop interaction, authenticated provider inference, and unit fixtures are separate evidence lanes. A fake GLM key can verify persistence and management without proving provider authentication.
 
 -----
 
@@ -78,4 +76,4 @@ Indirectly, through the registered `gestalt-account-pool` LLM route. Model selec
 <a id="dev-note"></a>
 ## Dev Note
 
-Implementation and combination verification are tracked in the migration delivery record. The package is a development candidate until its installed and native acceptance evidence is complete.
+The package is a development candidate until installed and native acceptance evidence is complete. A leftover `glm-accounts.json` is migrated onto `auth-dir` once at lock acquisition.
