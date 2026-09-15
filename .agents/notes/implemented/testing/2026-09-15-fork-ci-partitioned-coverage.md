@@ -10,7 +10,7 @@ A family-wide version bump selects every package. Fork CI then ran one instrumen
 
 ## Decision
 
-Fork CI writes planned files and coverage includes into a workspace `tmp/` Vitest config. Each Vitest project receives only its own files. An empty project gets a non-matching include instead of `[]`. When `DSH_COVERAGE_PARTITIONS` is set and the planned inventory is at least that large, the affected and Windows lanes reuse the existing coverage partition coordinator and merge one thresholded report. Linux uses four partitions; Windows uses two. Desktop, quality, and other lanes keep a single generated config without coverage.
+Fork CI writes planned files and coverage includes into a workspace `tmp/` Vitest config. Each Vitest project receives only its own files. An empty project gets a non-matching include instead of `[]`. When `DSH_COVERAGE_PARTITIONS` is set and the planned inventory is at least that large, the affected and Windows lanes reuse the existing coverage partition coordinator and merge one thresholded report. Linux uses four partitions; Windows uses two. Desktop, quality, and other lanes keep a single generated config without coverage. Affected Web tests install Chromium without `--with-deps`, because the enterprise Linux runner already has the OS libraries and cannot sudo.
 
 ## Alternatives considered
 
@@ -22,4 +22,4 @@ Fork CI writes planned files and coverage includes into a workspace `tmp/` Vites
 
 ## Consequences
 
-Family-wide fork CI coverage stays one thresholded report without one process holding every instrumented file. A planned Desktop or quality file list no longer expands to the whole suite. Empty project includes no longer silently rerun the inventory.
+Family-wide fork CI coverage stays one thresholded report without one process holding every instrumented file. A planned Desktop or quality file list no longer expands to the whole suite. Empty project includes no longer silently rerun the inventory. Affected Web tests no longer ask Playwright to install OS packages.

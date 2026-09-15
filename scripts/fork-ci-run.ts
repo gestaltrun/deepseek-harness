@@ -265,7 +265,7 @@ async function execute(plan: ForkCiPlan, lane: string): Promise<void> {
     tests(plan.snapshots, 'vitest.snapshot.config.ts')
     if (lane === 'windows') tests(plan.windowsE2e, 'vitest.e2e.config.ts', [], true)
     if (lane === 'affected' && plan.web.length) {
-      command(['--filter', '@deepseek-ai/dsh-web-frontend', 'exec', 'playwright', 'install', '--with-deps', 'chromium'])
+      command(['--filter', '@deepseek-ai/dsh-web-frontend', 'exec', 'playwright', 'install', 'chromium'])
       tests(plan.web, 'vitest.web.config.ts')
     }
     return

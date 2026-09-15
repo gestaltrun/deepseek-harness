@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-Fork CI 把计划中的文件和 coverage include 写进工作区内 `tmp/` 的 Vitest 配置。每个 Vitest project 只接收属于自己的文件。空 project 使用不会匹配的 include，而不是 `[]`。当设置了 `DSH_COVERAGE_PARTITIONS` 且计划清单至少有这么多文件时，affected 和 Windows 车道复用现有覆盖率分区协调器，并合并一次带门槛的报告。Linux 使用 4 个分区；Windows 使用 2 个。Desktop、quality 和其他车道继续使用单个生成配置，且不开启覆盖率。
+Fork CI 把计划中的文件和 coverage include 写进工作区内 `tmp/` 的 Vitest 配置。每个 Vitest project 只接收属于自己的文件。空 project 使用不会匹配的 include，而不是 `[]`。当设置了 `DSH_COVERAGE_PARTITIONS` 且计划清单至少有这么多文件时，affected 和 Windows 车道复用现有覆盖率分区协调器，并合并一次带门槛的报告。Linux 使用 4 个分区；Windows 使用 2 个。Desktop、quality 和其他车道继续使用单个生成配置，且不开启覆盖率。Affected 车道的 Web 测试安装 Chromium 时不加 `--with-deps`，因为企业 Linux runner 已具备系统库且无法 sudo。
 
 ## Alternatives considered
 
@@ -22,4 +22,4 @@ Fork CI 把计划中的文件和 coverage include 写进工作区内 `tmp/` 的 
 
 ## Consequences
 
-全家 fork CI 覆盖率仍是一份带门槛的报告，但不再由单个进程持有全部带覆盖率文件。计划中的 Desktop 或 quality 文件列表不会再扩展成全集。空的 project include 也不会再静默重跑清单。
+全家 fork CI 覆盖率仍是一份带门槛的报告，但不再由单个进程持有全部带覆盖率文件。计划中的 Desktop 或 quality 文件列表不会再扩展成全集。空的 project include 也不会再静默重跑清单。Affected 车道的 Web 测试不再让 Playwright 安装系统包。
