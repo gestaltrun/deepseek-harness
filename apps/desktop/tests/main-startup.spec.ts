@@ -101,7 +101,7 @@ vi.mock('electron', () => ({
   ipcMain: {
     handle: (channel: string, handler: (event: { senderFrame: { url: string } }) => unknown) => { harness.handlers.set(channel, handler) },
   },
-  Menu: { setApplicationMenu: vi.fn(), buildFromTemplate: vi.fn() },
+  Menu: { setApplicationMenu: vi.fn(), buildFromTemplate: vi.fn((template: unknown) => template) },
   protocol: { registerSchemesAsPrivileged: vi.fn(), handle: vi.fn() },
 }))
 vi.mock('../src/paths.ts', () => ({ resolveDesktopPaths: () => ({ profile: 'desktop-test-profile' }) }))
@@ -165,6 +165,23 @@ describe('desktop main startup', () => {
     await exited.promise
     expect(harness.app.exit).toHaveBeenCalledWith(1)
     expect(console.error).toHaveBeenCalledWith(expect.objectContaining({ message: 'emergency navigation failed' }))
+  })
+
+  it('keeps native paste accelerators on the locale-owned Edit menu', async () => {
+    const { Menu } = await import('electron')
+    await import('../src/main.ts')
+    await harness.preparing.promise
+    expect(Menu.buildFromTemplate).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.objectContaining({
+        label: 'Edit',
+        submenu: expect.arrayContaining([
+          expect.objectContaining({ role: 'cut', label: 'Cut' }),
+          expect.objectContaining({ role: 'copy', label: 'Copy' }),
+          expect.objectContaining({ role: 'paste', label: 'Paste' }),
+          expect.objectContaining({ role: 'selectAll', label: 'Select All' }),
+        ]),
+      }),
+    ]))
   })
 
   it('withholds profile recovery after application resources fail to load', async () => {
