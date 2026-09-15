@@ -1,7 +1,6 @@
 /** Execute selected upstream checks and reject empty test runs or incomplete job results. */
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
@@ -123,7 +122,8 @@ export default mergeConfig(base, defineConfig({
 
 function tests(files: string[], config = 'vitest.config.ts', coverage: string[] = [], requireFiles = false): void {
   if (files.length === 0) return
-  const scratch = mkdtempSync(join(tmpdir(), 'dsh-fork-ci-'))
+  mkdirSync(join(process.cwd(), 'tmp'), { recursive: true })
+  const scratch = mkdtempSync(join(process.cwd(), 'tmp', 'dsh-fork-ci-'))
   try {
     const output = join(scratch, 'vitest.json')
     const generated = writeForkCiVitestConfig(scratch, config, files, coverage)

@@ -1,7 +1,6 @@
 /** Selected jobs and test invocations must supply actual passing evidence. */
 import { describe, expect, it } from 'vitest'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { chunkCommandTargets, qualityLintFiles, verifyForkCiResults, verifyTestExecution, writeForkCiVitestConfig } from './fork-ci-run.ts'
 
@@ -21,7 +20,8 @@ describe('fork CI verdict', () => {
   })
 
   it('selects planned tests and coverage includes from a generated config', () => {
-    const scratch = mkdtempSync(join(tmpdir(), 'dsh-fork-ci-spec-'))
+    mkdirSync(join(process.cwd(), 'tmp'), { recursive: true })
+    const scratch = mkdtempSync(join(process.cwd(), 'tmp', 'dsh-fork-ci-spec-'))
     try {
       const generated = writeForkCiVitestConfig(
         scratch,
