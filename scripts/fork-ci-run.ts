@@ -1,6 +1,6 @@
 /** Execute selected upstream checks and reject empty test runs or incomplete job results. */
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -85,21 +85,54 @@ function command(args: string[], env: NodeJS.ProcessEnv = {}): void {
   if (result.status !== 0 || result.signal !== null) throw new Error(`Selected command failed: ${args.join(' ')} (${result.signal ?? result.status})`)
 }
 
+/**
+ * Write a Vitest config that selects files and coverage includes without argv.
+ * @param scratch - Temporary directory owned by the caller.
+ * @param config - Repository-relative Vitest config to merge.
+ * @param files - Test files selected by the CI plan.
+ * @param coverage - Optional coverage include globs; empty means coverage stays off.
+ * @returns Path to the generated config.
+ */
+export function writeForkCiVitestConfig(
+  scratch: string,
+  config: string,
+  files: readonly string[],
+  coverage: readonly string[] = [],
+): string {
+  const filesPath = join(scratch, 'files.json')
+  const coveragePath = join(scratch, 'coverage.json')
+  const configPath = join(scratch, 'vitest.fork.config.ts')
+  writeFileSync(filesPath, `${JSON.stringify(files)}\n`)
+  writeFileSync(coveragePath, `${JSON.stringify(coverage)}\n`)
+  writeFileSync(configPath, `import { readFileSync } from 'node:fs'
+import { defineConfig, mergeConfig } from 'vitest/config'
+import base from ${JSON.stringify(pathToFileURL(resolve(config)).href)}
+
+const files = JSON.parse(readFileSync(${JSON.stringify(filesPath)}, 'utf8')) as string[]
+const coverage = JSON.parse(readFileSync(${JSON.stringify(coveragePath)}, 'utf8')) as string[]
+
+export default mergeConfig(base, defineConfig({
+  test: {
+    include: files,
+    ${coverage.length === 0 ? '' : 'coverage: { include: coverage },'}
+  },
+}))
+`)
+  return configPath
+}
+
 function tests(files: string[], config = 'vitest.config.ts', coverage: string[] = [], requireFiles = false): void {
   if (files.length === 0) return
-  const prefix = ['exec', 'vitest', 'run', '--config', config,
-    ...(coverage.length ? ['--coverage', ...coverage.map(path => `--coverage.include=${path}`)] : []),
-    '--reporter=default', '--reporter=json']
-  const budget = Math.max(1, WINDOWS_SAFE_ARG_BUDGET - prefix.join(' ').length)
-  for (const batch of chunkCommandTargets(files, budget)) {
-    const scratch = mkdtempSync(join(tmpdir(), 'dsh-fork-ci-'))
-    try {
-      const output = join(scratch, 'vitest.json')
-      command([...prefix, `--outputFile.json=${output}`, ...batch], { DSH_SNAPSHOT: 'replay' })
-      verifyTestExecution(JSON.parse(readFileSync(output, 'utf8')) as Parameters<typeof verifyTestExecution>[0], requireFiles ? batch : [])
-    } finally {
-      rmSync(scratch, { recursive: true, force: true })
-    }
+  const scratch = mkdtempSync(join(tmpdir(), 'dsh-fork-ci-'))
+  try {
+    const output = join(scratch, 'vitest.json')
+    const generated = writeForkCiVitestConfig(scratch, config, files, coverage)
+    command(['exec', 'vitest', 'run', '--config', generated,
+      ...(coverage.length ? ['--coverage'] : []),
+      '--reporter=default', '--reporter=json', `--outputFile.json=${output}`], { DSH_SNAPSHOT: 'replay' })
+    verifyTestExecution(JSON.parse(readFileSync(output, 'utf8')) as Parameters<typeof verifyTestExecution>[0], requireFiles ? files : [])
+  } finally {
+    rmSync(scratch, { recursive: true, force: true })
   }
 }
 

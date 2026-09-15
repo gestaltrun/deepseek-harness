@@ -1,6 +1,9 @@
 /** Selected jobs and test invocations must supply actual passing evidence. */
 import { describe, expect, it } from 'vitest'
-import { chunkCommandTargets, qualityLintFiles, verifyForkCiResults, verifyTestExecution } from './fork-ci-run.ts'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { chunkCommandTargets, qualityLintFiles, verifyForkCiResults, verifyTestExecution, writeForkCiVitestConfig } from './fork-ci-run.ts'
 
 describe('fork CI verdict', () => {
   it('keeps Windows command-line batches under the argument budget', () => {
@@ -15,6 +18,33 @@ describe('fork CI verdict', () => {
     expect(batches.flat()).toEqual(family)
     expect(batches.every(batch => batch.join(' ').length <= 6000)).toBe(true)
     expect(batches.length).toBeGreaterThan(1)
+  })
+
+  it('selects planned tests and coverage includes from a generated config', () => {
+    const scratch = mkdtempSync(join(tmpdir(), 'dsh-fork-ci-spec-'))
+    try {
+      const generated = writeForkCiVitestConfig(
+        scratch,
+        'vitest.config.ts',
+        ['apps/cli/tests/args.spec.ts', 'packages/util/http-proxy/tests/install.spec.ts'],
+        ['packages/util/http-proxy/src/**/*.{ts,tsx}'],
+      )
+      const source = readFileSync(generated, 'utf8')
+      expect(source).toContain('include: files')
+      expect(source).toContain('coverage: { include: coverage }')
+      expect(JSON.parse(readFileSync(join(scratch, 'files.json'), 'utf8'))).toEqual([
+        'apps/cli/tests/args.spec.ts',
+        'packages/util/http-proxy/tests/install.spec.ts',
+      ])
+      expect(JSON.parse(readFileSync(join(scratch, 'coverage.json'), 'utf8'))).toEqual([
+        'packages/util/http-proxy/src/**/*.{ts,tsx}',
+      ])
+
+      const withoutCoverage = writeForkCiVitestConfig(scratch, 'vitest.config.ts', ['apps/cli/tests/args.spec.ts'])
+      expect(readFileSync(withoutCoverage, 'utf8')).not.toContain('coverage:')
+    } finally {
+      rmSync(scratch, { recursive: true, force: true })
+    }
   })
 
   it('lints a changed static owner routed from Desktop to quality', () => {
