@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
-import { chunkCommandTargets, qualityLintFiles, verifyForkCiResults, verifyTestExecution, writeForkCiVitestConfig } from './fork-ci-run.ts'
+import { chunkCommandTargets, forkCiCoveragePartitions, qualityLintFiles, verifyForkCiResults, verifyTestExecution, writeForkCiVitestConfig } from './fork-ci-run.ts'
 
 describe('fork CI verdict', () => {
   it('keeps Windows command-line batches under the argument budget', () => {
@@ -31,7 +31,7 @@ describe('fork CI verdict', () => {
       )
       const source = readFileSync(generated, 'utf8')
       expect(source).toContain('merged.test.include = files')
-      expect(source).toContain('project.test.include = files')
+      expect(source).toContain("project.test.name === 'process-bound'")
       expect(source).toContain('merged.test.coverage.include = coverage')
       expect(JSON.parse(readFileSync(join(scratch, 'files.json'), 'utf8'))).toEqual([
         'apps/cli/tests/args.spec.ts',
@@ -43,9 +43,16 @@ describe('fork CI verdict', () => {
 
       const withoutCoverage = writeForkCiVitestConfig(scratch, 'vitest.config.ts', ['apps/cli/tests/args.spec.ts'])
       expect(readFileSync(withoutCoverage, 'utf8')).not.toContain('merged.test.coverage.include')
+      expect(readFileSync(withoutCoverage, 'utf8')).toContain('__vitest_empty_include__')
     } finally {
       rmSync(scratch, { recursive: true, force: true })
     }
+  })
+
+  it('partitions family-wide coverage only when the inventory is large enough', () => {
+    expect(forkCiCoveragePartitions(1, '4')).toBeUndefined()
+    expect(forkCiCoveragePartitions(4, '4')).toBe(4)
+    expect(forkCiCoveragePartitions(80, undefined)).toBeUndefined()
   })
 
   it('lints a changed static owner routed from Desktop to quality', () => {

@@ -13,6 +13,8 @@ interface Workflow {
     needs?: string | string[]
     if?: string
     uses?: string
+    'timeout-minutes'?: number
+    env?: Record<string, string>
     steps?: Array<{ uses?: string; run?: string; with?: Record<string, unknown> }>
   }>
 }
@@ -40,6 +42,17 @@ describe('fork CI workflow', () => {
     expect([...(aggregate.needs as string[])].sort()).toEqual(Object.keys(ci.jobs).filter(name => name !== 'all-checks-passed').sort())
     expect(JSON.stringify(aggregate)).toContain('node scripts/fork-ci-run.ts --summary')
     expect(JSON.stringify(aggregate)).toContain('toJSON(needs)')
+  })
+
+  it('partitions family-wide coverage instead of one instrumented process', () => {
+    const ci = workflow('fork-ci.yml') as Workflow & { env?: Record<string, string> }
+    expect(ci.env).toMatchObject({
+      DSH_COVERAGE_PARTITIONS: '4',
+      DSH_COVERAGE_TEST_TIMEOUT_MS: '90000',
+    })
+    expect(ci.jobs.affected!['timeout-minutes']).toBe(90)
+    expect(ci.jobs.windows!['timeout-minutes']).toBe(120)
+    expect(ci.jobs.windows!.env).toMatchObject({ DSH_COVERAGE_PARTITIONS: '2' })
   })
 
   it('gates every expensive job on the planner', () => {

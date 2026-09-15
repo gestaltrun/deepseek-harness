@@ -19,6 +19,8 @@ concurrency:
 env:
   DSH_TELEMETRY_DISABLED: '1'
   DSH_SNAPSHOT: replay
+  DSH_COVERAGE_PARTITIONS: '4'
+  DSH_COVERAGE_TEST_TIMEOUT_MS: '90000'
 
 jobs:
   plan:
@@ -92,7 +94,7 @@ jobs:
     needs: plan
     if: ${{ fromJSON(needs.plan.outputs.jobs).affected }}
     runs-on: ${{ vars.DSH_CI_FAILOVER_LINUX == 'blacksmith' && 'blacksmith-16vcpu-ubuntu-2404' || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "linux", "x64", "vm-backup"]') || 'dsh-ubuntu-24-04-16core' }}
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v6
         with:
@@ -157,7 +159,9 @@ jobs:
     needs: plan
     if: ${{ fromJSON(needs.plan.outputs.jobs).windows }}
     runs-on: ${{ vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "windows", "x64", "dsh-win-ci"]') || 'windows-latest' }}
-    timeout-minutes: 45
+    timeout-minutes: 120
+    env:
+      DSH_COVERAGE_PARTITIONS: '2'
     steps:
       - uses: actions/checkout@v6
         with:

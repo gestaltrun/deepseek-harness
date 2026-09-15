@@ -4,6 +4,14 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
+import {
+  COVERAGE_PARTITIONS_ENV,
+  COVERAGE_TEST_TIMEOUT_ENV,
+  CoveragePartitionCoordinator,
+  coverageTestTimeoutArgs,
+  parseCoveragePartitionCount,
+  projectIncludesForFiles,
+} from './coverage-partitions.ts'
 import { pnpmInvocation } from './pnpm-invocation.ts'
 import type { ForkCiPlan } from './fork-ci-plan.ts'
 
@@ -109,9 +117,12 @@ import base from ${JSON.stringify(pathToFileURL(resolve(config)).href)}
 
 const files = JSON.parse(readFileSync(${JSON.stringify(filesPath)}, 'utf8')) as string[]
 const merged = mergeConfig(base, {})
+const includes = ${JSON.stringify(projectIncludesForFiles(files))}
 merged.test.include = files
 for (const project of merged.test.projects ?? []) {
-  if (project?.test !== undefined) project.test.include = files
+  if (project?.test !== undefined) {
+    project.test.include = project.test.name === 'process-bound' ? includes.processBound : includes.threadSafe
+  }
 }
 ${coverage.length === 0 ? '' : `const coverage = JSON.parse(readFileSync(${JSON.stringify(coveragePath)}, 'utf8')) as string[]
 merged.test.coverage.include = coverage
@@ -136,6 +147,57 @@ function tests(files: string[], config = 'vitest.config.ts', coverage: string[] 
   }
 }
 
+/**
+ * Use partitioned coverage only when the planner asked for more than one shard
+ * and selected at least that many files.
+ * @param fileCount - Planned unit-test count.
+ * @param raw - Optional `DSH_COVERAGE_PARTITIONS` value.
+ * @returns Partition count, or undefined for a single coverage invocation.
+ */
+export function forkCiCoveragePartitions(fileCount: number, raw = process.env[COVERAGE_PARTITIONS_ENV]): number | undefined {
+  const requested = parseCoveragePartitionCount(raw)
+  if (requested === undefined || fileCount < requested) return undefined
+  return requested
+}
+
+/**
+ * Run planned unit tests through partitioned coverage when the inventory is
+ * large enough, otherwise keep a single Vitest coverage invocation.
+ * @param files - Planned unit tests.
+ * @param coverage - Planned coverage include globs.
+ */
+async function coverageTests(files: string[], coverage: string[]): Promise<void> {
+  const pnpmEntrypoint = process.env.npm_execpath
+  if (pnpmEntrypoint === undefined || pnpmEntrypoint === '') {
+    throw new Error('Fork CI coverage must be invoked through a pnpm package script.')
+  }
+  const partitions = forkCiCoveragePartitions(files.length)
+  if (partitions === undefined) {
+    mkdirSync(join(process.cwd(), 'tmp'), { recursive: true })
+    const scratch = mkdtempSync(join(process.cwd(), 'tmp', 'dsh-fork-ci-'))
+    try {
+      const output = join(scratch, 'vitest.json')
+      const generated = writeForkCiVitestConfig(scratch, 'vitest.config.ts', files, coverage)
+      command(['exec', 'vitest', 'run', '--config', generated, '--coverage',
+        '--reporter=default', '--reporter=json', `--outputFile.json=${output}`], { DSH_SNAPSHOT: 'replay' })
+      verifyTestExecution(JSON.parse(readFileSync(output, 'utf8')) as Parameters<typeof verifyTestExecution>[0])
+    } finally {
+      rmSync(scratch, { recursive: true, force: true })
+    }
+    return
+  }
+  const coordinator = new CoveragePartitionCoordinator({
+    root: process.cwd(),
+    partitions,
+    pnpmEntrypoint,
+    files,
+    coverageInclude: coverage,
+    vitestArgs: coverageTestTimeoutArgs(process.env[COVERAGE_TEST_TIMEOUT_ENV]),
+  })
+  const status = await coordinator.run()
+  if (status !== 0) throw new Error(`Partitioned coverage failed (${status})`)
+}
+
 function lintPackages(plan: ForkCiPlan): void {
   const targets = [...plan.affectedPackages, ...plan.scripts].filter(path => !path.startsWith('native/') && !path.startsWith('vendor/'))
   const prefix = ['exec', 'tsx', 'scripts/run-oxlint.ts']
@@ -153,7 +215,7 @@ export function qualityLintFiles(plan: Pick<ForkCiPlan, 'changed' | 'scripts'>):
     && (path.startsWith('scripts/') || selected.has(path))))].sort()
 }
 
-function execute(plan: ForkCiPlan, lane: string): void {
+async function execute(plan: ForkCiPlan, lane: string): Promise<void> {
   if (!plan.jobs[lane as keyof ForkCiPlan['jobs']]) throw new Error(`CI lane is not selected: ${lane}`)
   const head = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
   if (head !== plan.head) throw new Error(`Plan head ${plan.head} does not match checkout ${head}`)
@@ -197,7 +259,8 @@ function execute(plan: ForkCiPlan, lane: string): void {
       command(['run', 'typecheck:contracts-ready'])
       lintPackages(plan)
     }
-    tests(plan.unit, 'vitest.config.ts', plan.coverage)
+    if (plan.coverage.length > 0) await coverageTests(plan.unit, plan.coverage)
+    else tests(plan.unit)
     tests(plan.expected, 'vitest.expected.config.ts')
     tests(plan.snapshots, 'vitest.snapshot.config.ts')
     if (lane === 'windows') tests(plan.windowsE2e, 'vitest.e2e.config.ts', [], true)
@@ -219,6 +282,6 @@ if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(p
     if (!values.plan || !values.lane) throw new Error('Usage: fork-ci-run --plan <file> --lane <job>')
     const plan: unknown = JSON.parse(readFileSync(values.plan, 'utf8'))
     if (typeof plan !== 'object' || plan === null || !('version' in plan) || plan.version !== 1) throw new Error('Invalid CI plan version')
-    execute(plan as ForkCiPlan, values.lane)
+    await execute(plan as ForkCiPlan, values.lane)
   }
 }

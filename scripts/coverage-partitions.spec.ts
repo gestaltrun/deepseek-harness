@@ -13,6 +13,7 @@ import {
   forwardedCoverageArgs,
   parseCoveragePartitionCount,
   parseListOutput,
+  projectIncludesForFiles,
   readFileDurations,
   writeFileDurations,
   type CoverageCommand,
@@ -397,6 +398,42 @@ describe('coverage partition coordinator', () => {
     // vice versa, or plain files would run twice.
     expect(allConfigs).toContain("include: project.test.name === 'process-bound' ?")
     expect(allConfigs).not.toContain('"a.spec.ts","b.spec.ts","c.spec.ts"')
+    expect(allConfigs).toContain('__vitest_empty_include__')
+  })
+
+  it('keeps planned coverage includes on partition and merge configs', async () => {
+    const root = await temporaryRoot()
+    const sources: string[] = []
+    const runCommand = vi.fn(async (command: CoverageCommand) => {
+      const configArgument = command.args.find(argument => argument.startsWith('--config='))
+      if (configArgument !== undefined) {
+        sources.push(await readFile(join(root, configArgument.slice('--config='.length)), 'utf8'))
+      }
+      await writeBlob(command)
+      return passed
+    })
+    const coordinator = new CoveragePartitionCoordinator({
+      root,
+      partitions: 2,
+      pnpmEntrypoint: '/pnpm.cjs',
+      files: ['a.spec.ts', 'b.spec.ts'],
+      coverageInclude: ['packages/util/http-proxy/src/**/*.{ts,tsx}'],
+      runCommand,
+    })
+    await expect(coordinator.run()).resolves.toBe(0)
+    expect(sources).toHaveLength(3)
+    expect(sources.every(source => source.includes('packages/util/http-proxy/src/**/*.{ts,tsx}'))).toBe(true)
+  })
+
+  it('uses a non-matching include when a project has no planned files', () => {
+    expect(projectIncludesForFiles(['apps/cli/tests/args.spec.ts'])).toEqual({
+      threadSafe: ['apps/cli/tests/args.spec.ts'],
+      processBound: ['__vitest_empty_include__'],
+    })
+    expect(projectIncludesForFiles(['packages/boot/app-boot/tests/app-boot.spec.ts'])).toEqual({
+      threadSafe: ['__vitest_empty_include__'],
+      processBound: ['packages/boot/app-boot/tests/app-boot.spec.ts'],
+    })
   })
 
   it('runs a native pnpm entrypoint directly', async () => {
