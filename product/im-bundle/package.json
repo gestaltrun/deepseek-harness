@@ -34,7 +34,8 @@
       "dsh": ">=0.1.5-rc.2"
     },
     "bundle": {
-      "patch": "./cordis.patch.yml"
+      "patch": "./cordis.patch.yml",
+      "desktopPatch": "./desktop.patch.yml"
     }
   },
   "scripts": {
