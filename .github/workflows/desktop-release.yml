@@ -246,6 +246,7 @@ jobs:
           name: desktop-win-x64
           path: |
             apps/desktop/.desktop-build/targets/win-x64/artifacts/*.exe
+            apps/desktop/.desktop-build/targets/win-x64/artifacts/*.blockmap
             apps/desktop/.desktop-build/targets/win-x64/artifacts/*.yml
             apps/desktop/.desktop-build/targets/win-x64/artifacts/win-x64-release.json
           if-no-files-found: error
@@ -295,6 +296,7 @@ jobs:
           name: desktop-win-x64-unsigned-manual
           path: |
             apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.exe
+            apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.blockmap
             apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.yml
             apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/win-x64-release.json
           if-no-files-found: error

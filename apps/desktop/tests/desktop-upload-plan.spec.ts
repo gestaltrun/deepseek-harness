@@ -155,7 +155,7 @@ describe('desktop upload plan', () => {
     })
   })
 
-  it('rejects Windows metadata without an embedded blockmap size', async () => {
+  it('uploads a Windows sidecar blockmap when channel metadata omits blockMapSize', async () => {
     const paths = await fixture('win-x64')
     const executable = 'signed NSIS executable fixture'
     await writeFile(join(paths.artifactsRoot, 'latest.yml'), `${JSON.stringify({
@@ -166,7 +166,27 @@ describe('desktop upload plan', () => {
         sha512: digest(executable),
       }],
     })}\n`)
-    await expect(createDesktopUploadPlan('win-x64', paths)).rejects.toThrow(/blockMapSize/u)
+    await writeFile(join(paths.artifactsRoot, 'DeepSeekGestalt-Setup-1.2.3-x64.exe.blockmap'), 'sidecar blockmap')
+    const plan = await createDesktopUploadPlan('win-x64', paths)
+    expect(plan.artifacts.map(artifact => artifact.filename)).toEqual([
+      'DeepSeekGestalt-Setup-1.2.3-x64.exe',
+      'DeepSeekGestalt-Setup-1.2.3-x64.exe.blockmap',
+      'latest.yml',
+    ])
+  })
+
+  it('rejects Windows metadata without an embedded blockmap size or sidecar blockmap', async () => {
+    const paths = await fixture('win-x64')
+    const executable = 'signed NSIS executable fixture'
+    await writeFile(join(paths.artifactsRoot, 'latest.yml'), `${JSON.stringify({
+      version: '1.2.3',
+      files: [{
+        url: 'DeepSeekGestalt-Setup-1.2.3-x64.exe',
+        size: Buffer.byteLength(executable),
+        sha512: digest(executable),
+      }],
+    })}\n`)
+    await expect(createDesktopUploadPlan('win-x64', paths)).rejects.toThrow(/missing or empty artifact/u)
   })
 
   it('rejects a completed build from another dsh version or deployment', async () => {

@@ -29,6 +29,7 @@ describe('Desktop Release workflow', () => {
     expect(unsigned).toContain("if: ${{ inputs.operation != 'validate' }}")
     expect(unsigned).toContain('pnpm run package:desktop:win:x64:unsigned')
     expect(unsigned).toContain('unsigned-artifacts/*.exe')
+    expect(unsigned).toContain('unsigned-artifacts/*.blockmap')
     expect(unsigned).toContain('unsigned-artifacts/*.yml')
     expect(unsigned).toContain('unsigned-artifacts/win-x64-release.json')
     expect(unsigned).toContain('desktop-win-x64-unsigned-manual')

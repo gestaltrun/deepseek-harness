@@ -127,7 +127,7 @@ pwsh -NoProfile -File apps/desktop/scripts/smoke-windows.ps1 -Electron $Electron
 
 上传还要求设置 `DESKTOP_RELEASE_OSS_BUCKET`、`DESKTOP_RELEASE_OSS_ENDPOINT` 和 `DESKTOP_RELEASE_ALIYUN_REGION`。`DESKTOP_RELEASE_OSS_TIMEOUT_MS` 接受以毫秒为单位的正整数单次请求超时，默认使用 600000。不可变安装包和 blockmap 使用 OSS 分片上传，因此该超时作用于每个分片，而不是整个对象。仓库范围的阿里云 OIDC action 只向发布任务提供 `ALIBABA_CLOUD_ACCESS_KEY_ID`、`ALIBABA_CLOUD_ACCESS_KEY_SECRET` 和 `ALIBABA_CLOUD_SECURITY_TOKEN`。打包流程会从每个子进程中移除这些临时凭据，只需要所选 feed URL。打包钩子会在初始的 macOS 未压缩应用签名前，使用 electron-builder 的发布解析器把标准 `app-update.yml` 写入 Resources 目录；后续使用预打包应用生成 ZIP 和 DMG 时会保留这份已经封入签名的 updater 配置。
 
-每个目标都会写入 `<所选前缀>/<target>/`，其中 `target` 为 `mac-arm64`、`mac-x64` 或 `win-x64`。上传会在发送数据前验证发布完成记录、绑定的 dsh 与 Desktop 版本、频道元数据、产物名称、大小和 SHA-512。所有所选的不可变安装包和 blockmap 均完成上传和验证后，流程才会替换任何所选频道的元数据。重试只会复用大小和已存 SHA-512 均匹配的不可变对象；同一个带版本 key 上的其他载荷会导致失败。频道元数据使用 `no-cache`，也是唯一可以替换的对象。稳定版本使用 `latest-mac.yml` 或 `latest.yml`；预发布版本使用 electron-builder 生成的频道名称。
+每个目标都会写入 `<所选前缀>/<target>/`，其中 `target` 为 `mac-arm64`、`mac-x64` 或 `win-x64`。上传会在发送数据前验证发布完成记录、绑定的 dsh 与 Desktop 版本、频道元数据、产物名称、大小和 SHA-512。Windows NSIS 可能把 `blockMapSize` 写入频道元数据，或生成 sidecar `.exe.blockmap`；上传接受其中任一形式，并要求至少存在一种。所有所选的不可变安装包和 blockmap 均完成上传和验证后，流程才会替换任何所选频道的元数据。重试只会复用大小和已存 SHA-512 均匹配的不可变对象；同一个带版本 key 上的其他载荷会导致失败。频道元数据使用 `no-cache`，也是唯一可以替换的对象。稳定版本使用 `latest-mac.yml` 或 `latest.yml`；预发布版本使用 electron-builder 生成的频道名称。
 
 生产发布会创建一个草稿状态的 `gestalt-v<version>` GitHub Release，其中包含所选 OSS 安装包链接；随后替换所选目标的元数据并发布该 Release。工作流会拒绝复用属于其他提交的 tag 或草稿。GitHub Releases 提供版本列表；应用继续使用标准 generic feed 和现有更新交互。
 
