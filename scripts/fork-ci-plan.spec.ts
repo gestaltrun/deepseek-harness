@@ -175,6 +175,15 @@ describe('fork CI scope', () => {
     expect(() => planForkCi(input)).toThrow('No tests selected for script scripts/unowned.ts')
   })
 
+  it('runs the snapshot lane when the corpus manifest changes instead of demanding a spec', () => {
+    const input = fixture(['scripts/session-snapshot-corpus.corpus.ts'])
+    input.files.push('scripts/session-snapshot-corpus.corpus.ts')
+    const plan = planForkCi(input)
+    expect(plan.snapshots).toEqual(['scripts/session-snapshot-corpus.corpus.ts'])
+    expect(plan.build).toBe(true)
+    expect(plan.scripts).toEqual([])
+  })
+
   it('selects subprocess CLI regressions that have no static import of their entry point', () => {
     const input = fixture(['scripts/verify-translation-pairing.ts'])
     input.files.push('scripts/verify-translation-pairing.ts', 'scripts/translation-pairing.spec.ts', 'scripts/git-submodules.spec.ts')
