@@ -3,11 +3,13 @@
 export const zh = {
   'settingsNav': '账号池',
   'title': '内置账号池',
+  // TODO(unused-locale): no Client t() call site; delete with the English pair if still unused.
   'workspaceTitle': '认证文件与配额管理',
   'viewQuota': '查看配额',
   'starting': '正在启动本机核心…',
   'running': '运行中',
   'cancel': '取消',
+  // TODO(unused-locale): no Client t() call site after Host-owned browser open; delete with the English pair if still unused.
   'retry': '重试',
   'close': '关闭',
   'credentialsCount': '共 {count} 个凭证',

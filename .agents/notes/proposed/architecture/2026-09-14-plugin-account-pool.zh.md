@@ -12,7 +12,7 @@ Desktop 用户需要在常规设置和模型选择流程中管理供应商账号
 
 完整功能实现在 `product/packages/account-pool`，作为单一产品自有包 `@gestaltrun/dsh-account-pool`。其内部 service、provider、RPC、client 和 quota 模块保持各自职责，不增加上游工作区包。该包声明自己的 bundle，仅使用既有公共依赖。它通过 `ctx.llm` 注册稳定的 `gestalt-account-pool` LLM（大语言模型）供应商；每个活动请求保留所属进程代次的私有推理权限。
 
-Desktop 默认包含该组合。Web 可以显式选择同一 bundle。账号池 UI 拥有独立设置页，并向既有模型页页脚贡献只读的活动路由信息。页脚不增加导航回调，用户通过既有设置导航进入账号池。账号池不修改模型中心或设置导航 API，不写入 `llm-pi-ai` 设置命名空间，不恢复已移除的桌面客户端包，也不新增账号管理 Electron IPC。
+Desktop 默认包含该组合。Web 可以显式选择同一 bundle。账号池 UI 拥有独立设置页。用户通过既有设置导航进入账号池。该包通过 `ctx.llm` 注册 `gestalt-account-pool`，并在模型中心 `managedProviders` 中预留该路由，避免通用 PiAi 适配器认领空目录。账号池不向模型页页脚注入文案，不修改模型中心或设置导航 API，不写入 `llm-pi-ai` 设置命名空间，不恢复已移除的桌面客户端包，也不新增账号管理 Electron IPC。
 
 持久账号配置和凭据存储必须在进程代次停止后保留。尤其是 GLM 账号变更，必须在实现再次启动时恢复；代次清理删除临时进程文件，不删除已提交的账号配置。渲染器只接收账号摘要和类型化操作，不接收管理凭据、推理密钥或通用管理 URL。
 

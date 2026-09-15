@@ -23,7 +23,7 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
-The account-pool Settings section owns login, account enablement, fields, model lists, quota refresh, and explicit credential-file download. Starting a device or PKCE login, and retrying Open authorization in browser, asks the Host to open the HTTPS authorization URL in the system browser. The Models footer shows read-only route information; the existing Settings navigation opens account management. Unknown, unsupported, failed, and stale quota observations remain distinct.
+The account-pool Settings section owns login, account enablement, fields, model lists, quota refresh, and explicit credential-file download. Starting a device or PKCE login, and retrying Open authorization in browser, asks the Host to open the HTTPS authorization URL in the system browser. The existing Settings navigation opens account management. Unknown, unsupported, failed, and stale quota observations remain distinct.
 
 Kimi's usage summary follows the provider's [seven-day quota](https://www.kimi.com/help/kimi-code/benefits); its time needle uses that period when the response omits window metadata. Valid explicit metadata takes precedence. Invalid metadata or a missing reset instant leaves the time needle absent; display labels never supply a period.
 

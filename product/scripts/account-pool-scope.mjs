@@ -15,6 +15,7 @@ const desktopFiles = new Set([
 ])
 const planning = [
   '.agents/notes/proposed/architecture/2026-09-14-plugin-account-pool',
+  '.agents/notes/proposed/simplification/2026-09-15-account-pool-reuse-quota-observer',
   '.agents/notes/implemented/bug-fix/2026-09-15-account-pool-host-authorization-open',
   'docs/scratch/2026-09-14-account-pool-migration',
 ]

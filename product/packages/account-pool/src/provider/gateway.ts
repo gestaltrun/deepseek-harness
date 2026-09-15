@@ -449,6 +449,7 @@ export class CLIProxyAccountPool extends AccountPool {
       ...!signals?.success ? {} : { quotaSignals: { signals: signals.data,
         ...quota.success && typeof quota.data.observed_at === 'string' ? { observedAt: quota.data.observed_at } : {} } },
     }
+    // TODO(reuse-observer): reconstructs a generation-scoped factory per account; see 2026-09-15-account-pool-reuse-quota-observer.
     const observation = await createQuotaObserver({ transport: { request: async request => {
       const payload = parseInput(recordSchema, await this.json(generation, 'POST', 'api-call', {
         auth_index: request.authIndex, method: request.method, url: request.url, header: request.headers,
