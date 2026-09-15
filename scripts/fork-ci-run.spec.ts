@@ -1,8 +1,22 @@
 /** Selected jobs and test invocations must supply actual passing evidence. */
 import { describe, expect, it } from 'vitest'
-import { qualityLintFiles, verifyForkCiResults, verifyTestExecution } from './fork-ci-run.ts'
+import { chunkCommandTargets, qualityLintFiles, verifyForkCiResults, verifyTestExecution } from './fork-ci-run.ts'
 
 describe('fork CI verdict', () => {
+  it('keeps Windows command-line batches under the argument budget', () => {
+    expect(chunkCommandTargets([])).toEqual([])
+    expect(chunkCommandTargets(['apps/cli', 'apps/desktop'], 21)).toEqual([['apps/cli', 'apps/desktop']])
+    expect(chunkCommandTargets(['apps/cli', 'apps/desktop', 'apps/web'], 21)).toEqual([
+      ['apps/cli', 'apps/desktop'],
+      ['apps/web'],
+    ])
+    const family = Array.from({ length: 280 }, (_, index) => `packages/group/pkg-${String(index).padStart(3, '0')}`)
+    const batches = chunkCommandTargets(family)
+    expect(batches.flat()).toEqual(family)
+    expect(batches.every(batch => batch.join(' ').length <= 6000)).toBe(true)
+    expect(batches.length).toBeGreaterThan(1)
+  })
+
   it('lints a changed static owner routed from Desktop to quality', () => {
     expect(qualityLintFiles({
       changed: ['apps/desktop/tests/desktop-release-workflow.spec.ts', 'apps/desktop/tests/package.spec.ts'],

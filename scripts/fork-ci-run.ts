@@ -49,6 +49,34 @@ export function verifyTestExecution(report: {
   }
 }
 
+/** Keep CreateProcess and cmd.exe argument lists under Windows' command-line limit. */
+export const WINDOWS_SAFE_ARG_BUDGET = 6000
+
+/**
+ * Split path arguments so each pnpm invocation stays under the Windows command-line budget.
+ * @param targets - Repository-relative paths to pass as trailing arguments.
+ * @param budget - Maximum joined length of those trailing arguments, in characters.
+ * @returns Non-empty batches that preserve `targets` order.
+ */
+export function chunkCommandTargets(targets: readonly string[], budget = WINDOWS_SAFE_ARG_BUDGET): string[][] {
+  if (targets.length === 0) return []
+  const batches: string[][] = []
+  let current: string[] = []
+  let used = 0
+  for (const target of targets) {
+    const extra = target.length + (current.length === 0 ? 0 : 1)
+    if (current.length > 0 && used + extra > budget) {
+      batches.push(current)
+      current = []
+      used = 0
+    }
+    current.push(target)
+    used += current.length === 1 ? target.length : extra
+  }
+  if (current.length > 0) batches.push(current)
+  return batches
+}
+
 function command(args: string[], env: NodeJS.ProcessEnv = {}): void {
   const invocation = pnpmInvocation(args)
   console.log(`pnpm ${args.join(' ')}`)
@@ -59,21 +87,27 @@ function command(args: string[], env: NodeJS.ProcessEnv = {}): void {
 
 function tests(files: string[], config = 'vitest.config.ts', coverage: string[] = [], requireFiles = false): void {
   if (files.length === 0) return
-  const scratch = mkdtempSync(join(tmpdir(), 'dsh-fork-ci-'))
-  try {
-    const output = join(scratch, 'vitest.json')
-    command(['exec', 'vitest', 'run', '--config', config, ...files,
-      ...(coverage.length ? ['--coverage', ...coverage.map(path => `--coverage.include=${path}`)] : []),
-      '--reporter=default', '--reporter=json', `--outputFile.json=${output}`], { DSH_SNAPSHOT: 'replay' })
-    verifyTestExecution(JSON.parse(readFileSync(output, 'utf8')) as Parameters<typeof verifyTestExecution>[0], requireFiles ? files : [])
-  } finally {
-    rmSync(scratch, { recursive: true, force: true })
+  const prefix = ['exec', 'vitest', 'run', '--config', config,
+    ...(coverage.length ? ['--coverage', ...coverage.map(path => `--coverage.include=${path}`)] : []),
+    '--reporter=default', '--reporter=json']
+  const budget = Math.max(1, WINDOWS_SAFE_ARG_BUDGET - prefix.join(' ').length)
+  for (const batch of chunkCommandTargets(files, budget)) {
+    const scratch = mkdtempSync(join(tmpdir(), 'dsh-fork-ci-'))
+    try {
+      const output = join(scratch, 'vitest.json')
+      command([...prefix, `--outputFile.json=${output}`, ...batch], { DSH_SNAPSHOT: 'replay' })
+      verifyTestExecution(JSON.parse(readFileSync(output, 'utf8')) as Parameters<typeof verifyTestExecution>[0], requireFiles ? batch : [])
+    } finally {
+      rmSync(scratch, { recursive: true, force: true })
+    }
   }
 }
 
 function lintPackages(plan: ForkCiPlan): void {
   const targets = [...plan.affectedPackages, ...plan.scripts].filter(path => !path.startsWith('native/') && !path.startsWith('vendor/'))
-  if (targets.length) command(['exec', 'tsx', 'scripts/run-oxlint.ts', ...targets])
+  const prefix = ['exec', 'tsx', 'scripts/run-oxlint.ts']
+  const budget = Math.max(1, WINDOWS_SAFE_ARG_BUDGET - prefix.join(' ').length)
+  for (const batch of chunkCommandTargets(targets, budget)) command([...prefix, ...batch])
 }
 
 /** Select changed TypeScript files whose checks execute in the quality lane.
