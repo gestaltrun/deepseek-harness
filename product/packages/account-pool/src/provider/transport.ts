@@ -79,7 +79,7 @@ export class GenerationTransport {
    */
   management(method: CoreMethod, path: string, body?: string, caller?: AbortSignal): Promise<CoreResponse> {
     const url = new URL(path, this.origin)
-    const definitions = method === 'GET' && /^\/v0\/management\/model-definitions\/(claude|codex|antigravity|kimi|xai)$/u.test(url.pathname)
+    const definitions = method === 'GET' && /^\/v0\/management\/model-definitions\/(claude|codex|antigravity|kimi|xai|glm)$/u.test(url.pathname)
     if (url.origin !== this.origin || !(definitions || MANAGEMENT_PATHS[url.pathname]?.includes(method))) {
       return Promise.reject(new AccountPoolError('invalid-input', 'The management request is outside the account operations.'))
     }

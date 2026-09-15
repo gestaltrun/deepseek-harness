@@ -17,9 +17,11 @@ describe('account browser actions', () => {
       return new Response(null, { status: 204 })
     })
     vi.stubGlobal('fetch', fetcher)
-    await openAuthorization('https://login.example/authorize?state=fixture')
+    const signal = new AbortController().signal
+    await openAuthorization('https://login.example/authorize?state=fixture', signal)
     expect(open).not.toHaveBeenCalled()
     expect(fetcher).toHaveBeenCalledTimes(1)
+    expect(fetcher.mock.calls[0]?.[1]).toMatchObject({ signal })
     await expect(openAuthorization('javascript:alert(1)')).rejects.toThrow('HTTPS')
     await expect(openAuthorization('https://user:secret@login.example')).rejects.toThrow('HTTPS')
     expect(fetcher).toHaveBeenCalledTimes(1)
@@ -29,5 +31,20 @@ describe('account browser actions', () => {
     vi.spyOn(window, 'open').mockImplementation(() => null)
     vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 502 })))
     await expect(openAuthorization('https://login.example/authorize')).rejects.toThrow('HTTP 502')
+  })
+
+  it('aborts the Host authorization fetch when the plugin lifetime ends', async () => {
+    const lifetime = new AbortController()
+    const fetcher = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.signal).toBe(lifetime.signal)
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => { reject(new DOMException('The operation was aborted.', 'AbortError')) }, { once: true })
+      })
+    })
+    vi.stubGlobal('fetch', fetcher)
+    const pending = openAuthorization('https://login.example/authorize', lifetime.signal)
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1))
+    lifetime.abort()
+    await expect(pending).rejects.toThrow()
   })
 })

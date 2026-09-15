@@ -51,9 +51,19 @@ function bench() {
       } as unknown as RemoteStream<Item>
     },
   }
-  const controller = new AccountPoolClientController(remote, { openExternal: async () => {} })
+  const opened: AbortSignal[] = []
+  const controller = new AccountPoolClientController(remote, {
+    openExternal: async (_url, signal) => {
+      opened.push(signal)
+      await new Promise<void>((resolve, reject) => {
+        if (signal.aborted) { reject(signal.reason instanceof Error ? signal.reason : new Error('aborted')); return }
+        const stop = () => { reject(signal.reason instanceof Error ? signal.reason : new Error('aborted')) }
+        signal.addEventListener('abort', stop, { once: true })
+      })
+    },
+  })
   controllers.push(controller)
-  return { remote, controller, write: (snapshot: AccountPoolSnapshot) => { writeSnapshot?.(snapshot) }, watchStopped }
+  return { remote, controller, opened, write: (snapshot: AccountPoolSnapshot) => { writeSnapshot?.(snapshot) }, watchStopped }
 }
 
 describe('account-pool Client controller', () => {
@@ -89,5 +99,15 @@ describe('account-pool Client controller', () => {
     await expect(controller.actions.setEnabled('test.json' as AccountPoolAccountName, false)).rejects.toThrow('Write denied')
     await controller.dispose()
     await expect(controller.actions.refresh()).rejects.toThrow()
+  })
+
+  it('cancels an in-flight authorization open so disposal does not wait for Host fetch', async () => {
+    const { controller, opened } = bench()
+    const opening = controller.actions.openExternal('https://login.example/authorize')
+    await vi.waitFor(() => expect(opened).toHaveLength(1))
+    expect(opened[0]!.aborted).toBe(false)
+    await controller.dispose()
+    expect(opened[0]!.aborted).toBe(true)
+    await expect(opening).rejects.toThrow()
   })
 })

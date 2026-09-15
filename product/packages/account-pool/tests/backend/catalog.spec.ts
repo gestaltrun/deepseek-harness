@@ -11,4 +11,8 @@ it('rejects malformed rows while preserving genuinely unknown capabilities and e
     max_completion_tokens: 64000, supportedInputModalities: ['TEXT', 'IMAGE'] }] })
   expect(mergeAccountPoolCatalogs(primary, metadata)).toEqual([{ id: 'model', contextWindow: 128000,
     maxTokens: 64000, input: ['text', 'image'], reasoningEfforts: { high: 'high', max: 'ultra' }, defaultReasoningLevel: 'max' }])
+  expect(parseAccountPoolCatalog({ models: [{ id: 'glm-5.3', thinking: { levels: ['low', 'high', 'max'] },
+    supportedInputModalities: ['text', 'image'] }] })).toEqual([{
+    id: 'glm-5.3', input: ['text', 'image'], reasoningEfforts: { low: 'low', high: 'high', max: 'max' },
+  }])
 })

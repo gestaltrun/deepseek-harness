@@ -43,7 +43,7 @@ function execute(specifier: string): void {
   runInThisContext(readFileSync(path, 'utf8'), { filename: path })
 }
 
-function createModules(): ClientModuleSystem {
+function createModules(): { modules: ClientModuleSystem; loaded: string[] } {
   const previous = Object.getOwnPropertyDescriptor(window, '__ModuleLoader__')
   const queue: ClientBundleRegistration[] = []
   const target: ClientModuleLoaderTarget = {
@@ -62,6 +62,7 @@ function createModules(): ClientModuleSystem {
   const api = bootstrap as typeof import('@deepseek-ai/dsh-client-modules/client')
   const ids = [moduleId, rendererId, localeId, hmrId, gatewayId, id]
   const rows = ids.map((name, index) => ({ id: name, url: `/client/${index}.js?rev=1`, rev: '1' }))
+  const loaded: string[] = []
   const modules = api.createClientModuleSystem(target, { id: moduleId, exports: bootstrap }, {
     boot: { rev: '1', entries: rows, batches: rows.map(row => ({ phase: 'application', url: row.url, rev: '1', entries: [row.id] })) },
     staticModules: {
@@ -70,10 +71,12 @@ function createModules(): ClientModuleSystem {
       '@deepseek-ai/dsh-client-ui-slots': Slots, '@deepseek-ai/dsh-client-ui-primitives': Primitives,
     },
     loadBundle: async url => {
-      const path = new URL(url, 'https://client.test').pathname
-      const row = rows.find(candidate => new URL(candidate.url, 'https://client.test').pathname === path)
-      if (row === undefined) throw new Error(`Unexpected Client bundle ${path}`)
+      loaded.push(url)
+      const parsed = new URL(url, 'https://client.test')
+      const row = rows.find(candidate => new URL(candidate.url, 'https://client.test').pathname === parsed.pathname)
+      if (row === undefined) throw new Error(`Unexpected Client bundle ${parsed.pathname}`)
       execute(`${row.id}/client`)
+      if (row.id === id) Object.assign(globalThis, { __ACCOUNT_POOL_CLIENT_REV: parsed.searchParams.get('rev') ?? '' })
     },
   })
   cleanups.push(() => {
@@ -82,16 +85,30 @@ function createModules(): ClientModuleSystem {
       for (const style of document.querySelectorAll(`style[data-plugin="${name}"]`)) style.remove()
     }
   })
-  return modules
+  return { modules, loaded }
+}
+
+const firstSnapshot: AccountPoolSnapshot = { state: 'ready', accounts: [] }
+const reloadedSnapshot: AccountPoolSnapshot = {
+  state: 'ready',
+  accounts: [{
+    ref: 'oauth:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' as AccountPoolSnapshot['accounts'][number]['ref'],
+    name: 'glm-fixture.json' as AccountPoolSnapshot['accounts'][number]['name'],
+    provider: 'glm', label: 'GLM Coding Plan', status: 'active', enabled: true, quota: [],
+    quotaState: { status: 'unobserved', stale: false },
+    capabilities: { models: 'provider', quota: true, editableFields: [] },
+  }],
 }
 
 async function provideRemote(ctx: Cordis.Context, modules: ClientModuleSystem) {
-  const ready: AccountPoolSnapshot = { state: 'ready', accounts: [] }
+  const snapshots = [firstSnapshot, reloadedSnapshot]
+  let generation = 0
   const stopped = vi.fn()
   const open = vi.fn<NonNullable<ConnectionHandle['rpc']['open']>>((_channel, endpoint, _payload, signal) => (async function* () {
     if (endpoint !== 'accountPool/watch') throw new Error(`Unexpected stream ${endpoint}`)
+    const snapshot = snapshots[Math.min(generation++, snapshots.length - 1)]!
     try {
-      yield ready
+      yield snapshot
       await new Promise<void>(resolve => {
         if (signal.aborted) resolve()
         else signal.addEventListener('abort', () => { resolve() }, { once: true })
@@ -126,7 +143,7 @@ describe('built account-pool Client plugin', () => {
       close(): void { this.closed = true }
     }
     vi.stubGlobal('EventSource', Source)
-    const modules = createModules()
+    const { modules, loaded } = createModules()
     const renderer = await modules.import(`${rendererId}/client`) as typeof import('@deepseek-ai/dsh-client-ui-renderer/client')
     const locales = await modules.import(`${localeId}/client`) as typeof import('@deepseek-ai/dsh-client-locale/client')
     const hmr = await modules.import(`${hmrId}/client`) as typeof import('@deepseek-ai/dsh-client-hmr/client')
@@ -155,19 +172,26 @@ describe('built account-pool Client plugin', () => {
     expect(ctx.slots.entries('settings.section').map(item => item.options.id)).toEqual(['account-pool'])
     expect(ctx.slots.entries('settings.models.footer')).toEqual([])
     const firstFace = (ctx.slots.entries('settings.section')[0]!.inject as unknown as () => AccountPoolInjected)()
-    await vi.waitFor(() => expect(firstFace.hooks.accountPool.getSnapshot()).toEqual({ state: 'ready', accounts: [] }))
+    await vi.waitFor(() => expect(firstFace.hooks.accountPool.getSnapshot()).toEqual(firstSnapshot))
     expect(locale.bind('accountPool')('settingsNav')).toBe('Account pool')
     expect(remote.call).not.toHaveBeenCalled()
+    expect((globalThis as { __ACCOUNT_POOL_CLIENT_REV?: string }).__ACCOUNT_POOL_CLIENT_REV).toBe('1')
 
     sources[0]!.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'rebuilt', id, rev: '2' }) }))
     await vi.waitFor(() => expect(remote.open).toHaveBeenCalledTimes(2))
     await entry.fiber?.await()
     expect(entry.fiber).not.toBe(firstFiber)
     expect(remote.stopped).toHaveBeenCalledTimes(1)
+    expect(loaded.some(url => new URL(url, 'https://client.test').searchParams.get('rev') === '2')).toBe(true)
+    expect((globalThis as { __ACCOUNT_POOL_CLIENT_REV?: string }).__ACCOUNT_POOL_CLIENT_REV).toBe('2')
     expect(firstStyles.every(style => !style.isConnected)).toBe(true)
     expect(document.querySelectorAll(`style[data-plugin="${id}"]`)).toHaveLength(firstStyles.length)
     expect(ctx.slots.entries('settings.section').map(item => item.options.id)).toEqual(['account-pool'])
     expect(ctx.slots.entries('settings.models.footer')).toEqual([])
+    const secondFace = (ctx.slots.entries('settings.section')[0]!.inject as unknown as () => AccountPoolInjected)()
+    expect(secondFace).not.toBe(firstFace)
+    await vi.waitFor(() => expect(secondFace.hooks.accountPool.getSnapshot()).toEqual(reloadedSnapshot))
+    expect(firstFace.hooks.accountPool.getSnapshot()).toEqual(firstSnapshot)
 
     await ctx.loader.remove(entryId)
     expect(ctx.slots.entries('settings.section')).toEqual([])

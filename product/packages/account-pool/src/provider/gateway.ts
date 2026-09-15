@@ -29,7 +29,7 @@ const QUOTA_PROVIDER: Readonly<Record<string, QuotaProvider>> = {
   anthropic: 'claude', claude: 'claude', codex: 'codex', antigravity: 'antigravity', kimi: 'kimi', xai: 'xai', glm: 'glm',
 }
 const DEFINITION_CHANNEL: Readonly<Record<string, string>> = {
-  anthropic: 'claude', claude: 'claude', codex: 'codex', antigravity: 'antigravity', kimi: 'kimi', xai: 'xai',
+  anthropic: 'claude', claude: 'claude', codex: 'codex', antigravity: 'antigravity', kimi: 'kimi', xai: 'xai', glm: 'glm',
 }
 interface QuotaCache { latest: QuotaObservation; successful?: QuotaObservation }
 interface LoginOperation { readonly controller: AbortController; readonly generation: Generation; readonly kind: AccountPoolLoginKind; state?: AccountPoolLoginState }

@@ -126,11 +126,16 @@ function modalities(value: unknown): readonly ('text' | 'image')[] | undefined {
 
 function reasoningProfile(record: Record<string, unknown>): Pick<AccountPoolCatalogModel, 'reasoningEfforts' | 'defaultReasoningLevel'> {
   if (record.reasoning === false) return { reasoningEfforts: false }
+  const thinking = record.thinking !== null && typeof record.thinking === 'object' && !Array.isArray(record.thinking)
+    ? record.thinking as Record<string, unknown>
+    : undefined
   const levels = Array.isArray(record.supported_reasoning_levels)
     ? record.supported_reasoning_levels
     : Array.isArray(record.reasoning_efforts)
       ? record.reasoning_efforts
-      : undefined
+      : Array.isArray(thinking?.levels)
+        ? thinking.levels
+        : undefined
   if (levels === undefined) return {}
   const efforts: Record<string, string | null> = {}
   for (const entry of levels) {

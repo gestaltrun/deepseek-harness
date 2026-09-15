@@ -8,7 +8,7 @@ import type { AccountPoolClientActions } from './contract.ts'
 
 type Remote = Pick<ClientRemote, 'accountPool' | '$stream'>
 type Navigation = {
-  openExternal(url: string): Promise<void>
+  openExternal(url: string, signal: AbortSignal): Promise<void>
 }
 
 /** Owns the Remote stream and in-flight commands for one Client plugin fiber. */
@@ -41,7 +41,7 @@ export class AccountPoolClientController {
       listModels: (name, signal) => this.call(next => rpc.listModels(name, next), signal),
       readFields: (name, signal) => this.call(next => rpc.readFields(name, next), signal),
       patchFields: (name, fields, signal) => this.call(next => rpc.patchFields(name, fields, next), signal),
-      openExternal: url => this.track(() => navigation.openExternal(url)),
+      openExternal: url => this.track(() => navigation.openExternal(url, this.lifetime.signal)),
     }
     this.stream = remote.$stream<AccountPoolSnapshot>({
       name: 'Account-pool observations',
