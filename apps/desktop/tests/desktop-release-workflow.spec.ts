@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const workflow = readFileSync(join(process.cwd(), '.github/workflows/desktop-release.yml'), 'utf8')
+const packageTarget = readFileSync(join(process.cwd(), 'apps/desktop/scripts/package-target.ts'), 'utf8')
 
 describe('Desktop Release workflow', () => {
   it('is manual-only and keeps publication authority out of packaging jobs', () => {
@@ -18,7 +19,21 @@ describe('Desktop Release workflow', () => {
     expect(workflow).toContain('if [[ "$OPERATION" != validate ]]')
     expect(workflow).toContain('git merge-base --is-ancestor "$CANDIDATE_SHA"')
     expect(workflow).not.toContain('--config.mac.identity=null')
-    expect(workflow).not.toContain('package:desktop:win:x64:unsigned')
+    const signedWindows = workflow.slice(workflow.indexOf('  pack-win:'), workflow.indexOf('  pack-win-unsigned:'))
+    expect(signedWindows).not.toContain('package:desktop:win:x64:unsigned')
+  })
+
+  it('offers a test-only unsigned Windows manual installer operation', () => {
+    expect(workflow).toContain('          - windows-unsigned')
+    expect(workflow).toContain('if [[ "$OPERATION" == windows-unsigned && "$DEPLOYMENT" != test ]]')
+    const unsigned = workflow.slice(workflow.indexOf('  pack-win-unsigned:'), workflow.indexOf('  publish:'))
+    expect(unsigned).toContain("if: ${{ inputs.operation == 'windows-unsigned' }}")
+    expect(unsigned).toContain('pnpm run package:desktop:win:x64:unsigned')
+    expect(unsigned).toContain('unsigned-artifacts/*.exe')
+    expect(unsigned).toContain('desktop-win-x64-unsigned-manual')
+    expect(unsigned).not.toContain('DSH_DESKTOP_AUTO_UPDATE_ENV')
+    expect(unsigned).not.toContain('DESKTOP_RELEASE_WINDOWS_CER_BASE64')
+    expect(unsigned).not.toContain('upload:win:x64')
   })
 
   it('uses the API-key notarization strategy and cleans the temporary key', () => {
@@ -27,6 +42,21 @@ describe('Desktop Release workflow', () => {
     expect(workflow).toContain('APPLE_API_ISSUER')
     expect(workflow).not.toContain('APPLE_APP_SPECIFIC_PASSWORD')
     expect(workflow).toContain('rm -f "$APPLE_API_KEY"')
+  })
+
+  it('imports the Developer ID certificate before the package command signs native runtime files', () => {
+    const certificateImport = workflow.indexOf('      - name: Import Developer ID certificate')
+    const packageCommand = workflow.indexOf('      - name: Package signed and notarized application')
+    const importStep = workflow.slice(certificateImport, packageCommand)
+    expect(certificateImport).toBeGreaterThan(0)
+    expect(packageCommand).toBeGreaterThan(certificateImport)
+    expect(importStep).toContain(
+      'uses: apple-actions/import-codesign-certs@5142e029c445c10ffc7149d172e540235a065466 # v7.0.0',
+    )
+    expect(importStep).toContain('p12-file-base64: ${{ secrets.CSC_LINK }}')
+    expect(importStep).toContain('p12-password: ${{ secrets.CSC_KEY_PASSWORD }}')
+    expect(packageTarget.indexOf("await runPnpm(['run', 'prepare:dsh'], targetEnv)"))
+      .toBeLessThan(packageTarget.indexOf('desktopElectronBuilderArguments(target, true)'))
   })
 
   it('maps only the reviewed package and OSS network timeouts', () => {
@@ -50,8 +80,15 @@ describe('Desktop Release workflow', () => {
     expect(immutable).toBeGreaterThan(0)
     expect(channel).toBeGreaterThan(immutable)
     const immutableStep = workflow.slice(immutable, workflow.indexOf('      - name:', immutable + 20))
-    expect(immutableStep).toContain('upload:mac:arm64 -- --phase immutable')
-    expect(immutableStep).toContain('upload:mac:x64 -- --phase immutable')
-    expect(immutableStep).toContain('upload:win:x64 -- --phase immutable')
+    expect(immutableStep).toContain('upload:mac:arm64 --phase immutable')
+    expect(immutableStep).toContain('upload:mac:x64 --phase immutable')
+    expect(immutableStep).toContain('upload:win:x64 --phase immutable')
+    expect(immutableStep).not.toContain('-- --phase')
+
+    const channelStep = workflow.slice(channel, workflow.indexOf('      - name:', channel + 20))
+    expect(channelStep).toContain('upload:mac:arm64 --phase channel')
+    expect(channelStep).toContain('upload:mac:x64 --phase channel')
+    expect(channelStep).toContain('upload:win:x64 --phase channel')
+    expect(channelStep).not.toContain('-- --phase')
   })
 })

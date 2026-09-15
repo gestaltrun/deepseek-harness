@@ -116,7 +116,7 @@ pwsh -NoProfile -File apps/desktop/scripts/smoke-windows.ps1 -Electron $Electron
 
 ### Publish updates
 
-The manually dispatched [Desktop Release workflow](../../.github/workflows/desktop-release.yml) accepts an exact commit, the version shared by dsh and Desktop, `test` or `production`, and one of three operations. `validate` performs credential-free request checks. `candidate` accepts a commit contained in `master` and creates signed and notarized artifacts without adding them to an update channel. `publish` applies the same source restriction, uploads the selected targets, and creates a GitHub Release for a production deployment. macOS arm64 and x64 are required targets; Windows x64 remains explicitly selectable and fails unless the configured hardware-backed signing inputs are available.
+The manually dispatched [Desktop Release workflow](../../.github/workflows/desktop-release.yml) accepts an exact commit, the version shared by dsh and Desktop, `test` or `production`, and one of four operations. `validate` performs credential-free request checks. `candidate` accepts a commit contained in `master` and creates signed and notarized artifacts without adding them to an update channel. `publish` applies the same source restriction, uploads the selected signed targets, and creates a GitHub Release for a production deployment. `windows-unsigned` accepts a commit contained in `master` and produces a Windows x64 installer as a short-lived Actions artifact for manual installation; it requires the `test` deployment and never uploads OSS metadata or creates a GitHub Release. macOS arm64 and x64 are required targets for signed operations; signed Windows x64 remains explicitly selectable and fails unless the configured hardware-backed signing inputs are available.
 
 `DSH_DESKTOP_AUTO_UPDATE_ENV` selects the public generic feed embedded during packaging. Each deployment supplies a public feed root and matching OSS object prefix:
 
@@ -145,7 +145,7 @@ On Windows x64, use the complete unsigned packaging command for local installati
 pnpm run package:desktop:win:x64:unsigned
 ```
 
-The command requires `DSH_DESKTOP_APP_ID` and the normal build dependencies, including Python and Visual C++ build tools for native modules. Set `PYTHON` to the Python executable when it is absent from `PATH`. It writes the installer to `.desktop-build/targets/win-x64/unsigned-artifacts/`, omits automatic-update configuration, strips signing credentials, and creates no release completion record. It does not require EV credentials or an update origin. The signed packaging and upload commands retain their release requirements.
+The command requires `DSH_DESKTOP_APP_ID` and the normal build dependencies, including Python and Visual C++ build tools for native modules. Set `PYTHON` to the Python executable when it is absent from `PATH`. It writes the installer to `.desktop-build/targets/win-x64/unsigned-artifacts/`, omits automatic-update configuration, strips signing credentials, and creates no release completion record. It does not require EV credentials or an update origin. The workflow's `windows-unsigned` operation runs this same command on the controlled Windows runner and exposes only the installer as an Actions artifact for manual installation; it rejects `production` and does not call the OSS uploader. The signed packaging and upload commands retain their release requirements.
 
 ### Windows EV signing
 

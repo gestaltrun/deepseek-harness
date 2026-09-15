@@ -1,4 +1,4 @@
-# Build signed DeepSeek Gestalt candidates and optionally publish the standard update feed.
+# Build signed DeepSeek Gestalt candidates, publish the standard update feed, or produce a Windows manual installer.
 name: Desktop Release
 
 on:
@@ -13,7 +13,7 @@ on:
         required: true
         type: string
       operation:
-        description: Validate inputs, build a signed candidate, or publish it.
+        description: Validate inputs, build a signed candidate, publish it, or build an unsigned Windows manual installer.
         required: true
         type: choice
         default: validate
@@ -21,8 +21,9 @@ on:
           - validate
           - candidate
           - publish
+          - windows-unsigned
       deployment:
-        description: Update feed embedded in the application and selected for publication.
+        description: Update feed embedded in the signed application and selected for publication. Unsigned Windows runs require test.
         required: true
         type: choice
         default: test
@@ -67,10 +68,15 @@ jobs:
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}
           DESKTOP_VERSION: ${{ inputs.version }}
           OPERATION: ${{ inputs.operation }}
+          DEPLOYMENT: ${{ inputs.deployment }}
         run: |
           set -euo pipefail
           [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          if [[ "$OPERATION" == windows-unsigned && "$DEPLOYMENT" != test ]]; then
+            echo 'windows-unsigned requires test deployment; unsigned installers are manual-install artifacts only' >&2
+            exit 1
+          fi
           test "$(node -p "require('./package.json').version")" = "$DESKTOP_VERSION"
           test "$(node -p "require('./apps/desktop/package.json').version")" = "$DESKTOP_VERSION"
           if [[ "$OPERATION" != validate ]]; then
@@ -104,7 +110,7 @@ jobs:
   pack-mac:
     name: Package macOS ${{ matrix.arch }}
     needs: prepare
-    if: ${{ inputs.operation != 'validate' }}
+    if: ${{ inputs.operation != 'validate' && inputs.operation != 'windows-unsigned' }}
     runs-on: ${{ matrix.runner }}
     environment: desktop-release
     strategy:
@@ -135,6 +141,12 @@ jobs:
 
       - name: Install immutable workspace
         run: pnpm install --frozen-lockfile
+
+      - name: Import Developer ID certificate
+        uses: apple-actions/import-codesign-certs@5142e029c445c10ffc7149d172e540235a065466 # v7.0.0
+        with:
+          p12-file-base64: ${{ secrets.CSC_LINK }}
+          p12-password: ${{ secrets.CSC_KEY_PASSWORD }}
 
       - name: Materialize App Store Connect API key
         env:
@@ -185,7 +197,7 @@ jobs:
   pack-win:
     name: Package Windows x64
     needs: prepare
-    if: ${{ inputs.operation != 'validate' && inputs.include_windows }}
+    if: ${{ inputs.operation != 'validate' && inputs.operation != 'windows-unsigned' && inputs.include_windows }}
     runs-on: [self-hosted, windows, x64, dsh-win-ci]
     environment: desktop-release
     steps:
@@ -241,6 +253,49 @@ jobs:
             apps/desktop/.desktop-build/targets/win-x64/artifacts/*.exe
             apps/desktop/.desktop-build/targets/win-x64/artifacts/*.yml
             apps/desktop/.desktop-build/targets/win-x64/artifacts/win-x64-release.json
+          if-no-files-found: error
+          retention-days: 14
+
+  pack-win-unsigned:
+    name: Package Windows x64 unsigned manual installer
+    needs: prepare
+    if: ${{ inputs.operation == 'windows-unsigned' }}
+    runs-on: windows-latest
+    environment: desktop-dry-run
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Trust the checked-out Windows workspace
+        shell: pwsh
+        run: git config --global --add safe.directory "$($env:GITHUB_WORKSPACE.Replace('\', '/'))"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+
+      - name: Install immutable workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Package unsigned manual installer
+        env:
+          DSH_DESKTOP_APP_ID: ${{ vars.DESKTOP_RELEASE_APP_ID }}
+          PNPM_CONFIG_NETWORK_CONCURRENCY: ${{ vars.DESKTOP_RELEASE_PNPM_NETWORK_CONCURRENCY }}
+          PNPM_CONFIG_FETCH_TIMEOUT: ${{ vars.DESKTOP_RELEASE_PNPM_FETCH_TIMEOUT }}
+        run: pnpm run package:desktop:win:x64:unsigned
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-win-x64-unsigned-manual
+          path: apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.exe
           if-no-files-found: error
           retention-days: 14
 
@@ -314,10 +369,10 @@ jobs:
           DESKTOP_RELEASE_PRODUCTION_FEED_URL: ${{ vars.DESKTOP_RELEASE_PRODUCTION_FEED_URL }}
         run: |
           set -euo pipefail
-          pnpm --filter @deepseek-ai/dsh-desktop upload:mac:arm64 -- --phase immutable
-          pnpm --filter @deepseek-ai/dsh-desktop upload:mac:x64 -- --phase immutable
+          pnpm --filter @deepseek-ai/dsh-desktop upload:mac:arm64 --phase immutable
+          pnpm --filter @deepseek-ai/dsh-desktop upload:mac:x64 --phase immutable
           if [[ '${{ inputs.include_windows }}' == true ]]; then
-            pnpm --filter @deepseek-ai/dsh-desktop upload:win:x64 -- --phase immutable
+            pnpm --filter @deepseek-ai/dsh-desktop upload:win:x64 --phase immutable
           fi
 
       - name: Prepare production GitHub Release
@@ -375,10 +430,10 @@ jobs:
           DESKTOP_RELEASE_PRODUCTION_FEED_URL: ${{ vars.DESKTOP_RELEASE_PRODUCTION_FEED_URL }}
         run: |
           set -euo pipefail
-          pnpm --filter @deepseek-ai/dsh-desktop upload:mac:arm64 -- --phase channel
-          pnpm --filter @deepseek-ai/dsh-desktop upload:mac:x64 -- --phase channel
+          pnpm --filter @deepseek-ai/dsh-desktop upload:mac:arm64 --phase channel
+          pnpm --filter @deepseek-ai/dsh-desktop upload:mac:x64 --phase channel
           if [[ '${{ inputs.include_windows }}' == true ]]; then
-            pnpm --filter @deepseek-ai/dsh-desktop upload:win:x64 -- --phase channel
+            pnpm --filter @deepseek-ai/dsh-desktop upload:win:x64 --phase channel
           fi
 
       - name: Publish GitHub Release
