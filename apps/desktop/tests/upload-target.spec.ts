@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { DesktopUploadArtifact } from '../scripts/desktop-upload-plan.ts'
 import {
+  DESKTOP_IMMUTABLE_UPLOAD_PART_SIZE,
   assertMatchingImmutableDesktopArtifact,
   desktopUploadArtifactsForPhase,
   uploadDesktopArtifact,
@@ -45,7 +46,8 @@ describe('Desktop upload phases', () => {
     const missing = Object.assign(new Error('missing'), { code: 'NoSuchKey', status: 404 })
     const client: DesktopOssObjectClient = {
       head: vi.fn().mockRejectedValueOnce(missing).mockResolvedValueOnce(head()),
-      put: vi.fn().mockResolvedValue({}),
+      put: vi.fn(),
+      multipartUpload: vi.fn().mockResolvedValue({}),
     }
     await uploadDesktopArtifact(client, {
       ...immutable,
@@ -54,13 +56,15 @@ describe('Desktop upload phases', () => {
       cacheControl: 'public, max-age=31536000, immutable',
     })
     expect(client.head).toHaveBeenCalledTimes(2)
-    expect(client.put).toHaveBeenCalledWith(immutable.key, '/release/app.zip', {
+    expect(client.put).not.toHaveBeenCalled()
+    expect(client.multipartUpload).toHaveBeenCalledWith(immutable.key, '/release/app.zip', {
       mime: 'application/zip',
       headers: {
         'cache-control': 'public, max-age=31536000, immutable',
         'x-oss-meta-dsh-sha512': immutable.sha512,
         'x-oss-forbid-overwrite': 'true',
       },
+      partSize: DESKTOP_IMMUTABLE_UPLOAD_PART_SIZE,
     })
   })
 
@@ -68,13 +72,16 @@ describe('Desktop upload phases', () => {
     const immutableClient: DesktopOssObjectClient = {
       head: vi.fn().mockResolvedValue(head()),
       put: vi.fn(),
+      multipartUpload: vi.fn(),
     }
     await uploadDesktopArtifact(immutableClient, immutable)
     expect(immutableClient.put).not.toHaveBeenCalled()
+    expect(immutableClient.multipartUpload).not.toHaveBeenCalled()
 
     const channelClient: DesktopOssObjectClient = {
       head: vi.fn(),
       put: vi.fn().mockResolvedValue({}),
+      multipartUpload: vi.fn(),
     }
     await uploadDesktopArtifact(channelClient, channel)
     expect(channelClient.head).not.toHaveBeenCalled()

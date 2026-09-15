@@ -272,7 +272,7 @@ async function main(): Promise<void> {
   const { target } = invocation
   const buildPaths = desktopTargetBuildPaths(target.name)
   const releaseRecordPath = join(buildPaths.artifacts, desktopBuildRecordFilename(target.name))
-  if (!invocation.prepareOnly && !invocation.unsigned) {
+  if (!invocation.prepareOnly) {
     rmSync(releaseRecordPath, { force: true })
     rmSync(`${releaseRecordPath}.tmp`, { force: true })
   }
@@ -327,7 +327,13 @@ async function main(): Promise<void> {
   } else {
     await runPnpm(desktopElectronBuilderArguments(target, invocation.directory), electronBuilderEnv)
   }
-  if (!invocation.directory && !invocation.unsigned) writeReleaseRecord(target, electronBuilderEnv, buildPaths.artifacts)
+  if (!invocation.directory) {
+    writeReleaseRecord(
+      target,
+      electronBuilderEnv,
+      invocation.unsigned ? join(buildPaths.root, 'unsigned-artifacts') : buildPaths.artifacts,
+    )
+  }
 }
 
 if (process.argv[1] !== undefined && import.meta.filename === resolve(process.argv[1])) await main()

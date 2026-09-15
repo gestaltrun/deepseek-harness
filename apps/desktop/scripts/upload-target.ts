@@ -15,10 +15,18 @@ const SUPPORTED_PHASES = new Set<DesktopUploadPhase>(['all', 'immutable', 'chann
 /** Artifact subset uploaded by one independently retryable publication phase. */
 export type DesktopUploadPhase = 'all' | 'immutable' | 'channel'
 
+/** Part size used for immutable installer and blockmap uploads. */
+export const DESKTOP_IMMUTABLE_UPLOAD_PART_SIZE = 16 * 1024 * 1024
+
 /** OSS object operations used by the ordered release uploader. */
 export interface DesktopOssObjectClient {
   readonly head: (key: string) => Promise<OSS.HeadObjectResult>
   readonly put: (key: string, path: string, options: OSS.PutObjectOptions) => Promise<unknown>
+  readonly multipartUpload: (
+    key: string,
+    path: string,
+    options: OSS.MultipartUploadOptions,
+  ) => Promise<unknown>
 }
 
 function targetName(value: string): DesktopPackageTargetName {
@@ -118,7 +126,15 @@ export async function uploadDesktopArtifact(
     ...(artifact.channelMetadata ? {} : { 'x-oss-forbid-overwrite': 'true' }),
   }
   try {
-    await client.put(artifact.key, artifact.path, { mime: artifact.contentType, headers })
+    if (artifact.channelMetadata) {
+      await client.put(artifact.key, artifact.path, { mime: artifact.contentType, headers })
+    } else {
+      await client.multipartUpload(artifact.key, artifact.path, {
+        mime: artifact.contentType,
+        headers,
+        partSize: DESKTOP_IMMUTABLE_UPLOAD_PART_SIZE,
+      })
+    }
   } catch (error) {
     if (artifact.channelMetadata || !isExistingObject(error)) throw error
     assertMatchingImmutableDesktopArtifact(artifact, await client.head(artifact.key))

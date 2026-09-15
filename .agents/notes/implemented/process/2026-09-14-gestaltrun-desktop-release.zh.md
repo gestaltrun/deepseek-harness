@@ -12,9 +12,9 @@ Gestaltrun fork 可以构建完整的 Desktop 与 dsh 单元，但仓库还不�
 
 ## Decision
 
-保留现有 Desktop 版本绑定和 `electron-updater` 交互。手动触发的工作流验证准确的提交和版本，使用现有签名要求打包必选的 macOS arm64 和 macOS x64 目标，并将不含凭据的未发布候选保留为工作流产物，不会将其加入更新频道。Windows x64 仍可明确选择，但缺少硬件签名输入时会失败。运行时物化只从环境包管理器设置中接收通过验证的 pnpm 网络并发数和获取超时；Desktop 继续控制 registry、身份验证、hook 和包管理器状态。
+保留现有 Desktop 版本绑定和 `electron-updater` 交互。手动触发的工作流验证准确的提交和版本，使用现有签名要求打包必选的 macOS arm64 和 macOS x64 目标，并在每次 `candidate` 和 `publish` 运行中打包未签名 Windows x64 安装包。不含凭据的未发布候选仍保留为工作流产物，不会加入更新频道。签名 Windows x64 仍可明确选择，但缺少硬件签名输入时会失败。运行时物化只从环境包管理器设置中接收通过验证的 pnpm 网络并发数和获取超时；Desktop 继续控制 registry、身份验证、hook 和包管理器状态。
 
-签名候选打包和发布只接受已包含在 `master` 中的提交。macOS 打包钩子会在签名未压缩应用前解析并写入 electron-builder 的标准 updater 配置，因此后续预打包产物会保留该配置。发布任务通过本仓库专用 OIDC 角色取得短期阿里云凭据，使用经过验证且可配置的请求超时将不可变安装包和 blockmap 上传到专用 OSS 前缀，并在最后替换各目标的标准 generic feed 元数据。测试部署与生产部署使用不同的公开前缀。生产发布还会创建一个 `gestalt-v<version>` GitHub Release，其中包含 OSS 下载链接，因此 GitHub Releases 是面向用户的版本列表。
+签名候选打包和发布只接受已包含在 `master` 中的提交。macOS 打包钩子会在签名未压缩应用前解析并写入 electron-builder 的标准 updater 配置，因此后续预打包产物会保留该配置。发布任务通过本仓库专用 OIDC 角色取得短期阿里云凭据，使用 OSS 分片上传和经过验证且可配置的单次请求超时将不可变安装包和 blockmap 上传到专用 OSS 前缀，并在最后替换各目标的标准 generic feed 元数据。测试部署与生产部署使用不同的公开前缀。生产发布还会创建一个 `gestalt-v<version>` GitHub Release，其中包含 OSS 下载链接，因此 GitHub Releases 是面向用户的版本列表。[未签名 Windows 必选决策](2026-09-15-desktop-unsigned-windows-required.zh.md)负责 Windows 安装包进入该 feed 的时机。
 
 DeepSeek Gestalt 使用现有参考图标和应用名称。打包元数据根据应用 ID 生成内部名称，因此 Electron updater cache 不会复用工作区包身份；可见菜单继续使用本地化产品文案。更新协调器、确认对话框、下载流程、Host 停止、安装和重启行为保持不变。
 
@@ -29,11 +29,11 @@ DeepSeek Gestalt 使用现有参考图标和应用名称。打包元数据根据
 ## Verification
 
 - 无凭据检查验证触发参数、目标覆盖、产物名称、校验和、对象顺序和版本链接。
-- macOS 发布要求签名和公证。选择 Windows 时要求现有的硬件签名输入；省略该目标时，Release 的目标列表只包含 Mac。
+- macOS 发布要求签名和公证。每次 `candidate` 和 `publish` 运行都必须打包未签名 Windows，并将其上传到所选 OSS feed。选择签名 Windows 时要求现有的硬件签名输入，并替换未签名 Windows 对象。
 - 打包任务不会收到 OSS 凭据，发布任务不会接受 `master` 之外的提交。
 - 在替换任何所选频道元数据之前，所有所选目标的不可变载荷都已存在。
 - 测试发布不创建 GitHub Release；生产发布创建一个 Release 并更新生产 feed，不增加独立版本服务。
 
 ## Consequences
 
-OSS 无法对三个目标的元数据文件执行跨对象事务。发布失败时，较早处理的目标可能已经看到有效更新，而较晚处理的目标仍停留在旧版本；重新运行同一个已验证候选可以修复该状态。缺少签名硬件或凭据时，相应目标会被阻断，不会生成未签名版本。
+OSS 无法对三个目标的元数据文件执行跨对象事务。发布失败时，较早处理的目标可能已经看到有效更新，而较晚处理的目标仍停留在旧版本；重新运行同一个已验证候选可以修复该状态。缺少 EV 硬件会阻断签名 Windows 发布；它不会从 `candidate`、`publish` 或所选 OSS feed 中省略未签名 Windows 安装包。
