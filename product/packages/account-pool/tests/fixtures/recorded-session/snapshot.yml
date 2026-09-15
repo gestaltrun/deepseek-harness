@@ -1,0 +1,4 @@
+profile: sdk-minimal
+recording: authored
+header:
+  class: product-account-pool-sdk

@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/proposed/simplification/2026-09-15-account-pool-reuse-quota-observer.md
+2026-09-15-account-pool-reuse-quota-observer.md: de35b418d89eb8176a5ecdc2a61cbd6fdb67315d
+2026-09-15-account-pool-reuse-quota-observer.zh.md: 4cb332b31cc69a72f26cf740b6a17c69b78b86be

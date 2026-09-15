@@ -4,9 +4,15 @@
   "type": "module",
   "packageManager": "pnpm@11.7.0",
   "scripts": {
-    "build": "pnpm --filter @gestaltrun/dsh-model-center build",
-    "test": "pnpm --filter @gestaltrun/dsh-model-center test",
-    "typecheck": "pnpm --filter @gestaltrun/dsh-model-center typecheck",
-    "pack": "pnpm --filter @gestaltrun/dsh-model-center release:pack"
+    "build": "pnpm check:account-pool-scope && pnpm --filter @gestaltrun/dsh-model-center build && pnpm --filter @gestaltrun/dsh-account-pool build",
+    "test": "pnpm test:account-pool-scope && pnpm check:account-pool-scope && pnpm --filter @gestaltrun/dsh-model-center test && pnpm --filter @gestaltrun/dsh-account-pool test",
+    "typecheck": "pnpm check:account-pool-scope && pnpm --filter @gestaltrun/dsh-model-center typecheck && pnpm --filter @gestaltrun/dsh-account-pool typecheck",
+    "pack": "pnpm check:account-pool-scope && pnpm --filter @gestaltrun/dsh-model-center release:pack && pnpm --filter @gestaltrun/dsh-account-pool release:pack",
+    "check:account-pool-scope": "node scripts/account-pool-scope.mjs",
+    "test:account-pool-scope": "node --test scripts/account-pool-scope.test.mjs"
+  },
+  "devDependencies": {
+    "js-yaml": "4.2.0",
+    "typescript": "6.0.3"
   }
 }

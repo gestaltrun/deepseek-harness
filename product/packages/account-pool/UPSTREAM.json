@@ -1,0 +1,18 @@
+{
+  "engine": {
+    "repository": "https://github.com/gestaltrun/CLIProxyAPI.git",
+    "commit": "c06fc645c3092f11868aae4e58ca95494f4f8ad1",
+    "submodule": "community/cliproxyapi"
+  },
+  "harness": {
+    "version": "0.1.5-rc.2",
+    "scopeBase": "375e2838dec1ff3fba7730256b9bfda2a17c1983"
+  },
+  "piAi": {
+    "version": "0.85.1"
+  },
+  "sourceFeature": {
+    "commit": "0f11d3e411de41b1eeff69dbb08f8c65d803b4be",
+    "workingTreePatchSha256": "c881c3a4de8c53aaa24f870be3883af13af54d21029ab495bd8815e2ebaedfc4"
+  }
+}

@@ -1,0 +1,34 @@
+# Account management uses its own local process implementation and durable state.
+- id: gestaltrun-model-center
+  config:
+    managedProviders:
+      - id: gestalt-account-pool
+        displayName: Account pool
+- insert:
+    - id: gestaltrun-account-pool-local
+      name: cordis:group
+      group: true
+      isolate:
+        subprocess: true
+      config:
+        - id: account-pool-subprocess
+          name: '@deepseek-ai/dsh-subprocess-local'
+        - id: gestaltrun-account-pool
+          name: '@gestaltrun/dsh-account-pool'
+          config:
+            stateRoot: !!js dshHomePath('desktop', 'account-pool')
+            startupTimeoutMs: 15000
+            restartLimit: 2
+            stopGraceMs: 2000
+            readinessIntervalMs: 50
+            requestTimeoutMs: 15000
+            maxResponseBytes: 1048576
+            catalogRefreshIntervalMs: 2000
+            quotaConcurrency: 4
+            streamIdleTimeoutMs: 120000
+            maxRequestImageBytes: 20971520
+            requestImagePixelBudget: 4194304
+            requestImageMaxBytes: 5242880
+            maxRetries: 2
+            requestTokenBudget: 16384
+            unknownContextBudget: 131072

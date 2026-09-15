@@ -19,3 +19,6 @@
 [submodule "community/video-preview"]
 	path = community/video-preview
 	url = https://github.com/gestaltrun/dsh-video-preview.git
+[submodule "community/cliproxyapi"]
+	path = community/cliproxyapi
+	url = https://github.com/gestaltrun/CLIProxyAPI.git

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createPluginProfile, reconcileDesktopBundles } from '../src/project-manager.ts'
+import { DESKTOP_PRODUCT_BUNDLES } from '../src/product-profile.ts'
 const roots: string[] = []
 const BASE = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@gestaltrun/dsh-web-all']
 const MODEL = '@gestaltrun/dsh-model-center'
@@ -32,4 +33,10 @@ describe('Desktop model-center profile', () => {
     reconcileDesktopBundles(p.dir, [...BASE, MODEL])
     expect(p.read().dsh.profile.bundles).toEqual([...BASE, '@example/user-plugin'])
   })
+})
+
+it('activates the account pool through the existing product bundle reconciliation', () => {
+  const p = profile()
+  reconcileDesktopBundles(p.dir, [...BASE, ...DESKTOP_PRODUCT_BUNDLES])
+  expect(p.read().dsh.profile.bundles).toEqual([...BASE, MODEL, '@gestaltrun/dsh-account-pool'])
 })

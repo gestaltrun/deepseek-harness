@@ -1,0 +1,187 @@
+.poolHost {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  padding-bottom: 24px;
+}
+.dialogEmpty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--dsw-alias-label-secondary);
+}
+.confirmFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 16px;
+}
+.settingsBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.settingsSection h4 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
+}
+.jsonPreview {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-skeleton);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow: auto;
+  max-height: 96px;
+}
+.toggleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--dsw-alias-label-primary);
+}
+.healthyDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  corner-shape: round;
+  background: var(--dsw-alias-state-success-primary);
+}
+.runtimeText {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-secondary);
+  font-family: monospace;
+}
+/* Workspace Header */
+.workspaceHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding-bottom: 8px;
+}
+.headerLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 240px;
+}
+.titleRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+}
+.pageTitle {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--dsw-alias-label-primary);
+  overflow-wrap: anywhere;
+}
+.titleStatus {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.summaryCounts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+.countActive {
+  color: var(--dsw-alias-state-success-primary);
+  font-weight: 600;
+}
+.actionRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.actionButtons {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 16px;
+  margin-left: auto;
+}
+.spinning {
+  display: inline-block;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinning {
+    animation: none;
+  }
+}
+/* Global Face Switcher A/B */
+.globalFaceSwitch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.switchTitle {
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}
+.switchGroup {
+  display: flex;
+  border-radius: 8px;
+  padding: 2px;
+  background: var(--dsw-alias-bg-skeleton);
+  border: 0.5px solid var(--dsw-alias-border-l2);
+}
+.faceBtn {
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.faceBtnActive {
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+  box-shadow: var(--dsw-elevation-panel);
+}
+/* Filter Bar */
+.filterBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 0;
+}
+.filterLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+/* Grid Layouts */
+.cardsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
+  gap: 16px;
+}
+.error { color: var(--dsw-alias-state-error-primary); }

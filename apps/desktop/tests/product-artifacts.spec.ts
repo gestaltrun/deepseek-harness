@@ -13,17 +13,29 @@ const source = { name: '@gestaltrun/dsh-model-center', version: '0.1.0-gestaltru
 function fixture(packed: Record<string, unknown> = source) {
   const root = mkdtempSync(join(tmpdir(), 'dsh-product-artifact-'))
   roots.push(root)
-  mkdirSync(join(root, 'product/model-center'), { recursive: true })
+  const entries = [
+    { name: source.name, directory: 'model-center' },
+    { name: '@gestaltrun/dsh-account-pool', directory: 'packages/account-pool' },
+  ]
+  mkdirSync(join(root, 'product'), { recursive: true })
   mkdirSync(join(root, 'package'))
-  writeFileSync(join(root, 'product/model-center/package.json'), JSON.stringify(source))
-  writeFileSync(join(root, 'package/package.json'), JSON.stringify({ ...packed, dsh: { bundle: { patch: './cordis.patch.yml' } } }))
-  execFileSync('tar', ['-czf', join(root, 'gestaltrun-dsh-model-center-0.1.0-gestaltrun.0.tgz'), '-C', root, 'package'])
+  writeFileSync(join(root, 'product/bundles.json'), JSON.stringify(entries))
+  for (const entry of entries) {
+    const manifest = { ...source, name: entry.name }
+    mkdirSync(join(root, 'product', entry.directory), { recursive: true })
+    writeFileSync(join(root, 'product', entry.directory, 'package.json'), JSON.stringify(manifest))
+    const selected = entry.name === source.name ? packed : manifest
+    writeFileSync(join(root, 'package/package.json'), JSON.stringify({ ...selected, dsh: { bundle: { patch: './cordis.patch.yml' } } }))
+    execFileSync('tar', ['-czf', join(root, `${entry.name.slice(1).replace('/', '-')}-${manifest.version}.tgz`), '-C', root, 'package'])
+  }
   return root
 }
 
 it('records a product archive separately from the community forks', () => {
   const root = fixture()
-  const artifact = readProductArtifacts(root, root, 'a'.repeat(40))[0]
+  const artifacts = readProductArtifacts(root, root, 'a'.repeat(40))
+  expect(artifacts.map(artifact => artifact.name)).toEqual([source.name, '@gestaltrun/dsh-account-pool'])
+  const artifact = artifacts[0]
   expect(artifact).toMatchObject({
     ...source, repository: 'gestaltrun/deepseek-harness', commit: 'a'.repeat(40),
   })
@@ -38,4 +50,10 @@ it('rejects a stale archive under the expected filename', () => {
 it('rejects unpublished dependencies in a product archive', () => {
   const root = fixture({ ...source, peerDependencies: { '@deepseek-ai/cordis': 'link:../local' } })
   expect(() => readProductArtifacts(root, root, 'a'.repeat(40))).toThrow('development dependency')
+})
+
+it('rejects a product catalog that omits an enabled Desktop bundle', () => {
+  const root = fixture()
+  writeFileSync(join(root, 'product/bundles.json'), JSON.stringify([{ name: source.name, directory: 'model-center' }]))
+  expect(() => readProductArtifacts(root, root, 'a'.repeat(40))).toThrow('Desktop product bundles')
 })

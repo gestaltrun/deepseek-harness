@@ -1,0 +1,71 @@
+Ported source notice
+====================
+
+This package contains code ported from the official CLIProxyAPI management
+center:
+
+  Upstream:  https://github.com/router-for-me/Cli-Proxy-API-Management-Center
+  Commit:    ed5f1c48e11ba7335f1e8f676f228c280196af85 (main, 2026-09-08)
+  License:   MIT, Copyright (c) 2026 Router-For.ME
+  Imported:  2026-09-10
+
+Ported modules (upstream path -> this package):
+
+  src/utils/quota/parsers.ts (normalizers)
+      -> src/normalize.ts
+  src/utils/quota/resetInstants.ts
+      -> src/reset-instants.ts
+  src/utils/quota/builders.ts (buildAntigravityQuotaGroups, buildKimiQuotaRows,
+     buildXaiBillingSummary window logic)
+      -> src/windows-antigravity.ts, src/windows-kimi.ts, src/windows-xai.ts
+  src/utils/quota/resetCredits.ts (normalizeCodexResetCreditsPayload)
+      -> src/reset-credits.ts
+  src/utils/quota/xaiPaid.ts (isPaidXaiAuthFile)
+      -> src/xai-tier.ts
+  src/features/quota/providers/claude/data.ts (buildClaudeQuotaWindows)
+      -> src/windows-claude.ts
+  src/features/quota/providers/codex/data.ts (buildCodexQuotaWindows)
+      -> src/windows-codex.ts
+  src/utils/quota/constants.ts (probe endpoints and request headers)
+      -> src/windows-*.ts constants
+
+Adaptations from upstream: i18next `TFunction` labels and SCSS/theme coupling
+removed (window identity is a stable key); display-only formatting dropped;
+missing counters are never defaulted to zero; the xAI paid health probe
+(/v1/me plus chat completion) and the Codex reset-credit consume operation are
+not ported — this package is read-only and never sends an inference request.
+
+Further divergences required by this repository's review: Kimi label-keyword
+period derivation and the unknown-unit minute default are dropped (a display
+label is not a time basis); Codex windows without `limit_window_seconds` keep
+positional `primary`/`secondary` keys instead of claiming 5-hour/weekly
+periods; an xAI payload whose period carries no quota counter produces no
+window; a non-array `credits` field is a shape violation rather than a zero
+count; response bounds are byte-exact (UTF-8) and also cover already-decoded
+bodies; and one observation retains at most 256 windows.
+
+The MIT license text follows.
+
+---
+
+MIT License
+
+Copyright (c) 2026 Router-For.ME
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
