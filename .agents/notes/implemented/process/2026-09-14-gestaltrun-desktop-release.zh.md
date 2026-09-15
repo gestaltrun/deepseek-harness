@@ -28,7 +28,7 @@ DeepSeek Gestalt 使用现有参考图标和应用名称。打包元数据根据
 
 ## Verification
 
-- 无凭据检查验证触发参数、目标覆盖、产物名称、校验和、对象顺序和版本链接。
+- 无凭据检查验证触发参数、目标覆盖、产物名称、校验和、对象顺序和版本链接。Windows 频道元数据可以携带嵌入的 `blockMapSize`，也可以使用 sidecar `.exe.blockmap`。
 - macOS 发布要求签名和公证。每次 `candidate` 和 `publish` 运行都必须打包未签名 Windows，并将其上传到所选 OSS feed。选择签名 Windows 时要求现有的硬件签名输入，并替换未签名 Windows 对象。
 - 打包任务不会收到 OSS 凭据，发布任务不会接受 `master` 之外的提交。
 - 在替换任何所选频道元数据之前，所有所选目标的不可变载荷都已存在。

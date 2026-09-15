@@ -240,13 +240,22 @@ export async function createDesktopUploadPlan(
     )
   }
   else {
-    const blockMapSize = object(metadata.files[0], `${metadataFilename}.files[0]`).blockMapSize
-    numberField(blockMapSize, `${metadataFilename}.files[0].blockMapSize`)
+    const fileInfo = object(metadata.files[0], `${metadataFilename}.files[0]`)
     artifacts.push(await uploadArtifact(
       updaterPath,
       update.keyPrefix,
       'application/vnd.microsoft.portable-executable',
     ))
+    if (fileInfo.blockMapSize === undefined) {
+      artifacts.push(await uploadArtifact(
+        await requireArtifact(artifactsRoot, `${base}.exe.blockmap`),
+        update.keyPrefix,
+        'application/octet-stream',
+      ))
+    }
+    else {
+      numberField(fileInfo.blockMapSize, `${metadataFilename}.files[0].blockMapSize`)
+    }
   }
 
   artifacts.push(await uploadArtifact(metadataPath, update.keyPrefix, 'application/yaml', true))

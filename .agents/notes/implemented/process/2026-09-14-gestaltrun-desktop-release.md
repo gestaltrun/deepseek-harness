@@ -28,7 +28,7 @@ DeepSeek Gestalt uses its existing reference artwork and application name. Packa
 
 ## Verification
 
-- Credential-free checks validate dispatch inputs, target coverage, artifact names, checksums, object order, and release links.
+- Credential-free checks validate dispatch inputs, target coverage, artifact names, checksums, object order, and release links. Windows channel metadata may carry an embedded `blockMapSize` or a sidecar `.exe.blockmap`.
 - macOS publication requires signing and notarization. Unsigned Windows packaging is required for every `candidate` and `publish` run and is uploaded to the selected OSS feed. Selecting signed Windows requires the existing hardware-backed signing inputs and replaces the unsigned Windows objects.
 - Packaging does not receive OSS credentials, and publication does not accept a commit outside `master`.
 - Every selected target's immutable payloads exist before any selected channel metadata is replaced.
