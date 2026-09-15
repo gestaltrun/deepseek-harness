@@ -260,7 +260,7 @@ jobs:
     name: Package Windows x64 unsigned manual installer
     needs: prepare
     if: ${{ inputs.operation == 'windows-unsigned' }}
-    runs-on: [self-hosted, windows, x64, dsh-win-ci]
+    runs-on: windows-latest
     environment: desktop-dry-run
     steps:
       - uses: actions/checkout@v6
