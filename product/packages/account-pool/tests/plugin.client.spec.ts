@@ -99,8 +99,7 @@ async function provideRemote(ctx: Cordis.Context, modules: ClientModuleSystem) {
     } finally { stopped() }
   })())
   const call = vi.fn<ConnectionHandle['rpc']['call']>(async (_channel, endpoint) => {
-    if (endpoint !== 'llm/listProviders') throw new Error(`Unexpected call ${endpoint}`)
-    return { ok: true, value: [] }
+    throw new Error(`Unexpected call ${endpoint}`)
   })
   const connection: ConnectionHandle = {
     isLoopback: true,
@@ -154,11 +153,11 @@ describe('built account-pool Client plugin', () => {
     const firstStyles = [...document.querySelectorAll(`style[data-plugin="${id}"]`)]
     expect(firstStyles.length).toBeGreaterThan(0)
     expect(ctx.slots.entries('settings.section').map(item => item.options.id)).toEqual(['account-pool'])
-    expect(ctx.slots.entries('settings.models.footer').map(item => item.options.id)).toEqual(['account-pool'])
+    expect(ctx.slots.entries('settings.models.footer')).toEqual([])
     const firstFace = (ctx.slots.entries('settings.section')[0]!.inject as unknown as () => AccountPoolInjected)()
     await vi.waitFor(() => expect(firstFace.hooks.accountPool.getSnapshot()).toEqual({ state: 'ready', accounts: [] }))
     expect(locale.bind('accountPool')('settingsNav')).toBe('Account pool')
-    expect(remote.call).toHaveBeenCalledWith('/api', 'llm/listProviders', { args: {} }, expect.any(AbortSignal))
+    expect(remote.call).not.toHaveBeenCalled()
 
     sources[0]!.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'rebuilt', id, rev: '2' }) }))
     await vi.waitFor(() => expect(remote.open).toHaveBeenCalledTimes(2))
@@ -168,7 +167,7 @@ describe('built account-pool Client plugin', () => {
     expect(firstStyles.every(style => !style.isConnected)).toBe(true)
     expect(document.querySelectorAll(`style[data-plugin="${id}"]`)).toHaveLength(firstStyles.length)
     expect(ctx.slots.entries('settings.section').map(item => item.options.id)).toEqual(['account-pool'])
-    expect(ctx.slots.entries('settings.models.footer').map(item => item.options.id)).toEqual(['account-pool'])
+    expect(ctx.slots.entries('settings.models.footer')).toEqual([])
 
     await ctx.loader.remove(entryId)
     expect(ctx.slots.entries('settings.section')).toEqual([])

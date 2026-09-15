@@ -23,7 +23,7 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
-The account-pool Settings section owns login, account enablement, fields, model lists, quota refresh, and explicit credential-file download. The Models footer shows read-only route information; the existing Settings navigation opens account management. Unknown, unsupported, failed, and stale quota observations remain distinct.
+The account-pool Settings section owns login, account enablement, fields, model lists, quota refresh, and explicit credential-file download. Starting a device or PKCE login, and retrying Open authorization in browser, asks the Host to open the HTTPS authorization URL in the system browser. The Models footer shows read-only route information; the existing Settings navigation opens account management. Unknown, unsupported, failed, and stale quota observations remain distinct.
 
 Kimi's usage summary follows the provider's [seven-day quota](https://www.kimi.com/help/kimi-code/benefits); its time needle uses that period when the response omits window metadata. Valid explicit metadata takes precedence. Invalid metadata or a missing reset instant leaves the time needle absent; display labels never supply a period.
 
@@ -56,7 +56,7 @@ The [accepted architecture](../../../.agents/notes/proposed/architecture/2026-09
 
 The independent `product/` workspace installs exact published DSH dependencies. Its normal compiler configurations contain no repository source aliases. Product build, typecheck, and pack commands run the scope check against the verified base recorded in `UPSTREAM.json`; an intentional new base must be supplied explicitly and reviewed.
 
-The product build creates the Host entry, generates nonempty strict Remote contributions, and compiles the Client module-loader factory. Engine compilation is separate from Node compilation. The engine builder verifies its Git identity, compiles with Go module changes disabled, and emits source/platform/architecture/filename/SHA-256 metadata. The package declares `publishConfig.executableFiles` so pnpm preserves executable permissions for these resources without exposing a package bin. Package preparation builds the selected host target and places its npm archive in `product/dist`.
+The product build creates the Host entry, generates nonempty strict Remote contributions, and compiles the Client module-loader factory. Engine compilation is separate from Node compilation. The engine builder compiles the `community/cliproxyapi` gitlink pinned in `UPSTREAM.json`, verifies that checkout's Git identity, compiles with Go module changes disabled, and emits source/platform/architecture/filename/SHA-256 metadata. The package declares `publishConfig.executableFiles` so pnpm preserves executable permissions for these resources without exposing a package bin. Package preparation builds the selected host target and places its npm archive in `product/dist`.
 
 Native Desktop interaction, authenticated provider inference, local TLS/SSE tests, and unit fixtures are separate evidence lanes. A fake GLM key can verify persistence and management without proving provider authentication.
 
@@ -72,7 +72,7 @@ Indirectly, through the registered `gestalt-account-pool` LLM route. Model selec
 
 - A target archive contains that target's Go binary; it does not establish a published cross-platform release.
 - Real OAuth and authenticated inference depend on available provider accounts and network access. Empty-pool startup and fixture keys do not establish those results.
-- GLM supports its declared product fields. Unsupported account-scoped capabilities remain disabled rather than being synthesized from provider-wide data.
+- GLM quota observations come from the engine's `glm-coding-plan` envelope. The Host parses that envelope and does not probe the GLM usage endpoint itself.
 - Signed Desktop release, notarization, and update publication require their separate release environment and authorization.
 
 <a id="dev-note"></a>

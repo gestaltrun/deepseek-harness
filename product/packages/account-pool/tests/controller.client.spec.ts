@@ -26,7 +26,7 @@ function bench() {
     } finally { watchStopped() }
   }
   const success = async () => ({ ok: true as const, value: ready })
-  const remote: Pick<ClientRemote, 'accountPool' | 'llm' | '$stream'> = {
+  const remote: Pick<ClientRemote, 'accountPool' | '$stream'> = {
     accountPool: {
       getSnapshot: success, refresh: vi.fn(success), setEnabled: vi.fn(success), deleteAccount: success,
       startLogin: async kind => ({ ok: true, value: { kind, flow: 'pkce', status: 'pending' } }),
@@ -34,8 +34,6 @@ function bench() {
       refreshQuota: success, refreshAllQuota: success, listModels: async () => ({ ok: true, value: [] }),
       readFields: async name => ({ ok: true, value: { name, info: {}, fields: {} } }), patchFields: success, watch,
     },
-    // Only listProviders belongs to this controller's LLM dependency.
-    llm: { listProviders: async () => ({ ok: true, value: [{ id: 'gestalt-account-pool', name: 'Account pool' }] }) } as ClientRemote['llm'],
     $stream: <Item,>(options: RemoteStreamOptions<Item>) => {
       const abort = new AbortController()
       let finish!: () => void

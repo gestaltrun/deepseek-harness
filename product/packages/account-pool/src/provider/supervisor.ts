@@ -111,7 +111,7 @@ export class Supervisor {
       transport = new GenerationTransport(`https://127.0.0.1:${port}`, certificate.cert,
         managementKey, inferenceKey, signal, this.spec)
       child = this.subprocess.spawn({
-        argv: [binary, '--config', state.configFile], cwd: directory,
+        argv: [binary, '--config', state.configFile, '--local-model'], cwd: directory,
         env: privateEnvironment(directory), graceMs: this.spec.stopGraceMs,
         stdio: { stdin: 'ignore', stdout: { maxBytes: this.spec.maxResponseBytes }, stderr: { maxBytes: this.spec.maxResponseBytes } },
       })

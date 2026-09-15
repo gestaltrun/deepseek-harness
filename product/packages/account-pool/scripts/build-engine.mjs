@@ -21,17 +21,23 @@ export function engineTarget(platform, arch) {
 }
 
 /**
- * Verify the reviewed repository and complete source identity before fetching it.
+ * Verify the reviewed repository and complete source identity before compiling it.
  * @param {unknown} value - Parsed product provenance document.
- * @returns {{repository: string, commit: string, scopeBase: string}} Validated build inputs.
+ * @returns {{repository: string, submodule: string, commit: string, scopeBase: string}} Validated build inputs.
  */
 export function engineIdentity(value) {
   if (value?.engine?.repository !== 'https://github.com/gestaltrun/CLIProxyAPI.git'
+    || value?.engine?.submodule !== 'community/cliproxyapi'
     || !/^[a-f0-9]{40}$/u.test(value?.engine?.commit ?? '')
     || !/^[a-f0-9]{40}$/u.test(value?.harness?.scopeBase ?? '')) {
-    throw new Error('account-pool engine: UPSTREAM.json must pin the reviewed repository, source SHA, and scope base')
+    throw new Error('account-pool engine: UPSTREAM.json must pin the reviewed repository, gitlink, source SHA, and scope base')
   }
-  return { repository: value.engine.repository, commit: value.engine.commit, scopeBase: value.harness.scopeBase }
+  return {
+    repository: value.engine.repository,
+    submodule: value.engine.submodule,
+    commit: value.engine.commit,
+    scopeBase: value.harness.scopeBase,
+  }
 }
 
 function run(command, args, cwd, env) {
@@ -52,18 +58,16 @@ export async function buildEngine({ packageRoot, platform, arch }) {
   const identity = engineIdentity(JSON.parse(readFileSync(join(root, 'UPSTREAM.json'), 'utf8')))
   const target = engineTarget(platform, arch)
   verifyAccountPoolScope({ repositoryRoot: resolve(root, '../../..'), base: identity.scopeBase })
-  const cache = join(root, '.build')
-  const source = join(cache, 'sources', identity.commit)
+  const source = resolve(root, '../../..', identity.submodule)
   const git = (...args) => execFileSync('git', ['-C', source, ...args], { encoding: 'utf8' }).trim()
-  if (!existsSync(source)) {
-    mkdirSync(source, { recursive: true, mode: 0o700 })
-    git('init', '--quiet')
-    git('remote', 'add', 'origin', identity.repository)
-    await run('git', ['-C', source, 'fetch', '--no-tags', '--depth', '1', 'origin', identity.commit], root, process.env)
-    git('checkout', '--detach', '--quiet', 'FETCH_HEAD')
+  if (!existsSync(join(source, '.git'))) {
+    throw new Error('account-pool engine: community/cliproxyapi submodule is missing')
   }
-  if (git('rev-parse', 'HEAD') !== identity.commit) throw new Error('account-pool engine: source checkout differs from UPSTREAM.json')
-  if (git('status', '--porcelain=v1', '--untracked-files=all') !== '') throw new Error('account-pool engine: source checkout contains changes')
+  const origin = git('config', '--get', 'remote.origin.url')
+  if (origin !== identity.repository) throw new Error('account-pool engine: community/cliproxyapi origin differs from UPSTREAM.json')
+  if (git('rev-parse', 'HEAD') !== identity.commit) throw new Error('account-pool engine: community/cliproxyapi differs from UPSTREAM.json')
+  if (git('status', '--porcelain=v1', '--untracked-files=all') !== '') throw new Error('account-pool engine: community/cliproxyapi contains changes')
+  const cache = join(root, '.build')
   const staging = mkdtempSync(join(cache, 'target-'))
   try {
     const binary = join(staging, target.filename)

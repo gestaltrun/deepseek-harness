@@ -21,6 +21,7 @@ const MANAGEMENT_PATHS: Readonly<Record<string, readonly CoreMethod[]>> = {
   '/v0/management/get-auth-status': ['GET'],
   '/v0/management/oauth-session': ['DELETE'],
   '/v0/management/glm-coding-plan': ['GET', 'PUT', 'PATCH', 'DELETE'],
+  '/v0/management/glm-coding-plan/quota': ['POST'],
   '/v0/management/api-call': ['POST'],
 }
 

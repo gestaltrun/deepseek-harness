@@ -23,7 +23,7 @@ kind: "package-bundle"
 <a id="use-this-package"></a>
 ## 使用此包
 
-账号池设置页拥有登录、账号启停、字段、模型列表、配额刷新和显式凭据文件下载。模型页页脚展示只读路由信息，既有设置导航进入账号管理。未知、不支持、失败和过期配额观测保持区分。
+账号池设置页拥有登录、账号启停、字段、模型列表、配额刷新和显式凭据文件下载。开始设备或 PKCE 登录，以及再次点击用浏览器打开授权页，都会让 Host 用系统浏览器打开 HTTPS 授权 URL。模型页页脚展示只读路由信息，既有设置导航进入账号管理。未知、不支持、失败和过期配额观测保持区分。
 
 Kimi 的用量汇总对应提供方的[七天配额](https://www.kimi.com/help/kimi-code/benefits)；响应省略窗口元数据时，时间指针使用该周期。有效的显式元数据优先；元数据无效或缺少重置时间时不显示时间指针，显示标签不用于推断周期。
 
@@ -56,7 +56,7 @@ Client 使用类型化操作和拥有 watch 取消及命令生命周期的控制
 
 独立的 `product/` 工作区安装精确发布版 DSH 依赖。正常编译配置不包含仓库源码别名。产品构建、类型检查和打包命令对照 `UPSTREAM.json` 中记录的已核验基线运行范围检查；有意采用新基线必须显式提供并审阅。
 
-产品构建生成 Host 入口、非空严格 Remote 贡献，并编译 Client module-loader factory。引擎编译与 Node 编译分开。引擎构建器校验 Git 身份，在禁止修改 Go module 的条件下编译，并输出来源/平台/架构/文件名/SHA-256 元数据。包声明 `publishConfig.executableFiles`，让 pnpm 保留资源的执行权限，不暴露 package bin。包准备构建所选主机目标，并把 npm 产物放入 `product/dist`。
+产品构建生成 Host 入口、非空严格 Remote 贡献，并编译 Client module-loader factory。引擎编译与 Node 编译分开。引擎构建器编译 `UPSTREAM.json` 钉住的 `community/cliproxyapi` gitlink，校验该检出的 Git 身份，在禁止修改 Go module 的条件下编译，并输出来源/平台/架构/文件名/SHA-256 元数据。包声明 `publishConfig.executableFiles`，让 pnpm 保留资源的执行权限，不暴露 package bin。包准备构建所选主机目标，并把 npm 产物放入 `product/dist`。
 
 原生 Desktop 交互、已认证供应商推理、本地 TLS/SSE 测试和单元 fixture（测试前置数据）属于不同证据路径。假 GLM key 可以验证持久化和管理，不能证明供应商认证。
 
@@ -72,7 +72,7 @@ Client 使用类型化操作和拥有 watch 取消及命令生命周期的控制
 
 - 一个目标产物包含该目标的 Go 二进制，不能证明已发布跨平台版本。
 - 真实 OAuth 和已认证推理依赖可用供应商账号及网络。空池启动和 fixture key 不能证明这些结果。
-- GLM 支持其声明的产品字段。不支持的账号级能力保持禁用，不由供应商级数据合成。
+- GLM 配额观测来自引擎的 `glm-coding-plan` 信封。Host 只解析该信封，不自行探测 GLM 用量端点。
 - 签名 Desktop 发布、公证和更新发布需要各自的发布环境及授权。
 
 <a id="dev-note"></a>

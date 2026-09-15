@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/scratch/2026-09-14-account-pool-migration.md
-2026-09-14-account-pool-migration.md: 043a8d1ba61ddf71f855237f32295ed706b01e6e
-2026-09-14-account-pool-migration.zh.md: 6efe3d222c748e559673cde6c7e90bffb85bda04
+2026-09-14-account-pool-migration.md: 912a2f9847709cc2e81436c5150a1901a7718e11
+2026-09-14-account-pool-migration.zh.md: f8c5c50ab1e734ff8fcd577f6230eb198887909d

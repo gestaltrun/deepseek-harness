@@ -1,10 +1,9 @@
 /**
- * GLM quota signal parsing. The fork core already polls GLM quota and records
- * the result on the auth file's passive quota envelope (`observed_at` plus a
+ * GLM quota signal parsing. The fork core polls GLM quota and records the
+ * result on the `glm-coding-plan` management envelope (`observed_at` plus a
  * string `signals` map), so the Host parses the existing envelope here —
  * this module never issues a probe request. Signal keys follow the fork
- * implementation at gestaltrun/CLIProxyAPI head 68278c54 and remain
- * provisional until the root review fixes the final pin.
+ * implementation in `community/cliproxyapi`.
  * @module account-pool/quota/signals-glm
  */
 

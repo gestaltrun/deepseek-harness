@@ -178,4 +178,3 @@
   gap: 16px;
 }
 .error { color: var(--dsw-alias-state-error-primary); }
-.modelsFooter { padding: 16px 0; color: var(--dsw-alias-label-secondary); }

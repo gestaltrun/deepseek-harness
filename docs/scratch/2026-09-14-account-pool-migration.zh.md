@@ -22,7 +22,7 @@
 | 目标基线 | `gestaltrun/master` 上的 `375e2838dec1ff3fba7730256b9bfda2a17c1983`；原始干净的 `c291e7961a515f6d7af9304e7fd1d257929aef26` 通过 `--ff-only` 前移。 |
 | 集成分支 | `codex/migrate-cliproxyapi-account-pool-20260914` |
 | 来源工作区 | `cliproxyapi-merger`，来源 HEAD `0f11d3e411de41b1eeff69dbb08f8c65d803b4be` 加十个已跟踪的工作区修改。 |
-| 引擎 | `gestaltrun/CLIProxyAPI` 的 `1d25ceb7f38736880880a5a0d9e08ebb5349d950`；来源子模块干净。 |
+| 引擎 | `gestaltrun/CLIProxyAPI` 的 `7c34408fba879202c892d7beb788b1fd84138cfc`（`v7.2.155-glm.2`），记录为 `community/cliproxyapi` gitlink；来源子模块干净。 |
 | 本地来源快照 | `tmp/account-pool-migration-20260914/source-freeze`，109 个已跟踪的源文件；不包含个人账号或环境文件。 |
 | 来源清单 SHA-256 | `9985e7c6bd3383928cb3fb1b510f2a3b20fc1bb7c0ae27623c4c92c1a2213165` |
 | 工作区补丁 SHA-256 | `c881c3a4de8c53aaa24f870be3883af13af54d21029ab495bd8815e2ebaedfc4` |

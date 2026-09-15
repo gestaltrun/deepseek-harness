@@ -138,7 +138,7 @@ export function newGlmAccount(input: AccountPoolGlmKey): GlmAccount {
 }
 
 /**
- * Render a GLM configuration without claiming authenticated usage or account-level model observations.
+ * Render a GLM configuration without claiming authenticated usage or synthesizing account-level health counters.
  * @param account - committed private product record.
  * @returns a redacted account card with explicit action capabilities.
  */
@@ -149,10 +149,9 @@ export function glmCard(account: GlmAccount): AccountPoolAccount {
     provider: 'glm', label: 'GLM Coding Plan', enabled: account.enabled,
     status: account.enabled ? 'configured' : 'disabled',
     ...fieldValues({ ...account, proxy_url: account.proxyUrl }),
-    capabilities: { models: 'provider', quota: false, export: 'glm-credential',
+    capabilities: { models: 'provider', quota: true, export: 'glm-credential',
       editableFields: ['note', 'prefix', 'proxyUrl', 'priority', 'weight'] },
-    quota: [], quotaState: { status: 'unsupported', stale: false,
-      error: 'The engine does not expose account-level GLM quota observations.' },
+    quota: [], quotaState: { status: 'unobserved', stale: false },
   }
 }
 

@@ -347,7 +347,9 @@ export class CLIProxyAccountPool extends AccountPool {
 
   private async refreshRoster(generation: Generation, signal?: AbortSignal): Promise<void> {
     const payload = await this.json(generation, 'GET', 'auth-files', undefined, signal)
-    const accounts = [...roster(payload), ...(await generation.glm.read()).accounts.map(glmCard)]
+    const glmAccounts = (await generation.glm.read()).accounts
+    const glmQuota = await this.readGlmQuotaEnvelopes(generation, glmAccounts, signal).catch(() => new Map<AccountPoolAccountRef, Record<string, unknown>>())
+    const accounts = [...roster(payload), ...glmAccounts.map(glmCard)]
     generation.signal.throwIfAborted()
     if (this.generation !== generation) return
     const raw = parseInput(recordSchema, payload).files as unknown[]
@@ -356,8 +358,17 @@ export class CLIProxyAccountPool extends AccountPool {
       const record = parseInput(recordSchema, value)
       this.rawAccounts.set(oauthRef(String(record.auth_index)), record)
     }
+    for (const [ref, envelope] of glmQuota) this.rawAccounts.set(ref, envelope)
     const refs = new Set(accounts.map(account => account.ref))
     for (const ref of this.quotas.keys()) if (!refs.has(ref)) this.quotas.delete(ref)
+    for (const account of accounts.filter(account => account.provider === 'glm')) {
+      const envelope = glmQuota.get(account.ref)
+      const quota = envelope === undefined ? undefined : recordSchema.safeParse(envelope.quota)
+      const signals = quota?.success === true ? z.record(z.string(), z.string()).safeParse(quota.data.signals) : undefined
+      if (signals?.success === true && signals.data['GLM-Quota-Status'] !== undefined) {
+        await this.applyQuotaObservation(generation, account, envelope!, signal, false)
+      }
+    }
     this.publish({ state: 'ready', accounts: accounts.map(account => this.withQuota(account)),
       ...this.snapshot.login === undefined ? {} : { login: this.snapshot.login } })
   }
@@ -417,10 +428,21 @@ export class CLIProxyAccountPool extends AccountPool {
     if (provider === undefined) throw new AccountPoolError('invalid-input', 'This account has no supported quota observation.')
     let metadata = this.rawAccounts.get(account.ref) ?? {}
     if (provider === 'xai') metadata = { ...metadata, ...await this.readAuth(generation, account.name, signal) }
+    if (provider === 'glm') metadata = { ...metadata, ...await this.refreshGlmQuotaEnvelope(generation, account, signal) }
+    await this.applyQuotaObservation(generation, account, metadata, signal, true)
+  }
+
+  private async applyQuotaObservation(
+    generation: Generation, account: AccountPoolAccount, metadata: Record<string, unknown>,
+    signal: AbortSignal | undefined, publish: boolean,
+  ): Promise<void> {
+    const provider = Object.hasOwn(QUOTA_PROVIDER, account.provider) ? QUOTA_PROVIDER[account.provider] : undefined
+    if (provider === undefined) return
     const quota = recordSchema.safeParse(metadata.quota)
     const signals = quota.success ? z.record(z.string(), z.string()).safeParse(quota.data.signals) : undefined
+    const authIndex = typeof metadata.auth_index === 'string' && metadata.auth_index.length > 0 ? metadata.auth_index : account.ref
     const input: QuotaProbeInput = {
-      provider, authIndex: brandString<QuotaProbeInput['authIndex']>(String(metadata.auth_index)),
+      provider, authIndex: brandString<QuotaProbeInput['authIndex']>(authIndex),
       ...account.projectId === undefined ? {} : { projectId: account.projectId },
       ...provider !== 'xai' ? {} : { xaiAccountKind: isPaidXaiCredential(metadata) ? 'paid' : 'unknown',
         ...typeof metadata.user_id === 'string' ? { xaiUserId: metadata.user_id } : {} },
@@ -437,12 +459,49 @@ export class CLIProxyAccountPool extends AccountPool {
     } } }).observe(input)
     generation.signal.throwIfAborted()
     signal?.throwIfAborted()
-    if (this.generation !== generation || !this.snapshot.accounts.some(candidate => candidate.ref === account.ref)) return
+    if (this.generation !== generation || (publish && !this.snapshot.accounts.some(candidate => candidate.ref === account.ref))) return
     const previous = this.quotas.get(account.ref)
     this.quotas.set(account.ref, { latest: observation,
       ...observation.status === 'known' || observation.status === 'partial'
         ? { successful: observation } : previous?.successful === undefined ? {} : { successful: previous.successful } })
-    this.publish({ ...this.snapshot, accounts: this.snapshot.accounts.map(value => this.withQuota(value)) })
+    if (publish) this.publish({ ...this.snapshot, accounts: this.snapshot.accounts.map(value => this.withQuota(value)) })
+  }
+
+  private async readGlmQuotaEnvelopes(
+    generation: Generation, accounts: readonly GlmAccount[], signal?: AbortSignal,
+  ): Promise<Map<AccountPoolAccountRef, Record<string, unknown>>> {
+    const payload = parseInput(recordSchema, await this.json(generation, 'GET', 'glm-coding-plan', undefined, signal))
+    const entries = z.array(z.object({
+      index: z.number().int().nonnegative(),
+      auth_index: z.string().optional(),
+      quota: recordSchema.optional(),
+    })).parse(payload['glm-coding-plan'] ?? [])
+    const envelopes = new Map<AccountPoolAccountRef, Record<string, unknown>>()
+    const enabled = accounts.filter(account => account.enabled)
+    for (const entry of entries) {
+      const account = enabled[entry.index]
+      if (account === undefined || entry.auth_index === undefined) continue
+      envelopes.set(glmCard(account).ref, {
+        auth_index: entry.auth_index,
+        ...entry.quota === undefined ? {} : { quota: entry.quota },
+      })
+    }
+    return envelopes
+  }
+
+  private async refreshGlmQuotaEnvelope(
+    generation: Generation, account: AccountPoolAccount, signal?: AbortSignal,
+  ): Promise<Record<string, unknown>> {
+    const glmAccounts = (await generation.glm.read()).accounts
+    const index = glmAccounts.filter(value => value.enabled).findIndex(value => glmCard(value).ref === account.ref)
+    if (index < 0) throw new AccountPoolError('not-found', 'The GLM quota account is no longer present.')
+    const payload = parseInput(recordSchema, await this.json(generation, 'POST', `glm-coding-plan/quota?index=${String(index)}`, undefined, signal))
+    const envelope = {
+      auth_index: typeof payload.auth_index === 'string' ? payload.auth_index : '',
+      ...payload.quota === undefined ? {} : { quota: payload.quota },
+    }
+    this.rawAccounts.set(account.ref, envelope)
+    return envelope
   }
 
   private withQuota(account: AccountPoolAccount): AccountPoolAccount {

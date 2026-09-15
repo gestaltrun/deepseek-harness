@@ -20,7 +20,7 @@ Desktop 默认包含该组合。Web 可以显式选择同一 bundle。账号池 
 
 全部功能实现、公共产品导出、测试、生成类型、配额版权声明、Go 构建工具和二进制资源均归 `product/packages/account-pool`。现有独立 product 工作区拥有依赖安装、自己的锁文件、编译配置、构建、测试和包产物。Desktop 仅允许修改既有产品胶水 `apps/desktop/src/product-profile.ts`、`apps/desktop/scripts/product-artifacts.ts`、`apps/desktop/tests/product-profile.spec.ts` 和 `apps/desktop/tests/product-artifacts.spec.ts`。前者加入 bundle，后者扩展产品产物清单校验；其余 `apps/**` 默认禁止修改，Electron 不增加账号业务逻辑。
 
-禁止在 `packages/**` 或 `vendor/**` 修改、新增或发布该功能代码。禁止新增根工作区成员、根 TypeScript references 或 paths，以及根锁文件依赖。禁止通过 `patchedDependencies`、postinstall、修改 `node_modules`、上游 `/src` 导入或复制内部实现来补丁化上游依赖。尤其是上游 PiAi 适配器、选项、导出和 profile resolver 均保持不变。CLIProxyAPI 来源/构建所有权和平台二进制保留在产品包内，不向上游应用添加账号池构建逻辑。其 `UPSTREAM.json` 固定构建时来源缓存，不新增根 `.gitmodules` 或 catalog gitlink。目标平台构建只证明该目标产物，不宣称已完成全平台 npm 发布。
+禁止在 `packages/**` 或 `vendor/**` 修改、新增或发布该功能代码。禁止新增根工作区成员、根 TypeScript references 或 paths，以及根锁文件依赖。禁止通过 `patchedDependencies`、postinstall、修改 `node_modules`、上游 `/src` 导入或复制内部实现来补丁化上游依赖。尤其是上游 PiAi 适配器、选项、导出和 profile resolver 均保持不变。CLIProxyAPI 来源/构建所有权和平台二进制保留在产品包内，不向上游应用添加账号池构建逻辑。已审阅的引擎源码是 `community/cliproxyapi` gitlink，与其他 Gestaltrun fork 使用同一套社区子模块机制。它不是 Desktop 插件，不进入 `product/community.json`。`UPSTREAM.json` 固定该 gitlink 的仓库和提交；引擎构建器编译该检出，不再克隆私有来源缓存。目标平台构建只证明该目标产物，不宣称已完成全平台 npm 发布。
 
 产品包内部声明 `ctx.accountPool`，拥有 CLIProxyAPI 实现、`accountPool` Remote 命名空间和共享 Client。[交付记录](../../../../docs/scratch/2026-09-14-account-pool-migration.zh.md)拥有冻结来源标识、保留草稿和验证状态。已有未提交的上游工作区脚手架保留，但排除在本方案及任何提交之外。
 
@@ -56,7 +56,7 @@ Desktop 默认包含该组合。Web 可以显式选择同一 bundle。账号池 
 | `patchFields` | 账号名称、`AccountPoolFieldPatch` | `Snapshot` |
 | `downloadAuthFile` | 账号名称 | `{ name: string; body: string }`，仅限 Host |
 
-Remote 暴露管理操作，以 `watch(signal?)` 取代 `subscribe`，先发送当前快照再发送后续已提交变更，并排除 `downloadAuthFile`。产品 RPC 模块在 `/api/account-pool.export?name=...` 拥有经过认证的 `ctx.connection.fetch.register` 处理器。实际处理器强制执行 Config `allowCredentialExport`、安全的单段文件名、`Content-Disposition: attachment` 和 `Cache-Control: no-store`。Desktop 显式启用这项用户请求的凭据文件导出，Web 组合显式选择自己的策略。普通 RPC 和快照绝不返回其原始内容。不存在通用导入或原始 URL/method/header 代理。
+Remote 暴露管理操作，以 `watch(signal?)` 取代 `subscribe`，先发送当前快照再发送后续已提交变更，并排除 `downloadAuthFile`。产品 RPC 模块在 `/api/account-pool.export?name=...` 拥有经过认证的 `ctx.connection.fetch.register` 处理器。实际处理器强制执行 Config `allowCredentialExport`、安全的单段文件名、`Content-Disposition: attachment` 和 `Cache-Control: no-store`。Desktop 显式启用这项用户请求的凭据文件导出，Web 组合显式选择自己的策略。普通 RPC 和快照绝不返回其原始内容。第二条经过认证的 POST `/api/account-pool.open` 仅通过 Host 操作系统打开器启动不含用户信息的 HTTPS 授权 URL；Client 不使用 `window.open` 或 `window.dshDesktop`。不存在通用导入或原始 URL/method/header 代理。
 
 内部不依赖 React 的控制器拥有 watch 订阅和已提交快照，在资源释放时取消并等待 watch 结束，并提供注入 hooks；store 只保存视图状态。`AccountPoolClientActions` 为组件解包生成的 Remote 结果，组件既不使用 `window.dshDesktop`，也不使用管理 URL。编辑采用明确字段白名单；代理 userinfo 被脱敏，含凭据的 header 只暴露是否已配置以及保留/替换/删除意图。账号身份和操作代次阻止先前读取填入另一账号的弹窗。保存失败保留弹窗并显示本地化错误。过期登录状态不能完成或关闭后来的操作。
 

@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-15-account-pool-host-authorization-open.md
+2026-09-15-account-pool-host-authorization-open.md: 5372e703f84cec3a7738c9a03d863e5c05292124
+2026-09-15-account-pool-host-authorization-open.zh.md: 14a9a042642ba8903441cc0676c98d281c3d6d36

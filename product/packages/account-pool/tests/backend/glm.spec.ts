@@ -24,7 +24,8 @@ describe('committed GLM authority', () => {
     const card = glmCard((await restarted.read()).accounts[0]!)
     expect(card.status).toBe('disabled')
     expect(card.successCount).toBeUndefined()
-    expect(card.quotaState.status).toBe('unsupported')
+    expect(card.quotaState.status).toBe('unobserved')
+    expect(card.capabilities.quota).toBe(true)
     expect(JSON.stringify(card)).not.toContain('fake-management-only-key')
   })
 

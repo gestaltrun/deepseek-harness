@@ -30,6 +30,7 @@
     "src/client/**/*.ts",
     "src/client/**/*.tsx",
     "src/css-modules.d.ts",
-    "src/account-pool.ts"
+    "src/account-pool.ts",
+    "src/authorization-url.ts"
   ]
 }

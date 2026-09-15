@@ -22,7 +22,7 @@ This temporary delivery reference tracks the proposed account-pool migration to 
 | Target baseline | `375e2838dec1ff3fba7730256b9bfda2a17c1983` on `gestaltrun/master`; the original clean `c291e7961a515f6d7af9304e7fd1d257929aef26` was advanced with `--ff-only`. |
 | Integration branch | `codex/migrate-cliproxyapi-account-pool-20260914` |
 | Source checkout | `cliproxyapi-merger`, source HEAD `0f11d3e411de41b1eeff69dbb08f8c65d803b4be` plus ten tracked working-tree changes. |
-| Engine | `gestaltrun/CLIProxyAPI` at `1d25ceb7f38736880880a5a0d9e08ebb5349d950`; the source submodule is clean. |
+| Engine | `gestaltrun/CLIProxyAPI` at `7c34408fba879202c892d7beb788b1fd84138cfc` (`v7.2.155-glm.2`), recorded as the `community/cliproxyapi` gitlink; the source submodule is clean. |
 | Local source freeze | `tmp/account-pool-migration-20260914/source-freeze`, 109 tracked source files; no personal account or environment files. |
 | Source manifest SHA-256 | `9985e7c6bd3383928cb3fb1b510f2a3b20fc1bb7c0ae27623c4c92c1a2213165` |
 | Working-tree patch SHA-256 | `c881c3a4de8c53aaa24f870be3883af13af54d21029ab495bd8815e2ebaedfc4` |

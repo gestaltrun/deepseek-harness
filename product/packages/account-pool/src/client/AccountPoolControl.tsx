@@ -263,7 +263,12 @@ export function AccountPoolControl({ t, useAccountPool, accountPoolActions: clie
             setLoginOpen(false)
             void loginAction(() => client.dismissLogin())
           }}
-          onStart={(kind) => { void loginAction(() => client.startLogin(kind)) }}
+          onStart={(kind) => {
+            void loginAction(async () => {
+              const login = await client.startLogin(kind)
+              if (login.url !== undefined) await client.openExternal(login.url)
+            })
+          }}
           onCancel={(state) => { void loginAction(() => client.cancelLogin(state)) }}
           onOpenExternal={(url) => { void run(() => client.openExternal(url)) }}
           onSubmitCallback={(input) => { void loginAction(() => client.submitCallback(input)) }}

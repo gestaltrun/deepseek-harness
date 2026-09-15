@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/proposed/architecture/2026-09-14-plugin-account-pool.md
-2026-09-14-plugin-account-pool.md: a558c687b763edd1ca935e7e5c666796b8788caf
-2026-09-14-plugin-account-pool.zh.md: 6ced6ae3916f31433889be3dbce0bad0fffd83a4
+2026-09-14-plugin-account-pool.md: 703f37a879bab52761be1713fda43599951d881c
+2026-09-14-plugin-account-pool.zh.md: ce52c624651f06b64a5c44b0c70b8d493bea9478

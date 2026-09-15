@@ -2,19 +2,17 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
-import type {} from '@deepseek-ai/dsh-client-ui-settings-models/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import remoteContribution from '@gestaltrun/dsh-account-pool/remote'
 import { AccountPoolClientController } from './controller.ts'
 import type { AccountPoolInjected } from './contract.ts'
 import { AccountPoolControl } from './AccountPoolControl.tsx'
-import { ModelsFooter } from './ModelsFooter.tsx'
 import { createAccountPoolViewStore } from './view-store.ts'
 import { downloadAccount, openAuthorization } from './navigation.ts'
 import { en, zh, type AccountPoolKey } from './locales.ts'
 
 export { createAccountPoolViewStore } from './view-store.ts'
-export type { AccountPoolClientActions, AccountPoolDirectory, AccountPoolInjected } from './contract.ts'
+export type { AccountPoolClientActions, AccountPoolInjected } from './contract.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -34,7 +32,7 @@ export const inject = ['remote']
 export async function apply(ctx: Context): Promise<void> {
   const unmount = await ctx.remote.$mount(remoteContribution)
   ctx.effect(() => unmount, 'account-pool Remote contribution')
-  await ctx.inject(['slots', 'locale', 'remote', 'remote.llm', 'remote.accountPool'], (inner) => {
+  await ctx.inject(['slots', 'locale', 'remote', 'remote.accountPool'], (inner) => {
     const controller = new AccountPoolClientController(inner.remote, { download: downloadAccount, openExternal: openAuthorization })
     inner.effect(() => () => controller.dispose(), 'account-pool Client controller')
     inner.effect(() => inner.locale.register('accountPool', { zh, en }), 'account-pool locale')
@@ -42,17 +40,11 @@ export async function apply(ctx: Context): Promise<void> {
     const view = createAccountPoolViewStore()
     const injected = (): AccountPoolInjected => ({
       accountPoolActions: controller.actions,
-      hooks: { accountPool: controller.snapshot, accountPoolDirectory: controller.directory },
+      hooks: { accountPool: controller.snapshot },
     })
-    inner.effect(() => inner.remote.$on('llm/adapters-updated', () => { void controller.refreshDirectory() }), 'account-pool directory updates')
-    inner.on('connection/reset', () => { void controller.refreshDirectory() })
     inner.slots.inject('settings.section', () => inner.slots.register({
       name: 'settings.section', id: 'account-pool', order: 12,
       label: () => t('settingsNav'), locale: 'accountPool', store: view, inject: injected,
     }, AccountPoolControl))
-    inner.slots.inject('settings.models.footer', () => inner.slots.register({
-      name: 'settings.models.footer', id: 'account-pool', order: 20,
-      locale: 'accountPool', inject: injected,
-    }, ModelsFooter))
   }).await()
 }

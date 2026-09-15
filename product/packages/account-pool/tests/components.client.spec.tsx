@@ -9,7 +9,6 @@ import type { AccountPoolClientActions } from '../src/client/contract.ts'
 import { createAccountPoolViewStore } from '../src/client/view-store.ts'
 import { AccountCard } from '../src/client/AccountCard.tsx'
 import { QuotaBarWithTimeline } from '../src/client/QuotaBarWithTimeline.tsx'
-import { ModelsFooter } from '../src/client/ModelsFooter.tsx'
 import { en, zh, type AccountPoolKey } from '../src/client/locales.ts'
 import type { AccountPoolCopy } from '../src/client/quota-display.ts'
 
@@ -52,7 +51,6 @@ function mount(snapshot = ready, actions = commands(), locale: 'en' | 'zh' = 'en
     const props = {
       t: copy(locale), close: () => {}, accountPoolActions: actions,
       useAccountPool: <T,>(select: (value: AccountPoolSnapshot) => T) => select(snapshot),
-      useAccountPoolDirectory: <T,>(select: (value: { loaded: boolean }) => T) => select({ loaded: true }),
       useStore: <T,>(select: (value: ReturnType<typeof view.store.getSnapshot>) => T) => select(useSyncExternalStore(view.store.subscribe, view.store.getSnapshot)),
       actions: view.actions,
     } as AccountPoolControlProps
@@ -101,6 +99,27 @@ describe('account pool Settings', () => {
     for (const name of ['ANTHROPIC', 'CODEX', 'ANTIGRAVITY', 'KIMI', 'XAI', 'GLM']) expect(screen.getByRole('button', { name })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'CODEX' }))
     expect(screen.getByRole('button', { name: zh.startLogin.replace('{provider}', 'CODEX') })).toBeTruthy()
+  })
+
+  it('opens the authorization URL when login starts and when the user retries the browser action', async () => {
+    const actions = commands({
+      startLogin: vi.fn<AccountPoolClientActions['startLogin']>(async kind => ({
+        kind, flow: 'device', status: 'pending', url: 'https://login.example/device',
+      })),
+    })
+    mount(ready, actions)
+    fireEvent.click(screen.getByText(en.addAccount))
+    fireEvent.click(screen.getByRole('button', { name: 'XAI' }))
+    fireEvent.click(screen.getByRole('button', { name: en.startLogin.replace('{provider}', 'XAI') }))
+    await waitFor(() => expect(actions.startLogin).toHaveBeenCalledWith('xai'))
+    await waitFor(() => expect(actions.openExternal).toHaveBeenCalledWith('https://login.example/device'))
+  })
+
+  it('retries Host authorization open from the pending login dialog', async () => {
+    const actions = commands()
+    mount({ ...ready, login: { kind: 'xai', flow: 'device', status: 'pending', url: 'https://login.example/device' } }, actions)
+    fireEvent.click(screen.getByRole('button', { name: en.openBrowser }))
+    await waitFor(() => expect(actions.openExternal).toHaveBeenCalledWith('https://login.example/device'))
   })
 
   it('retains failed and pending logins until the Host accepts dismissal, without Client polling', async () => {
@@ -187,8 +206,8 @@ describe('account pool Settings', () => {
     const { successCount: _success, failCount: _failed, ...base } = account
     const glm: AccountPoolAccount = {
       ...base, ref: 'glm-1' as AccountPoolAccountRef, provider: 'glm', status: 'configured',
-      capabilities: { models: 'provider', quota: false, export: 'glm-credential', editableFields: ['note', 'prefix', 'proxyUrl', 'priority', 'weight'] },
-      quotaState: { status: 'unsupported', stale: false },
+      capabilities: { models: 'provider', quota: true, export: 'glm-credential', editableFields: ['note', 'prefix', 'proxyUrl', 'priority', 'weight'] },
+      quotaState: { status: 'unobserved', stale: false },
     }
     mount({ ...ready, accounts: [glm] })
     expect(screen.getByText(en.configured)).toBeTruthy()
@@ -202,16 +221,6 @@ describe('account pool Settings', () => {
     expect((screen.getByRole('switch', { name: en.fieldCooling }) as HTMLButtonElement).disabled).toBe(true)
     expect((screen.getByRole('switch', { name: en.fieldWebsockets }) as HTMLButtonElement).disabled).toBe(true)
     expect(screen.getByText(en.limitedFields)).toBeTruthy()
-  })
-
-  it('shows a read-only live route in the Models footer', () => {
-    const props = {
-      t: copy(), useAccountPoolDirectory: <T,>(select: (value: { loaded: boolean; provider: { id: string; name: string } }) => T) => select({ loaded: true, provider: { id: 'gestalt-account-pool', name: 'Account pool' } }),
-    } as Parameters<typeof ModelsFooter>[0]
-    render(<ModelsFooter {...props} />)
-    expect(screen.getByText('gestalt-account-pool')).toBeTruthy()
-    expect(screen.getByText(en.footerLead)).toBeTruthy()
-    expect(screen.queryByRole('button')).toBeNull()
   })
 
   it('tracks concurrent quota refreshes independently for each account', async () => {

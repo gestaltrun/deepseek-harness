@@ -4,26 +4,22 @@ import type { ClientRemote, RemoteResult } from '@deepseek-ai/dsh-api-remotes/cl
 import type {} from '@gestaltrun/dsh-account-pool/remote'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { AccountPoolAccountName, AccountPoolSnapshot } from '../account-pool.ts'
-import type { AccountPoolClientActions, AccountPoolDirectory } from './contract.ts'
+import type { AccountPoolClientActions } from './contract.ts'
 
-type Remote = Pick<ClientRemote, 'accountPool' | 'llm' | '$stream'>
+type Remote = Pick<ClientRemote, 'accountPool' | '$stream'>
 type Navigation = {
   download(name: AccountPoolAccountName, signal: AbortSignal): Promise<void>
   openExternal(url: string): Promise<void>
 }
 
-const ROUTE = 'gestalt-account-pool'
-
 /** Owns the Remote stream and in-flight commands for one Client plugin fiber. */
 export class AccountPoolClientController {
   readonly snapshot = createSnapshotStore<AccountPoolSnapshot>({ state: 'starting', accounts: [] })
-  readonly directory = createSnapshotStore<AccountPoolDirectory>({ loaded: false })
   readonly actions: AccountPoolClientActions
   private readonly lifetime = new AbortController()
   private readonly pending = new Set<Promise<unknown>>()
   private readonly stream: RemoteStream<AccountPoolSnapshot>
   private readonly done: Promise<void>
-  private directoryRevision = 0
 
   /**
    * @param remote - generated account namespace and public LLM directory.
@@ -56,24 +52,6 @@ export class AccountPoolClientController {
       carrierFailed: error => { this.publishFailure(error) },
     })
     this.done = this.consume()
-    void this.refreshDirectory()
-  }
-
-  /**
-   * Read the current LLM route; late reads cannot overwrite a newer directory result.
-   * @returns after the latest result or its error is published.
-   */
-  async refreshDirectory(): Promise<void> {
-    const revision = ++this.directoryRevision
-    try {
-      const providers = await this.call(() => this.remote.llm.listProviders())
-      if (this.lifetime.signal.aborted || revision !== this.directoryRevision) return
-      const provider = providers.find(item => item.id === ROUTE)
-      this.directory.set({ loaded: true, ...provider === undefined ? {} : { provider } })
-    } catch (error) {
-      if (this.lifetime.signal.aborted || revision !== this.directoryRevision) return
-      this.directory.set({ ...this.directory.getSnapshot(), loaded: true, error: messageOf(error) })
-    }
   }
 
   /**
@@ -82,7 +60,6 @@ export class AccountPoolClientController {
    */
   async dispose(): Promise<void> {
     this.lifetime.abort()
-    this.directoryRevision++
     await this.stream.dispose()
     await this.done
     await Promise.allSettled([...this.pending])

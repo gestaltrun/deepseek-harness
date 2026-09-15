@@ -1,5 +1,6 @@
 /** Standard browser navigation keeps credential downloads out of RPC results. */
 import type { AccountPoolAccountName } from '../account-pool.ts'
+import { ACCOUNT_POOL_OPEN_PATH, authorizationUrl } from '../authorization-url.ts'
 
 /**
  * Check export policy and hand the authenticated URL to the download manager.
@@ -20,12 +21,17 @@ export async function downloadAccount(name: AccountPoolAccountName, signal: Abor
 }
 
 /**
- * Open an HTTPS authorization link without granting the new page an opener.
+ * Ask the Host to open an HTTPS authorization link in the system browser.
  * @param url - provider authorization URL from the current login operation.
- * @returns after requesting navigation; invalid URLs reject.
+ * @returns after the Host starts the opener; invalid URLs and Host refusals reject.
  */
 export async function openAuthorization(url: string): Promise<void> {
-  const target = new URL(url)
-  if (target.protocol !== 'https:' || target.username !== '' || target.password !== '') throw new Error('Authorization requires an HTTPS URL without user information')
-  window.open(target.href, '_blank', 'noopener,noreferrer')
+  const target = authorizationUrl(url)
+  const response = await fetch(new URL(ACCOUNT_POOL_OPEN_PATH, document.baseURI), {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ url: target }),
+  })
+  if (!response.ok) throw new Error(`Account authorization failed: HTTP ${response.status}`)
 }

@@ -1,4 +1,4 @@
-/** Typed account-management Remote controller and authenticated download registration. */
+/** Typed account-management Remote controller and authenticated download and authorization-open registration. */
 import { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-client-connection'
@@ -10,6 +10,7 @@ import type {
   AccountPoolModel, AccountPoolSnapshot,
 } from '../account-pool.ts'
 import { ACCOUNT_POOL_EXPORT_PATH, accountPoolExportResponse } from './export.ts'
+import { ACCOUNT_POOL_OPEN_PATH, accountPoolOpenResponse } from './open.ts'
 import { accountPoolRemoteError } from './errors.ts'
 import { watchAccountPool } from './watch.ts'
 
@@ -41,6 +42,10 @@ export class AccountPoolController extends TypertRemoteService {
     ctx.connection.fetch.register({
       path: ACCOUNT_POOL_EXPORT_PATH, methods: ['GET', 'HEAD'], requestBody: 'buffered',
       fetch: request => accountPoolExportResponse(ctx.accountPool, config.allowCredentialExport, request),
+    })
+    ctx.connection.fetch.register({
+      path: ACCOUNT_POOL_OPEN_PATH, methods: ['POST'], requestBody: 'buffered',
+      fetch: request => accountPoolOpenResponse(request),
     })
   }
 

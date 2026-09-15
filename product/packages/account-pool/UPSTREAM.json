@@ -1,7 +1,8 @@
 {
   "engine": {
     "repository": "https://github.com/gestaltrun/CLIProxyAPI.git",
-    "commit": "1d25ceb7f38736880880a5a0d9e08ebb5349d950"
+    "commit": "7c34408fba879202c892d7beb788b1fd84138cfc",
+    "submodule": "community/cliproxyapi"
   },
   "harness": {
     "version": "0.1.5-rc.2",

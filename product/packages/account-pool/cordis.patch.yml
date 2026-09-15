@@ -1,4 +1,9 @@
 # Account management uses its own local process implementation and durable state.
+- id: gestaltrun-model-center
+  config:
+    managedProviders:
+      - id: gestalt-account-pool
+        displayName: Account pool
 - insert:
     - id: gestaltrun-account-pool-local
       name: cordis:group

@@ -15,6 +15,7 @@ const desktopFiles = new Set([
 ])
 const planning = [
   '.agents/notes/proposed/architecture/2026-09-14-plugin-account-pool',
+  '.agents/notes/implemented/bug-fix/2026-09-15-account-pool-host-authorization-open',
   'docs/scratch/2026-09-14-account-pool-migration',
 ]
 
@@ -108,7 +109,8 @@ export function verifyAccountPoolScope({ repositoryRoot, base }) {
   const paths = git('diff', '--name-only', '--no-renames', revision).split('\n').filter(Boolean)
   const errors = []
   for (const path of paths) {
-    const allowed = path.startsWith('product/') || desktopFiles.has(path)
+    const allowed = path.startsWith('product/') || path === '.gitmodules' || path === 'community/cliproxyapi'
+      || desktopFiles.has(path)
       || planning.some(stem => ['.md', '.zh.md', '.i18n.yaml'].some(suffix => path === stem + suffix))
     if (!allowed) errors.push(`outside product scope: ${path}`)
     if (path.startsWith('product/')) inspectProductFile(root, path, errors)

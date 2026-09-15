@@ -4,6 +4,7 @@ import type { AccountPoolAccountName } from '../../src/account-pool.ts'
 import { coreFieldPatch, editableFields, roster } from '../../src/provider/redaction.ts'
 import { patchSchema, parseInput } from '../../src/provider/validation.ts'
 import { accountPoolExportResponse } from '../../src/rpc/export.ts'
+import { accountPoolOpenResponse, authorizationOpener } from '../../src/rpc/open.ts'
 const name = brandString<AccountPoolAccountName>('test.json')
 
 describe('account metadata and explicit credential download', () => {
@@ -48,5 +49,34 @@ describe('account metadata and explicit credential download', () => {
     expect(await response.text()).toContain('export-only')
     expect((await accountPoolExportResponse(owner, true, new Request('https://host/api/account-pool.export?name=..%2Fbad'))).status).toBe(400)
     expect(reads).toBe(1)
+  })
+
+  it('opens only HTTPS authorization URLs through the Host launcher', async () => {
+    const opened: string[] = []
+    const launch = async (url: string) => { opened.push(url) }
+    const post = (url: string) => new Request('https://host/api/account-pool.open', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url }),
+    })
+    expect((await accountPoolOpenResponse(new Request('https://host/api/account-pool.open'), launch)).status).toBe(405)
+    expect((await accountPoolOpenResponse(post('javascript:alert(1)'), launch)).status).toBe(400)
+    expect((await accountPoolOpenResponse(post('https://user:secret@login.example'), launch)).status).toBe(400)
+    expect((await accountPoolOpenResponse(post('http://login.example/authorize'), launch)).status).toBe(400)
+    const ok = await accountPoolOpenResponse(post('https://login.example/authorize?state=fixture'), launch)
+    expect(ok.status).toBe(204)
+    expect(ok.headers.get('cache-control')).toBe('no-store')
+    expect(opened).toEqual(['https://login.example/authorize?state=fixture'])
+    const refused = await accountPoolOpenResponse(post('https://login.example/authorize'), async () => {
+      throw new Error('spawn EACCES')
+    })
+    expect(refused.status).toBe(502)
+    expect(authorizationOpener('https://login.example/authorize', 'darwin')).toEqual({
+      command: 'open', args: ['https://login.example/authorize'],
+    })
+    expect(authorizationOpener('https://login.example/authorize', 'win32')).toEqual({
+      command: 'rundll32.exe', args: ['url.dll,FileProtocolHandler', 'https://login.example/authorize'],
+    })
+    expect(authorizationOpener('https://login.example/authorize', 'linux')).toEqual({
+      command: 'xdg-open', args: ['https://login.example/authorize'],
+    })
   })
 })
