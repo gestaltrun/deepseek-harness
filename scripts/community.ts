@@ -206,6 +206,8 @@ export async function packCommunity(output = COMMUNITY_OUTPUT): Promise<readonly
     const isSidebar = plugin.package === '@gestaltrun/dsh-better-sidebar'
     if (!isSidebar && sidebar === undefined) throw new Error('community: build Better Sidebar before its plugin consumers')
     runPluginPnpm(plugin, ['install', '--frozen-lockfile', '--ignore-scripts'])
+    // Rebuild native modules (e.g. node-pty) that require compilation
+    runPluginPnpm(plugin, ['rebuild'])
     const staging = mkdtempSync(join(output, '.pack-'))
     try {
       const args = ['run', 'release:pack', '--', '--out', staging]
