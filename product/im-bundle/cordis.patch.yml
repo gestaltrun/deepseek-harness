@@ -1,0 +1,13 @@
+- id: directory-picker
+  disabled: true
+- insert:
+    - id: gestaltrun-im-directory-picker-browse
+      name: '@deepseek-ai/dsh-host-directory-picker-browse'
+    - id: gestaltrun-im-runtime
+      name: '@gestaltrun/dsh-im-runtime'
+    - id: gestaltrun-im-api
+      name: '@gestaltrun/dsh-api-im'
+    - id: gestaltrun-im-ui
+      name: '@gestaltrun/dsh-ui-im'
+      config:
+        directoryPicker: browse

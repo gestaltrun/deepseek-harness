@@ -418,6 +418,11 @@ export function planForkCi(input: ScopeInput): ForkCiPlan {
   }
 
   for (const changedScript of scriptsChanged) {
+    if (changedScript === 'scripts/session-snapshot-corpus.corpus.ts') {
+      plan.snapshots = ['scripts/session-snapshot-corpus.corpus.ts', ...input.files.filter(file => file.startsWith('snapshots/') && file.endsWith('.snapshot.ts'))]
+      plan.build = true
+      continue
+    }
     const consumers = new Set([changedScript])
     let changed = true
     while (changed) {

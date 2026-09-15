@@ -1,0 +1,9 @@
+{
+  "implementation": "original product composition",
+  "repository": "gestaltrun/deepseek-harness",
+  "directory": "product/im-bundle",
+  "acceptedSpecification": "https://github.com/gestaltrun/deepseek-harness/issues/44",
+  "architecture": ".agents/notes/proposed/architecture/2026-09-14-im-takeover-plugin-migration.md",
+  "configurationInputCommit": "70803c1801814a8ba30c6f48a5c09cc21f24c79e",
+  "license": "MIT"
+}

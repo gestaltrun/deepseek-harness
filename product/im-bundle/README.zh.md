@@ -1,0 +1,51 @@
+---
+description: "可安装的产品配置层，为具名 profile 提供持久化 IM 账号和路由配置。"
+kind: "package-bundle"
+---
+
+# @gestaltrun/dsh-im-bundle
+
+[English](README.md) | 中文
+
+## 概述
+
+此 bundle 为基于 base 的 dsh profile 添加持久化 IM 账号和路由配置。它选择产品运行时、生成的配置 API，以及账号/Workspace 设置 UI。底层应用继续使用已提供的 Web 模板。平台适配器和 Agent 执行分别组合。
+
+## 目录
+
+- [安装到 profile](#install-into-a-profile)
+- [配置层行为](#layer-behavior)
+- [模型体验](#model-experience)
+- [已知限制与延后工作](#known-limitations-and-deferred-work)
+- [开发备注](#dev-note)
+
+<a id="install-into-a-profile"></a>
+## 安装到 profile
+
+使用 `pnpm --dir product run pack:im-bundle` 构建四个候选归档。[产品工作区](../README.zh.md) 定义构建顺序和 `product/dist` 输出目录。候选包尚未发布到 registry；安装候选版本时，必须把精确的包名和版本映射到对应的本地归档。
+
+可重复的安装检查使用独立且已安装 `@deepseek-ai/dsh@0.1.5-rc.2` 的消费者。把 `DSH_IM_SMOKE_INSTALL_ROOT` 设为该消费者目录，运行 `pnpm --dir product run smoke:im-profile`。检查从已提供的 Web 模板创建全新 profile，记录候选归档哈希，把未发布依赖绑定到本地归档，并调用 `dsh plugin --profile im-profile-smoke add`。该 profile 禁用自动安装对等依赖，并共享消费者的 Cordis 实例。
+
+安装后，`dsh --profile im-profile-smoke --dump-config` 显示三个产品配置行。检查还会拒绝额外 overlay 中的畸形 YAML，并运行 `dsh plugin --profile im-profile-smoke remove @gestaltrun/dsh-im-bundle`；产品配置行消失，共享 profile 数据保留。它不启动 Web 服务、Electron、模型或平台适配器。
+
+<a id="layer-behavior"></a>
+## 配置层行为
+
+[补丁](cordis.patch.yml) 各插入一次 `gestaltrun-im-runtime`、`gestaltrun-im-api` 和 `gestaltrun-im-ui`，并选择公开的 browse 目录 Host 和匹配的 UI 配置。底层 base 提供存储、凭据和 Typert 服务。[运行时](../im-runtime/README.zh.md) 定义持久化配置，[API](../api-im/README.zh.md) 定义安全 Remote 命令和 Client 对象，[UI](../ui-im/README.zh.md) 定义账号和选定 Workspace 的控件。已导出的 [Web overlay](web.patch.yml) 再次明确浏览器搭配。[Desktop overlay](desktop.patch.yml) 禁用产品 browse 行并选择原生 UI 交互；Desktop Host 在 profile 配置层之后应用其既有原生适配器补丁。在该最终 Desktop 配置层之前，将产品 Desktop overlay 应用于 profile。bundle 自身没有运行时入口或服务。
+
+<a id="model-experience"></a>
+## 模型体验
+
+无。此配置子集不添加面向模型的工具或提示词。
+
+<a id="known-limitations-and-deferred-work"></a>
+## 已知限制与延后工作
+
+- 不包含平台适配器、执行工具和模拟组合。IM 右侧面板在 API 组合完成前显示不可用。
+- Desktop 的默认产品列表尚未选择此 bundle。
+- 包安装和配置打印不能证明完整 IM 体验；真实平台适配器与 Web/Desktop 验收分别验证。
+
+<a id="dev-note"></a>
+## 开发备注
+
+无。

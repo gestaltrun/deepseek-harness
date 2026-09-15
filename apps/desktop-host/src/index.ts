@@ -27,6 +27,7 @@ import type {} from '@deepseek-ai/dsh-client-modules'
 import { renderIndexInjections, type IndexInjection } from '@deepseek-ai/dsh-host-webserver'
 import * as FrontendStatic from '@deepseek-ai/dsh-host-frontend-static'
 import { installDesktopCommunityTransport, type DesktopCommunityTransport } from './community-transport.ts'
+import { loadBundleDesktopPatches } from './bundle-desktop-patch.ts'
 import { DESKTOP_COMMUNITY_WEBSOCKET_SCRIPT } from './community-websocket-client.ts'
 import { DESKTOP_STREAM_PATH, dispatchDesktopFetch } from './fetch-dispatcher.ts'
 import { DesktopRemoteAccess } from './remote-access.ts'
@@ -164,6 +165,7 @@ function desktopPatches(runtimeDir: string, projectDir: string, allowLinkedPacka
   }
   const layers = [
     ...profile.layers.map(layer => layer.patches),
+    ...profile.layers.flatMap(layer => loadBundleDesktopPatches(layer.packageDir, layer.packageName)),
     profile.patches,
     loadOverlayPatches('dsh desktop', DESKTOP_PATCH),
   ]

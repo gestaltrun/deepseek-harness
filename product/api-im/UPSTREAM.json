@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "architectureReference": {
+    "repository": "gestaltrun/deepseek-harness",
+    "commit": "8a973c1dd557464b702f19dd90f60d8b6ebcdbe0",
+    "path": "packages/api/workspace-controller",
+    "license": "MIT"
+  },
+  "legacyInput": {
+    "repository": "gestaltrun/deepseek-harness-gestalt",
+    "commit": "8380c365a987482327131d238ffd849b1083a1e5",
+    "path": "packages/client/ui-im",
+    "unstagedPatchSha256": "fd55b4659b89e22cf9ff81474f33a335ddbba13c1be04b98011c7d023f928a97",
+    "license": "MIT"
+  },
+  "implementation": "Product-owned BFF and Client models replace the legacy UI-owned configuration mirror; runtime records are imported from the product runtime."
+}

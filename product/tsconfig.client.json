@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.base.json",
+  "files": [],
+  "references": [
+    { "path": "./api-im/tsconfig.client.json" },
+    { "path": "./ui-im/tsconfig.client.json" }
+  ]
+}

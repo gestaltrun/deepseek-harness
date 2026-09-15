@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DesktopHostProcess } from '../src/host-process.ts'
 import { createPluginProfile, desktopRuntimeBundles } from '../src/project-manager.ts'
-import { DESKTOP_PRODUCT_BUNDLES } from '../src/product-profile.ts'
+import { DESKTOP_PRODUCT_BUNDLES, DESKTOP_PRODUCT_CLIENT_ENTRIES } from '../src/product-profile.ts'
 import { linkDesktopHostPackages, validateDesktopPluginGraph } from '../src/profile-packages.ts'
 import type { DesktopRuntimeDescriptor } from '../src/runtime-tree.ts'
 import { buildCommunityClientSeed, smokeCommunityClientModules } from './community-client-modules.ts'
@@ -229,7 +229,8 @@ export function apply(ctx) {
     if (hasCommunity) {
       await smokeCommunityPluginRoutes((path, init) => host.fetch(new Request(new URL(path, 'dsh-app://app/'), {
         ...init, signal: AbortSignal.timeout(30_000),
-      })), DESKTOP_PRODUCT_BUNDLES.filter(name => desktopRuntimeBundles(runtime).includes(name)))
+      })), DESKTOP_PRODUCT_BUNDLES.filter(name => desktopRuntimeBundles(runtime).includes(name))
+        .flatMap(name => DESKTOP_PRODUCT_CLIENT_ENTRIES[name]))
       await smokeEgoLaunchConfiguration((path, init) => host.fetch(new Request(new URL(path, 'dsh-app://app/'), {
         ...init, signal: AbortSignal.timeout(30_000),
       })), '--headless')
